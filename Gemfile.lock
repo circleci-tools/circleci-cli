@@ -1,0 +1,65 @@
+PATH
+  remote: .
+  specs:
+    circle (0.1.0)
+      circleci (~> 0.2.0)
+      colorize (~> 0.7.7)
+      faraday (~> 0.9.2)
+      highline (~> 1.7.8)
+      rugged (~> 0.24.0b11)
+      terminal-table (~> 1.5.2)
+      thor (~> 0.19.1)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    circleci (0.2.0)
+      rest-client (~> 1.8)
+    colorize (0.7.7)
+    diff-lcs (1.2.5)
+    domain_name (0.5.25)
+      unf (>= 0.0.5, < 1.0.0)
+    faraday (0.9.2)
+      multipart-post (>= 1.2, < 3)
+    highline (1.7.8)
+    http-cookie (1.0.2)
+      domain_name (~> 0.5)
+    mime-types (2.99)
+    multipart-post (2.0.0)
+    netrc (0.11.0)
+    rake (10.4.2)
+    rest-client (1.8.0)
+      http-cookie (>= 1.0.2, < 2.0)
+      mime-types (>= 1.16, < 3.0)
+      netrc (~> 0.7)
+    rspec (3.4.0)
+      rspec-core (~> 3.4.0)
+      rspec-expectations (~> 3.4.0)
+      rspec-mocks (~> 3.4.0)
+    rspec-core (3.4.1)
+      rspec-support (~> 3.4.0)
+    rspec-expectations (3.4.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.4.0)
+    rspec-mocks (3.4.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.4.0)
+    rspec-support (3.4.1)
+    rugged (0.24.0b11)
+    terminal-table (1.5.2)
+    thor (0.19.1)
+    unf (0.1.4)
+      unf_ext
+    unf_ext (0.0.7.1)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  bundler (~> 1.10)
+  circle!
+  rake (~> 10.0)
+  rspec
+
+BUNDLED WITH
+   1.10.6
