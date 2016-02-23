@@ -1,5 +1,5 @@
 module Circle
-  class OpenCommand < BaseCommand
+  class BrowseCommand < BaseCommand
     class << self
       def run(options)
         project = project_name(options)
