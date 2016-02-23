@@ -30,6 +30,7 @@ Gem::Specification.new do |spec|
   # Production
   spec.add_dependency 'thor', '~> 0.19.1'
   spec.add_dependency 'faraday', '~> 0.9.2'
+  spec.add_dependency 'launchy', '~> 2.4.3'
   spec.add_dependency 'circleci', '~> 0.2.0'
   spec.add_dependency 'rugged', '~> 0.24.0b11'
   spec.add_dependency 'terminal-table', '~> 1.5.2'

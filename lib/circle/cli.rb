@@ -1,5 +1,6 @@
 require 'thor'
 require 'faraday'
+require 'launchy'
 require 'terminal-table'
 require 'highline/import'
 require 'colorize'
@@ -10,6 +11,7 @@ require 'circle/command/base_command'
 require 'circle/command/projects_command'
 require 'circle/command/builds_command'
 require 'circle/command/build_command'
+require 'circle/command/open_command'
 require 'circle/response/project'
 require 'circle/response/build'
 require 'circle/response/step'
@@ -36,6 +38,13 @@ module Circle
     method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
     def build
       BuildCommand.run(options)
+    end
+
+    desc 'open', 'open circle ci website'
+    method_option :project, aliases: 'p', type: :string, banner: 'user/project'
+    method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+    def open
+      OpenCommand.run(options)
     end
 
     desc 'version', 'show gem version'
