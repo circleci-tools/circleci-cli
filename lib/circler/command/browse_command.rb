@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class BrowseCommand < BaseCommand
     class << self
       def run(options)

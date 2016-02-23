@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class Build
     class << self
       def all(username, reponame)

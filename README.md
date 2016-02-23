@@ -1,13 +1,13 @@
-# Circle
+# Circler
 
 [![Circle CI](https://circleci.com/gh/unhappychoice/circle.svg?style=svg)](https://circleci.com/gh/unhappychoice/circle)
 
-Circle is a CLI tool for [Circle CI](https://circleci.com).
+Circler is a CLI tool for [Circle CI](https://circleci.com).
 
 ## Installation
 
 ```sh
-$ gem install circle
+$ gem install circler
 ```
 
 ## Usage
@@ -58,7 +58,7 @@ $ circle browse
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/unhappychoice/circle.
+Bug reports and pull requests are welcome on GitHub at https://github.com/unhappychoice/circler.
 
 ## License
 

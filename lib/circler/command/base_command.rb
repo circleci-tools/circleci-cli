@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class BaseCommand
     class << self
       def setup_token()

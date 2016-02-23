@@ -6,20 +6,20 @@ require 'highline/import'
 require 'colorize'
 require 'rugged'
 require 'circleci'
-require 'circle'
-require 'circle/command/base_command'
-require 'circle/command/projects_command'
-require 'circle/command/builds_command'
-require 'circle/command/build_command'
-require 'circle/command/browse_command'
-require 'circle/response/project'
-require 'circle/response/build'
-require 'circle/response/step'
-require 'circle/printer/project_printer'
-require 'circle/printer/build_printer'
-require 'circle/printer/step_printer'
+require 'circler'
+require 'circler/command/base_command'
+require 'circler/command/projects_command'
+require 'circler/command/builds_command'
+require 'circler/command/build_command'
+require 'circler/command/browse_command'
+require 'circler/response/project'
+require 'circler/response/build'
+require 'circler/response/step'
+require 'circler/printer/project_printer'
+require 'circler/printer/build_printer'
+require 'circler/printer/step_printer'
 
-module Circle
+module Circler
   class CLI < Thor
     desc 'projects', 'list projects'
     def projects
@@ -49,7 +49,7 @@ module Circle
 
     desc 'version', 'show gem version'
     def version
-      say Circle::VERSION
+      say Circler::VERSION
     end
   end
 end

@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class Project
     def initialize(hash)
       @hash = hash

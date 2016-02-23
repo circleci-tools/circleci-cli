@@ -1,7 +1,7 @@
 require 'spec_helper'
 
-describe Circle do
+describe Circler do
   it 'has a version number' do
-    expect(Circle::VERSION).not_to be nil
+    expect(Circler::VERSION).not_to be nil
   end
 end

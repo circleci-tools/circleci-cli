@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class BuildCommand < BaseCommand
     class << self
       def run(options)

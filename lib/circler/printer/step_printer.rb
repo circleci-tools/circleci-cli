@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class StepPrinter
     def initialize(steps, compact: false)
       @steps = steps

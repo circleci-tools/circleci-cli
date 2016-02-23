@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class ProjectPrinter
     attr_accessor :compact
     def initialize(projects, compact: false)

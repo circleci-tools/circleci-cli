@@ -1,4 +1,4 @@
-module Circle
+module Circler
   class BuildPrinter
     def initialize(builds, compact: false)
       @builds = builds
