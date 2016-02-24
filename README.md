@@ -10,6 +10,12 @@ Circler is a CLI tool for [Circle CI](https://circleci.com).
 $ gem install circler
 ```
 
+set the `CIRCLE_CI_TOKEN` environment variable. (optional)
+
+```sh
+export CIRCLE_CI_TOKEN=your-circle-ci-token
+```
+
 ## Usage
 
 #### projects
