@@ -44,7 +44,7 @@ module Circler
 
     def steps
       hash = @hash['steps'].group_by { |s| s['actions'].first['type'] }
-      hash.map { |type, step| Step.new(type, step) }
+      hash.flat_map { |type, value| value.map{ |v| Step.new(type, v) }}
     end
 
     private

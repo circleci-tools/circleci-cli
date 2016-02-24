@@ -1,20 +1,16 @@
 module Circler
   class Step
     attr_reader :type
+    attr_reader :status
 
     def initialize(type, hash)
       @type = type
+      @status = hash['status']
       @hash = hash
     end
 
     def actions
-      @hash.flat_map { |s| s['actions'] }
-    end
-
-    def logs
-      actions.map do |a|
-        Faraday.new(a.output_url).get.body
-      end
+      @hash['actions'].map{ |a| Action.new(a) }
     end
   end
 end

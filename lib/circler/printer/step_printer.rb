@@ -7,17 +7,25 @@ module Circler
 
     def to_s
       table = Terminal::Table.new do |t|
-        @steps.each do |s|
-          t << [{ value: s.type.green, alignment: :center, :colspan => 2 }]
-          t << :separator
-          s.actions.each do |a|
-            t << [
-              colorize_by_status(a['name'].slice(0..120), a['status']),
-              format_time(a['run_time_millis'].to_i)
-            ]
+        @steps
+          .group_by {|s| s.type }
+          .each do |key, steps|
+            t << :separator
+            t << [{ value: key.green, alignment: :center, :colspan => 2 }]
+            steps.each do |s|
+              t << :separator
+
+              s.actions.each do |a|
+                t << [
+                  colorize_by_status(a.name.slice(0..120), a.status),
+                  format_time(a.run_time_millis)
+                ]
+                if a.failed? && a.log
+                  t << [{ value: a.log, alignment: :left, colspan: 2}]
+                end
+              end
+            end
           end
-          t << :separator
-        end
       end
       table.to_s
     end
@@ -28,7 +36,7 @@ module Circler
       case status
       when 'success', 'fixed' then string.green
       when 'canceled' then string.yellow
-      when 'failed' then string.red
+      when 'failed', 'timedout' then string.red
       when 'no_tests', 'not_run' then string.light_black
       else string
       end
