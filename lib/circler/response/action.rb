@@ -1,3 +1,4 @@
+require 'pp'
 module Circler
   class Action
     attr_reader :name, :status, :run_time_millis
@@ -10,10 +11,14 @@ module Circler
 
     def log
       request(@hash['output_url'])
-        .map{ |r| r['message']}
-        .join
-        .gsub(/.{120}/, "\\0\n")
-        .gsub(/\r/, '')
+        .map{ |r|
+          r['message']
+            .gsub(/\r\n/, "\n")
+            .gsub(/\e\[A\r\e\[2K/, '')
+            .scan(/.{1,120}/)
+            .join("\n")
+        }
+        .join("\n")
     end
 
     def failed?
