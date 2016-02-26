@@ -1,6 +1,6 @@
 # Circler
 
-[![Circle CI](https://circleci.com/gh/unhappychoice/circle.svg?style=svg)](https://circleci.com/gh/unhappychoice/circle)
+[![Circle CI](https://circleci.com/gh/unhappychoice/circler.svg?style=svg)](https://circleci.com/gh/unhappychoice/circler)
 
 Circler is a CLI tool for [Circle CI](https://circleci.com).
 
