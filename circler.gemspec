@@ -19,6 +19,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Production
+  spec.add_dependency 'pusher-client', '~> 0.6.2'
   spec.add_dependency 'thor', '~> 0.19.1'
   spec.add_dependency 'faraday', '~> 0.9.2'
   spec.add_dependency 'launchy', '~> 2.4.3'

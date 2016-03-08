@@ -1,4 +1,3 @@
-require 'pp'
 module Circler
   class Action
     attr_reader :name, :status, :run_time_millis

@@ -30,6 +30,18 @@ module Circler
       @hash['reponame']
     end
 
+    def status
+      @hash['status']
+    end
+
+    def build_number
+      @hash['build_num']
+    end
+
+    def channel_name
+      "private-#{username}@#{reponame}@#{build_number}@vcs-github"
+    end
+
     def information
       [
         @hash['build_num'],

@@ -12,6 +12,8 @@ require 'circler/command/projects_command'
 require 'circler/command/builds_command'
 require 'circler/command/build_command'
 require 'circler/command/browse_command'
+require 'circler/command/watch_command'
+require 'circler/response/account'
 require 'circler/response/project'
 require 'circler/response/build'
 require 'circler/response/step'
@@ -19,6 +21,7 @@ require 'circler/response/action'
 require 'circler/printer/project_printer'
 require 'circler/printer/build_printer'
 require 'circler/printer/step_printer'
+require 'circler/networking/pusher_client'
 
 module Circler
   class CLI < Thor
@@ -46,6 +49,13 @@ module Circler
     method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
     def browse
       BrowseCommand.run(options)
+    end
+
+    desc 'watch', 'watch a build in real time'
+    method_option :project, aliases: 'p', type: :string, banner: 'user/project'
+    method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+    def watch
+      WatchCommand.run(options)
     end
 
     desc 'version', 'show gem version'

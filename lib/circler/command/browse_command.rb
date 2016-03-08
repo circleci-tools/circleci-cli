@@ -2,6 +2,7 @@ module Circler
   class BrowseCommand < BaseCommand
     class << self
       def run(options)
+        setup_token
         project = project_name(options)
         number = options.build
         Launchy.open url(project, number)
