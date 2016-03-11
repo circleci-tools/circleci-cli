@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'terminal-table', '~> 1.5.2'
   spec.add_dependency 'highline', '~> 1.7.8'
   spec.add_dependency 'colorize', '~> 0.7.7'
+  spec.add_dependency 'terminal-notifier', '~> 1.6.3'
 
   # Development
   spec.add_development_dependency "bundler", "~> 1.9"

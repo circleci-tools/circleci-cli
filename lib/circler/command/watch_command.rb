@@ -38,6 +38,7 @@ module Circler
       def start_watch(build)
         @@running = true
         print_bordered "Start watching #{build.username}/#{build.reponame} build ##{build.build_number}".blue
+        TerminalNotifier.notify("Start to build #{build.username}/#{build.reponame} build ##{build.build_number}")
 
         bind_event_handling(build.channel_name)
         wait_until_finish
@@ -73,6 +74,7 @@ module Circler
         @@client.unsubscribe(channel)
 
         print_bordered "Finish watching #{build.username}/#{build.reponame} build ##{build.build_number}".blue
+        TerminalNotifier.notify("Finish building #{build.username}/#{build.reponame} build ##{build.build_number}")
       end
 
       def print_bordered(text)
