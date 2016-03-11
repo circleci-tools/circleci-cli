@@ -4,6 +4,8 @@
 
 Circler is a CLI tool for [Circle CI](https://circleci.com).
 
+![sample.gif](https://github.com/unhappychoice/circler/raw/master/movie/rec.gif)
+
 ## Installation
 
 ```sh
@@ -17,6 +19,16 @@ export CIRCLE_CI_TOKEN=your-circle-ci-token
 ```
 
 ## Usage
+
+#### watch
+watch build in real time
+
+```sh
+$ circle watch
+
+# Options:
+# p, [--project=user/project]
+```
 
 #### projects
 
