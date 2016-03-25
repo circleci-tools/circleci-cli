@@ -40,9 +40,9 @@ module Circler
         print_bordered "Start watching #{build.username}/#{build.reponame} build ##{build.build_number}".blue
         TerminalNotifier.notify("Start to build #{build.username}/#{build.reponame} build ##{build.build_number}")
 
-        bind_event_handling(build.channel_name)
+        bind_event_handling(build.channel_name + '@0')
         wait_until_finish
-        finalize(build, build.channel_name)
+        finalize(build, build.channel_name + '@0')
       end
 
       def bind_event_handling(channel)
