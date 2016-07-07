@@ -14,6 +14,7 @@ require 'circler/command/builds_command'
 require 'circler/command/build_command'
 require 'circler/command/browse_command'
 require 'circler/command/watch_command'
+require 'circler/command/retry_command'
 require 'circler/response/account'
 require 'circler/response/project'
 require 'circler/response/build'
@@ -50,6 +51,13 @@ module Circler
     method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
     def browse
       BrowseCommand.run(options)
+    end
+
+    desc 'retry', 'show build description'
+    method_option :project, aliases: 'p', type: :string, banner: 'user/project'
+    method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+    def retry
+      RetryCommand.run(options)
     end
 
     desc 'watch', 'watch a build in real time'

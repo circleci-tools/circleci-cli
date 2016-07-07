@@ -1,3 +1,4 @@
+require 'pp'
 module Circler
   class Build
     class << self
@@ -15,6 +16,10 @@ module Circler
 
       def get(username, reponame, number)
         Build.new(CircleCi::Build.get(username, reponame, number).body)
+      end
+
+      def retry(username, reponame, number)
+        Build.new(CircleCi::Build.retry(username, reponame, number).body)
       end
     end
 
