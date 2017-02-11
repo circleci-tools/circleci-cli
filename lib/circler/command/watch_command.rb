@@ -28,7 +28,7 @@ module Circler
 
       def get_build(options)
         username, reponame = project_name(options).split('/')
-        number = options.build || ask('Input build number')
+        number = build_number(options)
         Build.get(username, reponame, number)
       end
 
