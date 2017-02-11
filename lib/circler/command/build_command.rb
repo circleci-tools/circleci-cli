@@ -4,7 +4,7 @@ module Circler
       def run(options)
         setup_token
         username, reponame = project_name(options).split('/')
-        number = options.build || ask('Input build number')
+        number = build_number(options)
         build = Build.get(username, reponame, number)
         say StepPrinter.new(build.steps)
       end

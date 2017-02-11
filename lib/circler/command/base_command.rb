@@ -24,6 +24,10 @@ module Circler
         return $1 if origin.url =~ %r{git@github.com:([\w_-]+/[\w_-]+)\.git}
         nil
       end
+
+      def build_number(options)
+        options.build || ask('Input build number')
+      end
     end
   end
 end
