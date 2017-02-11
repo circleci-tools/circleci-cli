@@ -1,6 +1,9 @@
 # Circler
 
-[![Circle CI](https://circleci.com/gh/unhappychoice/Circler.svg?style=svg)](https://circleci.com/gh/unhappychoice/Circler)
+[![Gem Version](https://badge.fury.io/rb/circler.svg)](https://badge.fury.io/rb/circler)
+[![Circle CI](https://circleci.com/gh/unhappychoice/Circler.svg?style=shield)](https://circleci.com/gh/unhappychoice/Circler)
+[![Code Climate](https://codeclimate.com/github/unhappychoice/Circler/badges/gpa.svg)](https://codeclimate.com/github/unhappychoice/Circler)
+[![Dependency Status](https://gemnasium.com/badges/github.com/unhappychoice/Circler.svg)](https://gemnasium.com/github.com/unhappychoice/Circler)
 
 Circler is a CLI tool for [Circle CI](https://circleci.com).
 
