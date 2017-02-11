@@ -1,4 +1,3 @@
-require 'pp'
 module Circler
   class Build
     class << self
@@ -43,8 +42,12 @@ module Circler
       @hash['build_num']
     end
 
+    def running?
+      status == 'running'
+    end
+
     def channel_name
-      "private-#{username}@#{reponame}@#{build_number}@vcs-github"
+      "private-#{username}@#{reponame}@#{build_number}@vcs-github@0"
     end
 
     def information
