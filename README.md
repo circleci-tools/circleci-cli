@@ -19,59 +19,21 @@ export CIRCLE_CI_TOKEN=your-circle-ci-token
 ```
 
 ## Usage
-
-#### watch
-watch build in real time
-
-```sh
-$ circle watch
-
-# Options:
-# p, [--project=user/project]
 ```
+Commands:
+  circle browse          # open circle ci website
+  circle build           # show build description
+  circle builds          # list builds
+  circle help [COMMAND]  # Describe available commands or one specific command
+  circle projects        # list projects
+  circle retry           # show build description
+  circle version         # show gem version
+  circle watch           # watch a build in real time
 
-#### projects
-
-list all the projects you can see.
-
-```sh
-$ circle projects
-```
-
-#### builds
-
-list specific projects' builds.
-
-```sh
-$ circle builds
-
-# Options:
-# p, [--project=user/project]
-# b, [--branch=some-branch]
-```
-
-#### build
-
-show specific build description.
-
-```sh
-$ circle build
-
-# Options:
-# p, [--project=user/project]
-# n, [--build=build-number]
-```
-
-#### browse
-
-open Circle CI website
-
-```sh
-$ circle browse
-
-# Options:
-# p, [--project=user/project]
-# n, [--build=build-number]
+Options:
+  -p user_name/project   # specify repository
+  -b branch              # specify branch name
+  -n build_number        # specify build number
 ```
 
 ## Contributing
