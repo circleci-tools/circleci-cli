@@ -10,8 +10,8 @@ module Circler
       def project_name(options)
         if options.project
           options.project
-        elsif reponame
-          reponame
+        elsif self.reponame
+          self.reponame
         else
           say ProjectPrinter.new(Project.all)
           ask('Input user-name/project-name :')
@@ -21,7 +21,7 @@ module Circler
       def reponame
         repository = Rugged::Repository.new('.')
         origin = repository.remotes.find { |r| r.name == 'origin' }
-        return $1 if origin.url =~ %r{git@github\.com/([\w_-]+/[\w_-]+)\Z}
+        return $1 if origin.url =~ %r{git@github.com:([\w_-]+/[\w_-]+)\.git}
         nil
       end
 
