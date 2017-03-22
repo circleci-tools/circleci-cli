@@ -20,6 +20,10 @@ module Circler
       def retry(username, reponame, number)
         Build.new(CircleCi::Build.retry(username, reponame, number).body)
       end
+
+      def cancel(username, reponame, number)
+         Build.new(CircleCi::Build.cancel(username, reponame, number).body)
+      end
     end
 
     def initialize(hash)
