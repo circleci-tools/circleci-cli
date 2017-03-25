@@ -11,7 +11,7 @@ module Circler
           builds = Build.all(username, reponame)
         end
 
-        say BuildPrinter.new(builds)
+        say BuildPrinter.new(builds, compact: options['format'] == 'simple')
       end
     end
   end

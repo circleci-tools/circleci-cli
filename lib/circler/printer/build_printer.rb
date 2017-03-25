@@ -7,7 +7,10 @@ module Circler
 
     def to_s
       if @compact
+        max_row_widths = max_row_widths(@builds)
         @builds.map(&:information)
+          .map { |array| array.map.with_index { |column, index| column.to_s + ' ' * (max_row_widths[index] - column.to_s.size) }.join('  ').to_s }
+          .join("\n")
       else
         Terminal::Table.new(title: title, headings: headings, rows: rows).to_s
       end
@@ -25,6 +28,13 @@ module Circler
 
     def rows
       @builds.map(&:information)
+    end
+
+    def max_row_widths(builds)
+      builds.map(&:information)
+          .map { |array| array.map(&:to_s).map(&:size) }
+          .transpose
+          .map(&:max)
     end
   end
 end

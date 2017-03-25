@@ -30,6 +30,7 @@ require 'circler/networking/pusher_client'
 module Circler
   class CLI < Thor
     desc 'projects', 'list projects'
+    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple', default: 'pretty'
     def projects
       ProjectsCommand.run(options)
     end
@@ -37,6 +38,7 @@ module Circler
     desc 'builds', 'list builds'
     method_option :project, aliases: 'p', type: :string, banner: 'user/project'
     method_option :branch, aliases: 'b', type: :string, banner: 'some-branch'
+    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple', default: 'pretty'
     def builds
       BuildsCommand.run(options)
     end
@@ -55,7 +57,7 @@ module Circler
       BrowseCommand.run(options)
     end
 
-    desc 'retry', 'show build description'
+    desc 'retry', 'retry a build'
     method_option :project, aliases: 'p', type: :string, banner: 'user/project'
     method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
     def retry

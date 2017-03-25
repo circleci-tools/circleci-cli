@@ -3,7 +3,7 @@ module Circler
     class << self
       def run(options)
         setup_token
-        say ProjectPrinter.new(Project.all)
+        say ProjectPrinter.new(Project.all, compact: options['format'] == 'simple')
       end
     end
   end

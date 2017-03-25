@@ -7,8 +7,8 @@ module Circler
     end
 
     def to_s
-      if compact
-        @projects.map(&:name_array)
+      if @compact
+        @projects.map(&:information).map { |array| array.join('/').to_s }.sort.join("\n")
       else
         Terminal::Table.new(
           title: 'Projects'.green,
