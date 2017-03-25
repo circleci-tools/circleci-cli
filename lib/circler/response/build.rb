@@ -3,14 +3,14 @@ module Circler
     class << self
       def all(username, reponame)
         CircleCi::Project.recent_builds(username, reponame)
-          .body
-          .map { |b| Build.new(b) }
+                         .body
+                         .map { |b| Build.new(b) }
       end
 
       def branch(username, reponame, branch)
         CircleCi::Project.recent_builds_branch(username, reponame, branch)
-          .body
-          .map { |b| Build.new(b) }
+                         .body
+                         .map { |b| Build.new(b) }
       end
 
       def get(username, reponame, number)
@@ -22,7 +22,7 @@ module Circler
       end
 
       def cancel(username, reponame, number)
-         Build.new(CircleCi::Build.cancel(username, reponame, number).body)
+        Build.new(CircleCi::Build.cancel(username, reponame, number).body)
       end
     end
 
@@ -54,6 +54,10 @@ module Circler
       "private-#{username}@#{reponame}@#{build_number}@vcs-github@0"
     end
 
+    def project_name
+      "#{username}/#{reponame}"
+    end
+
     def information
       [
         @hash['build_num'],
@@ -62,18 +66,18 @@ module Circler
         @hash['author_name'],
         (@hash['subject'] || '').slice(0..60),
         format_time(@hash['build_time_millis']),
-        @hash['start_time'],
+        @hash['start_time']
       ]
     end
 
     def steps
       hash = @hash['steps'].group_by { |s| s['actions'].first['type'] }
-      hash.flat_map { |type, value| value.map{ |v| Step.new(type, v) }}
+      hash.flat_map { |type, value| value.map { |v| Step.new(type, v) } }
     end
 
     private
 
-    def self.colorize_by_status(string, status)
+    def colorize_by_status(string, status)
       case status
       when 'success', 'fixed' then string.green
       when 'canceled' then string.yellow
@@ -83,19 +87,11 @@ module Circler
       end
     end
 
-    def colorize_by_status(string, status)
-      self.class.colorize_by_status(string, status)
-    end
-
-    def self.format_time(time)
+    def format_time(time)
       return '' unless time
       minute = format('%02d', time / 1000 / 60)
-      second = format('%02d', (time / 1000)  % 60)
+      second = format('%02d', (time / 1000) % 60)
       "#{minute}:#{second}"
-    end
-
-    def format_time(time)
-      self.class.format_time(time)
     end
   end
 end

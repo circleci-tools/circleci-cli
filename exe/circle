@@ -2,4 +2,4 @@
 
 require 'circler'
 
-Circler::CLI.start # ここ追加
+Circler::CLI.start

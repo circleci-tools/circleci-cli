@@ -1,21 +1,31 @@
 module Circler
   class ProjectPrinter
     attr_accessor :compact
-    def initialize(projects, compact: false)
+    def initialize(projects, pretty: true)
       @projects = projects
-      @compact = compact
+      @pretty = pretty
     end
 
     def to_s
-      if @compact
-        @projects.map(&:information).map { |array| array.join('/').to_s }.sort.join("\n")
-      else
-        Terminal::Table.new(
-          title: 'Projects'.green,
-          headings: ['User name', 'Repository name'],
-          rows: @projects.map(&:information)
-        ).to_s
-      end
+      @pretty ? print_pretty : print_compact
+    end
+
+    private
+
+    def print_compact
+      @projects
+        .map(&:information)
+        .map { |array| array.join('/').to_s }
+        .sort
+        .join("\n")
+    end
+
+    def print_pretty
+      Terminal::Table.new(
+        title: 'Projects'.green,
+        headings: ['User name', 'Repository name'],
+        rows: @projects.map(&:information)
+      ).to_s
     end
   end
 end

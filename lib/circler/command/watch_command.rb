@@ -3,14 +3,11 @@ module Circler
     class << self
       def run(options)
         setup_token
+        setup_client
 
         build = get_build(options)
 
-        if !build.nil? && build.running?
-          say 'Connecting to pusher'.blue
-          setup_client
-          say 'Connected'.blue
-
+        if build && build.running?
           start_watch(build)
           wait_until_finish
           finalize(build, build.channel_name)
@@ -21,61 +18,53 @@ module Circler
 
       private
 
-      def setup_client()
-        @@client = CirclerPusherClient.new
-        @@client.connect
+      def setup_client
+        @client = CirclerPusherClient.new
+        @client.connect
       end
 
       def get_build(options)
         username, reponame = project_name(options).split('/')
-        number = build_number(options)
+        number = build_number options
         Build.get(username, reponame, number)
       end
 
       def start_watch(build)
-        @@running = true
-        print_bordered "Start watching #{build.username}/#{build.reponame} build ##{build.build_number}".blue
-        TerminalNotifier.notify("Start to build #{build.username}/#{build.reponame} build ##{build.build_number}")
+        @running = true
+        text = "Start watching #{build.project_name} ##{build.build_number}"
+        print_bordered text
+        TerminalNotifier.notify text
 
-        bind_event_handling(build.channel_name)
+        bind_event_handling build.channel_name
       end
 
       def bind_event_handling(channel)
-        @@client.bind(channel, 'newAction') do |data|
-          JSON.parse(data).each do |d|
-            print_bordered d['log']['name'].green
-          end
+        @client.bind_event_json(channel, 'newAction') do |json|
+          print_bordered json['log']['name'].green
         end
 
-        @@client.bind(channel, 'appendAction') do |data|
-          JSON.parse(data).each { |d| say d['out']['message'] }
+        @client.bind_event_json(channel, 'appendAction') do |json|
+          say json['out']['message']
         end
 
-        @@client.bind(channel, 'updateAction') do |data|
-          JSON.parse(data).each do |d|
-            @@running = d['log']['name'] != 'Disable SSH'
-          end
+        @client.bind_event_json(channel, 'updateAction') do |json|
+          @running = json['log']['name'] != 'Disable SSH'
         end
       end
 
       def wait_until_finish
-        while @@running
-          sleep(1)
-        end
+        sleep(1) while @running
       end
 
       def finalize(build, channel)
-        @@client.unsubscribe(channel)
-
-        print_bordered "Finish watching #{build.username}/#{build.reponame} build ##{build.build_number}".blue
-        TerminalNotifier.notify("Finish building #{build.username}/#{build.reponame} build ##{build.build_number}")
+        @client.unsubscribe(channel)
+        text = "Finish watching #{build.project_name} ##{build.build_number}"
+        print_bordered text.blue
+        TerminalNotifier.notify text
       end
 
       def print_bordered(text)
-        say Terminal::Table.new(
-          rows: [[text]],
-          style: { width: 120 }
-        ).to_s
+        say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
       end
     end
   end

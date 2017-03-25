@@ -1,40 +1,57 @@
 module Circler
   class BuildPrinter
-    def initialize(builds, compact: false)
+    def initialize(builds, pretty: true)
       @builds = builds
-      @compact = compact
+      @pretty = pretty
     end
 
     def to_s
-      if @compact
-        max_row_widths = max_row_widths(@builds)
-        @builds.map(&:information)
-          .map { |array| array.map.with_index { |column, index| column.to_s + ' ' * (max_row_widths[index] - column.to_s.size) }.join('  ').to_s }
-          .join("\n")
-      else
-        Terminal::Table.new(title: title, headings: headings, rows: rows).to_s
-      end
+      @pretty ? print_pretty : print_compact
     end
 
     private
 
+    def print_compact
+      rows.map { |row| pad_columns_by_space(row, max_row_widths) }.join("\n")
+    end
+
+    def print_pretty
+      Terminal::Table.new(title: title, headings: headings, rows: rows).to_s
+    end
+
     def title
-      "Recent Builds / #{@builds.first.username}/#{@builds.first.reponame}".green
+      build = @builds.first
+      "Recent Builds / #{build.project_name}".green
     end
 
     def headings
-      ['Number', 'Status', 'Branch', 'Author', 'Commit', 'Duration', 'Start time']
+      %w(Number Status Branch Author Commit Duration StartTime)
     end
 
     def rows
       @builds.map(&:information)
     end
 
-    def max_row_widths(builds)
-      builds.map(&:information)
-          .map { |array| array.map(&:to_s).map(&:size) }
-          .transpose
-          .map(&:max)
+    def max_row_widths
+      @builds
+        .map(&:information)
+        .map { |array| array.map(&:to_s).map(&:size) }
+        .transpose
+        .map(&:max)
+    end
+
+    def pad_columns_by_space(columns, max_widths)
+      columns
+        .map
+        .with_index { |column, i| pad_column_by_space(column, max_widths, i) }
+        .join('  ')
+        .to_s
+    end
+
+    def pad_column_by_space(column, max_widths, index)
+      column_string = column.to_s
+      spaces = ' ' * (max_widths[index] - column_string.size)
+      column_string + spaces
     end
   end
 end

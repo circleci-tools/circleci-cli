@@ -10,7 +10,7 @@ module Circler
 
       def url(project, number)
         return "https://circleci.com/gh/#{project}" unless number
-        return "https://circleci.com/gh/#{project}/#{number}"
+        "https://circleci.com/gh/#{project}/#{number}"
       end
     end
   end

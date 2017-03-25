@@ -5,13 +5,14 @@ module Circler
         setup_token
         username, reponame = project_name(options).split('/')
 
-        if options.branch
-          builds = Build.branch(username, reponame, options.branch)
-        else
-          builds = Build.all(username, reponame)
-        end
+        builds =
+          if options.branch
+            Build.branch(username, reponame, options.branch)
+          else
+            Build.all(username, reponame)
+          end
 
-        say BuildPrinter.new(builds, compact: options['format'] == 'simple')
+        say BuildPrinter.new(builds, pretty: should_be_pretty(options))
       end
     end
   end

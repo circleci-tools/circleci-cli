@@ -30,7 +30,7 @@ require 'circler/networking/pusher_client'
 module Circler
   class CLI < Thor
     desc 'projects', 'list projects'
-    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple', default: 'pretty'
+    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple'
     def projects
       ProjectsCommand.run(options)
     end
@@ -38,7 +38,7 @@ module Circler
     desc 'builds', 'list builds'
     method_option :project, aliases: 'p', type: :string, banner: 'user/project'
     method_option :branch, aliases: 'b', type: :string, banner: 'some-branch'
-    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple', default: 'pretty'
+    method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple'
     def builds
       BuildsCommand.run(options)
     end

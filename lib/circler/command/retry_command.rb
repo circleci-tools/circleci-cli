@@ -7,9 +7,9 @@ module Circler
         number = build_number(options)
         build = Build.retry(username, reponame, number)
         if build.username
-          say "build #{build.username}/#{build.reponame} #{build.build_number} is triggered."
+          say "build #{username}/#{reponame} #{build.build_number} is triggered"
         else
-          say "failed to trigger #{username}/#{reponame} #{number}."
+          say "failed to trigger #{username}/#{reponame} #{number}"
         end
       end
     end

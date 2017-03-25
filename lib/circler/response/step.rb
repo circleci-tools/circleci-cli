@@ -10,7 +10,7 @@ module Circler
     end
 
     def actions
-      @hash['actions'].map{ |a| Action.new(a) }
+      @hash['actions'].map { |a| Action.new(a) }
     end
   end
 end

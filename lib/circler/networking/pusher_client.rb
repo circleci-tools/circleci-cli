@@ -14,6 +14,12 @@ class CirclerPusherClient
     end
   end
 
+  def bind_event_json(channel, event)
+    bind(channel, event) do |data|
+      JSON.parse(data).each { |json| yield(json) }
+    end
+  end
+
   def unsubscribe(channel)
     @socket.unsubscribe(channel)
   end
@@ -27,7 +33,7 @@ class CirclerPusherClient
   def pusher_options
     {
       secure: true,
-      auth_method: Proc.new { |a, b| auth(a, b) },
+      auth_method: proc { |a, b| auth(a, b) },
       logger: Logger.new('/dev/null')
     }
   end

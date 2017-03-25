@@ -7,7 +7,7 @@ module Circler
         number = build_number(options)
         build = Build.cancel(username, reponame, number)
         if build.username
-          say "build #{build.username}/#{build.reponame} #{build.build_number} is canceled."
+          say "build #{build.project_name} #{build.build_number} is canceled."
         else
           say "failed to cancel #{username}/#{reponame} #{number}."
         end
