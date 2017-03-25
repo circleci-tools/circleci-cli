@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'thor', '~> 0.19.4'
   spec.add_dependency 'faraday', '~> 0.11.0'
   spec.add_dependency 'launchy', '~> 2.4.3'
-  spec.add_dependency 'circleci', '~> 1.0.3'
+  spec.add_dependency 'circleci', '~> 1.1.0'
   spec.add_dependency 'rugged', '~> 0.25.1.1'
   spec.add_dependency 'terminal-table', '~> 1.7.3'
   spec.add_dependency 'highline', '~> 1.7.8'
