@@ -28,9 +28,9 @@ Commands:
   circle browse          # open circle ci website
   circle build           # show build description
   circle builds          # list builds
-  circle help [COMMAND]  # Describe available commands or one specific command
+  circle help [COMMAND]  # describe available commands or one specific command
   circle projects        # list projects
-  circle retry           # show build description
+  circle retry           # retry a build
   circle version         # show gem version
   circle watch           # watch a build in real time
 
