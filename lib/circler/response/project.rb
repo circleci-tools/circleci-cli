@@ -9,7 +9,7 @@ module Circler
     end
 
     def self.all
-      CircleCi::Project.all.body.map { |p| Project.new(p) }
+      CircleCi::Projects.new.get.body.map { |p| Project.new(p) }
     end
   end
 end
