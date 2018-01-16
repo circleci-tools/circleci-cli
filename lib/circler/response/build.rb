@@ -27,8 +27,6 @@ module Circler
     end
 
     def initialize(hash)
-      require 'pp'
-      pp hash
       @hash = hash
     end
 
