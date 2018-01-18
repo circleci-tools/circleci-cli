@@ -5,8 +5,8 @@ require 'circler/version'
 
 def production_dependency(spec)
   spec.add_dependency 'pusher-client', '~> 0.6.2'
-  spec.add_dependency 'thor', '~> 0.19.4'
-  spec.add_dependency 'faraday', '~> 0.12.0'
+  spec.add_dependency 'thor', '~> 0.20.0'
+  spec.add_dependency 'faraday', '~> 0.14.0'
   spec.add_dependency 'launchy', '~> 2.4.3'
   spec.add_dependency 'circleci', '~> 2.0.2'
   spec.add_dependency 'rugged', '~> 0.26.0'
