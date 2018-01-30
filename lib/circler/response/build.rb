@@ -2,31 +2,33 @@ module Circler
   class Build
     class << self
       def all(username, reponame)
-        CircleCi::Project.recent_builds(username, reponame)
+        CircleCi::Project.new(username, reponame, 'github').recent_builds
                          .body
                          .map { |b| Build.new(b) }
       end
 
       def branch(username, reponame, branch)
-        CircleCi::Project.recent_builds_branch(username, reponame, branch)
+        CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(branch)
                          .body
                          .map { |b| Build.new(b) }
       end
 
       def get(username, reponame, number)
-        Build.new(CircleCi::Build.get(username, reponame, number).body)
+        Build.new(CircleCi::Build.new(username, reponame, 'github', number).get.body)
       end
 
       def retry(username, reponame, number)
-        Build.new(CircleCi::Build.retry(username, reponame, number).body)
+        Build.new(CircleCi::Build.new(username, reponame, 'github', number).retry.body)
       end
 
       def cancel(username, reponame, number)
-        Build.new(CircleCi::Build.cancel(username, reponame, number).body)
+        Build.new(CircleCi::Build.new(username, reponame, 'github', number).cancel.body)
       end
     end
 
     def initialize(hash)
+      require 'pp'
+      pp hash
       @hash = hash
     end
 
