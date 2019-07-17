@@ -9,7 +9,7 @@ def production_dependency(spec)
   spec.add_dependency 'faraday', '>= 0.14', '< 0.16'
   spec.add_dependency 'launchy', '~> 2.4.3'
   spec.add_dependency 'circleci', '~> 2.0.2'
-  spec.add_dependency 'rugged', '~> 0.26.0'
+  spec.add_dependency 'rugged', '>= 0.26', '< 0.29'
   spec.add_dependency 'terminal-table', '~> 1.8.0'
   spec.add_dependency 'highline', '>= 1.7.8', '< 2.1.0'
   spec.add_dependency 'colorize', '~> 0.8.1'
