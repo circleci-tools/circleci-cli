@@ -31,7 +31,7 @@ GEM
       addressable (~> 2.3)
     multipart-post (2.1.1)
     parallel (1.17.0)
-    parser (2.6.3.0)
+    parser (2.6.4.1)
       ast (~> 2.4.0)
     public_suffix (3.1.1)
     pusher-client (0.6.2)
