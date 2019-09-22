@@ -2,8 +2,8 @@
 
 require 'spec_helper'
 
-describe Circler do
+describe CircleCI::CLI do
   it 'has a version number' do
-    expect(Circler::VERSION).not_to be nil
+    expect(CircleCI::CLI::VERSION).not_to be nil
   end
 end

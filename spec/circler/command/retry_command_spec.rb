@@ -2,12 +2,12 @@
 
 require 'spec_helper'
 
-describe Circler::RetryCommand, type: :command do
+describe CircleCI::CLI::Command::RetryCommand, type: :command do
   shared_examples_for 'a command retries build' do
     it 'should retry build' do
-      allow(Circler::RetryCommand).to receive(:say) {}
-      expect(Circler::RetryCommand).to receive(:say).with(expected_output.strip)
-      Circler::RetryCommand.run(options)
+      allow(CircleCI::CLI::Command::RetryCommand).to receive(:say) {}
+      expect(CircleCI::CLI::Command::RetryCommand).to receive(:say).with(expected_output.strip)
+      CircleCI::CLI::Command::RetryCommand.run(options)
     end
   end
 

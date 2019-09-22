@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/BlockLength
+describe CircleCI::CLI::Command::BuildsCommand, type: :command do # rubocop:disable Metrics/BlockLength
   shared_examples_for 'a command show builds information' do
     let(:expected_output) do
       <<~EXPECTED
@@ -17,9 +17,9 @@ describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/Blo
     end
 
     it 'should show builds information' do
-      allow(Circler::BuildsCommand).to receive(:say) {}
-      expect(Circler::BuildsCommand).to receive(:say).with(expected_output.strip)
-      Circler::BuildsCommand.run(options)
+      allow(CircleCI::CLI::Command::BuildsCommand).to receive(:say) {}
+      expect(CircleCI::CLI::Command::BuildsCommand).to receive(:say).with(expected_output.strip)
+      CircleCI::CLI::Command::BuildsCommand.run(options)
     end
   end
 
