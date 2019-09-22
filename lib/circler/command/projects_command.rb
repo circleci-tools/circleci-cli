@@ -5,7 +5,7 @@ module Circler
     class << self
       def run(options)
         setup_token
-        say ProjectPrinter.new(Project.all, pretty: should_be_pretty(options))
+        say ProjectPrinter.new(Project.all, pretty: should_be_pretty(options)).to_s
       end
     end
   end
