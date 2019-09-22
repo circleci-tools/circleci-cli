@@ -8,9 +8,9 @@ update_bundler: &update_bundler
 bundle_install: &bundle_install
   run:
     name: bundle install
-    command: bundle update --bundler && bundle install --path vendor/bundle --jobs 4
+    command: bundle install --path vendor/bundle --jobs 4
 
-restore_bundle_cache: &restore_bundle_cache
+git statusrestore_bundle_cache: &restore_bundle_cache
   restore_cache:
     key: cache-bundler-{{ checksum "Gemfile.lock" }}
 

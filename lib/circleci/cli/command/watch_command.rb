@@ -1,70 +1,67 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/watch_command/build_repository'
+require 'circleci/cli/command/watch_command/build_watcher'
+
 module CircleCI
   module CLI
     module Command
       class WatchCommand < BaseCommand
         class << self
-          def run(options)
+          def run(options) # rubocop:disable Metrics/MethodLength
             setup_token
-            setup_client
 
-            build = get_build(options)
+            @options = options
+            @repository = BuildRepository.new(*project_name(options).split('/'))
+            @client = Networking::CircleCIPusherClient.new.tap(&:connect)
+            @build_watcher = nil
 
-            if build&.running?
-              start_watch(build)
-              wait_until_finish
-              finalize(build, build.channel_name)
-            else
-              say 'The build is not running'
+            bind_status_event
+
+            loop do
+              stop_existing_watcher_if_needed
+              start_watcher_if_needed
+              sleep 1
             end
+          rescue Interrupt
+            say 'Exited'
           end
 
           private
 
-          def setup_client
-            @client = Networking::CircleCIPusherClient.new
-            @client.connect
+          def bind_status_event
+            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') { @repository.update }
           end
 
-          def get_build(options)
-            username, reponame = project_name(options).split('/')
-            number = build_number options
-            Response::Build.get(username, reponame, number)
+          def stop_existing_watcher_if_needed
+            return if @build_watcher.nil?
+
+            build = @repository.build_for(@build_watcher.build.build_number)
+            return if build.nil? || !build.finished?
+
+            @build_watcher.stop(build.status)
+            @build_watcher = nil
+            show_interrupted_build_results
           end
 
-          def start_watch(build)
-            @running = true
-            text = "Start watching #{build.project_name} ##{build.build_number}"
-            print_bordered text
-            TerminalNotifier.notify text
+          def start_watcher_if_needed
+            build_to_watch = @repository.builds_to_show.select(&:running?).first
+            return unless build_to_watch && @build_watcher.nil?
 
-            bind_event_handling build.channel_name
+            show_interrupted_build_results
+            @repository.mark_as_shown(build_to_watch.build_number)
+            @build_watcher = BuildWatcher.new(build_to_watch, verbose: @options.verbose)
+            @build_watcher.start
           end
 
-          def bind_event_handling(channel)
-            @client.bind_event_json(channel, 'newAction') do |json|
-              print_bordered json['log']['name'].green
+          def show_interrupted_build_results # rubocop:disable Metrics/AbcSize
+            @repository.builds_to_show.select(&:finished?).each do |build|
+              b = Response::Build.get(build.username, build.reponame, build.build_number)
+              title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background".light_black
+              say Printer::BuildPrinter.header_for(build, title)
+              say Printer::StepPrinter.new(b.steps, pretty: @options.verbose).to_s
+              @repository.mark_as_shown(b.build_number)
             end
-
-            @client.bind_event_json(channel, 'appendAction') do |json|
-              say json['out']['message']
-            end
-
-            @client.bind_event_json(channel, 'updateAction') do |json|
-              @running = json['log']['name'] != 'Disable SSH'
-            end
-          end
-
-          def wait_until_finish
-            sleep(1) while @running
-          end
-
-          def finalize(build, channel)
-            @client.unsubscribe(channel)
-            text = "Finish watching #{build.project_name} ##{build.build_number}"
-            print_bordered text.blue
-            TerminalNotifier.notify text
           end
 
           def print_bordered(text)

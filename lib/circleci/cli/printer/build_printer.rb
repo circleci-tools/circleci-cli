@@ -4,8 +4,20 @@ module CircleCI
   module CLI
     module Printer
       class BuildPrinter
+        class << self
+          def header_for(build, title) # rubocop:disable Metrics/AbcSize
+            texts = [
+              ['Project:  '.light_black + build.project_name],
+              ['Build:    '.light_black + build.build_number.to_s],
+              ['Author:   '.light_black + build.author_name],
+              ['Workflow: '.light_black + "#{build.workflow_name}/#{build.workflow_job_name}"]
+            ]
+            Terminal::Table.new(title: title, rows: texts, style: { width: 120 }).to_s
+          end
+        end
+
         def initialize(builds, pretty: true)
-          @builds = builds
+          @builds_to_show = builds
           @pretty = pretty
         end
 
@@ -24,7 +36,7 @@ module CircleCI
         end
 
         def title
-          build = @builds.first
+          build = @builds_to_show.first
           "Recent Builds / #{build.project_name}".green
         end
 
@@ -33,11 +45,11 @@ module CircleCI
         end
 
         def rows
-          @builds.map(&:information)
+          @builds_to_show.map(&:information)
         end
 
         def max_row_widths
-          @builds
+          @builds_to_show
             .map(&:information)
             .map { |array| array.map(&:to_s).map(&:size) }
             .transpose
