@@ -42,7 +42,10 @@ Options:
   -p user_name/project   # specify repository
   -b branch              # specify branch name
   -n build_number        # specify build number
+  -v verbose             # show all the logs if applied to watch command
 ```
+
+Project argument will be automatically selected in your directory initialized with git.
 
 ## Contributing
 
