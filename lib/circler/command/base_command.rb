@@ -15,7 +15,7 @@ module Circler
         elsif reponame
           reponame
         else
-          say ProjectPrinter.new(Project.all)
+          say ProjectPrinter.new(Project.all).to_s
           ask('Input user-name/project-name :')
         end
       end
