@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class ProjectPrinter
     attr_accessor :compact

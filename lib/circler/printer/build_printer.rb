@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class BuildPrinter
     def initialize(builds, pretty: true)
@@ -25,7 +27,7 @@ module Circler
     end
 
     def headings
-      %w(Number Status Branch Author Commit Duration StartTime)
+      %w[Number Status Branch Author Commit Duration StartTime]
     end
 
     def rows

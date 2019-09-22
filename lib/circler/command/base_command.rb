@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class BaseCommand
     class << self
@@ -23,6 +25,7 @@ module Circler
         origin = repository.remotes.find { |r| r.name == 'origin' }
         regexp = %r{git@github.com(?::|/)([\w_-]+/[\w_-]+)(?:\.git)*}
         return Regexp.last_match(1) if origin.url =~ regexp
+
         nil
       end
 

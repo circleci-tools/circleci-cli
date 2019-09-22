@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class Action
     attr_reader :name, :status, :run_time_millis

@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class CancelCommand < BaseCommand
     class << self
