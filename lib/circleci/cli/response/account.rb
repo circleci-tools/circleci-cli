@@ -8,12 +8,14 @@ module CircleCI
           @hash = hash
         end
 
-        def user_name
-          @hash['name']
+        def pusher_id
+          @hash['pusher_id']
         end
 
-        def self.me
-          Account.new(CircleCi::User.me.body)
+        class << self
+          def me
+            Account.new(CircleCi::User.new.me.body)
+          end
         end
       end
     end

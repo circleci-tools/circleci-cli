@@ -30,28 +30,27 @@ module CircleCI
           end
         end
 
+        attr_reader :username, :build_number, :reponame, :status, :author_name, :start_time,
+                    :workflow_name, :workflow_job_name
+
         def initialize(hash)
           @hash = hash
-        end
-
-        def username
-          @hash['username']
-        end
-
-        def reponame
-          @hash['reponame']
-        end
-
-        def status
-          @hash['status']
-        end
-
-        def build_number
-          @hash['build_num']
+          @username = hash['username']
+          @build_number = hash['build_num']
+          @reponame = hash['reponame']
+          @status = hash['status']
+          @author_name = hash['author_name']
+          @start_time = hash['start_time']
+          @workflow_name = hash.dig('workflows', 'workflow_name')
+          @workflow_job_name = hash.dig('workflows', 'job_name')
         end
 
         def running?
-          status == 'running'
+          status == 'running' || status || 'queued'
+        end
+
+        def finished?
+          status == 'success' || status == 'canceled' || status == 'failed' || status == 'no_tests'
         end
 
         def channel_name
@@ -64,13 +63,13 @@ module CircleCI
 
         def information
           [
-            @hash['build_num'],
-            colorize_by_status(@hash['status'], @hash['status']),
-            colorize_by_status(@hash['branch'], @hash['status']),
-            @hash['author_name'],
+            build_number,
+            colorize_by_status(status, status),
+            colorize_by_status(@hash['branch'], status),
+            author_name,
             (@hash['subject'] || '').slice(0..60),
             format_time(@hash['build_time_millis']),
-            @hash['start_time']
+            start_time
           ]
         end
 
