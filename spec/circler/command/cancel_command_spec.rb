@@ -2,14 +2,14 @@
 
 require 'spec_helper'
 
-describe Circler::CancelCommand, type: :command do
+describe CircleCI::CLI::Command::CancelCommand, type: :command do
   shared_examples_for 'a command cancels build' do
     let(:expected_output) { 'build unhappychoice/default_reponame_from_api 1234 is canceled.' }
 
     it 'should cancel build' do
-      allow(Circler::CancelCommand).to receive(:say) {}
-      expect(Circler::CancelCommand).to receive(:say).with(expected_output.strip)
-      Circler::CancelCommand.run(options)
+      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) {}
+      expect(CircleCI::CLI::Command::CancelCommand).to receive(:say).with(expected_output.strip)
+      CircleCI::CLI::Command::CancelCommand.run(options)
     end
   end
 

@@ -6,7 +6,7 @@ shared_context 'mock io' do
   let(:build_number) { 1234 }
 
   before do
-    ObjectSpace.each_object(Class).select { |klass| klass < Circler::BaseCommand }.each do |klass|
+    ObjectSpace.each_object(Class).select { |klass| klass < CircleCI::CLI::Command::BaseCommand }.each do |klass|
       allow(klass).to receive(:ask).with('Circle CI token ? :') { circle_ci_token }
       allow(klass).to receive(:ask).with('Input user-name/project-name :') { project_name }
       allow(klass).to receive(:ask).with('Input build number') { build_number }
@@ -30,8 +30,8 @@ shared_examples_for 'a command asks project name' do
 
   it 'should show project list' do
     allow(Launchy).to receive(:open)
-    expect(Circler::BrowseCommand).to receive(:say).with(expected_project_name_output.strip)
-    Circler::BrowseCommand.run(options)
+    expect(CircleCI::CLI::Command::BrowseCommand).to receive(:say).with(expected_project_name_output.strip)
+    CircleCI::CLI::Command::BrowseCommand.run(options)
   end
 end
 

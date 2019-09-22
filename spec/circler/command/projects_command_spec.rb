@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe Circler::ProjectsCommand, type: :command do
+describe CircleCI::CLI::Command::ProjectsCommand, type: :command do
   context 'with no input' do
     let(:options) { OpenStruct.new(token: nil) }
     let(:expected_output) do
@@ -18,9 +18,9 @@ describe Circler::ProjectsCommand, type: :command do
     end
 
     it 'should show projects' do
-      allow(Circler::ProjectsCommand).to receive(:say) {}
-      expect(Circler::ProjectsCommand).to receive(:say).with(expected_output.strip)
-      Circler::ProjectsCommand.run(options)
+      allow(CircleCI::CLI::Command::ProjectsCommand).to receive(:say) {}
+      expect(CircleCI::CLI::Command::ProjectsCommand).to receive(:say).with(expected_output.strip)
+      CircleCI::CLI::Command::ProjectsCommand.run(options)
     end
   end
 end

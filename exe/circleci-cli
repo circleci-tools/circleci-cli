@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require 'circler'
+require 'circleci_cli'
 
-Circler::CLI.start
+CircleCI::CLI::Runner.start
