@@ -15,6 +15,26 @@ shared_context 'mock io' do
   end
 end
 
+shared_examples_for 'a command asks project name' do
+  let(:expected_project_name_output) do
+    <<~EXPECTED
+      +---------------+---------------------------+
+      |                 \e[0;32;49mProjects\e[0m                  |
+      +---------------+---------------------------+
+      | User name     | Repository name           |
+      +---------------+---------------------------+
+      | unhappychoice | default_reponame_from_api |
+      +---------------+---------------------------+
+    EXPECTED
+  end
+
+  it 'should show project list' do
+    allow(Launchy).to receive(:open)
+    expect(Circler::BrowseCommand).to receive(:say).with(expected_project_name_output.strip)
+    Circler::BrowseCommand.run(options)
+  end
+end
+
 RSpec.configure do |config|
   config.include_context 'mock io', type: :command
 end

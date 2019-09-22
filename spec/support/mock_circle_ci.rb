@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-shared_context 'mock circle ci response' do
+shared_context 'mock circle ci response' do # rubocop:disable Metrics/BlockLength
   let(:account_hash) { { 'name' => 'account name' } }
   let(:build_hash) do
     {
@@ -12,7 +12,17 @@ shared_context 'mock circle ci response' do
       'author_name' => 'unhappychoice',
       'subject' => 'Commit',
       'build_time_millis' => 1000,
-      'start_time' => 100_000
+      'start_time' => 100_000,
+      'steps' => [
+        {
+          'status' => 'success',
+          'actions' => [{ 'type' => 'build', 'name' => 'Build', 'status' => 'success', 'run_time_millis' => 1000 }]
+        },
+        {
+          'status' => 'success',
+          'actions' => [{ 'type' => 'test', 'name' => 'Test', 'status' => 'success', 'run_time_millis' => 1000 }]
+        }
+      ]
     }
   end
 

@@ -2,31 +2,11 @@
 
 require 'spec_helper'
 
-describe Circler::BrowseCommand, type: :command do # rubocop:disable Metrics/BlockLength
+describe Circler::BrowseCommand, type: :command do
   shared_examples_for 'a command opens browser' do
     it 'should open browser' do
       allow(Circler::BrowseCommand).to receive(:say)
       expect(Launchy).to receive(:open).with(expected_url)
-      Circler::BrowseCommand.run(options)
-    end
-  end
-
-  shared_examples_for 'a command asks project name' do
-    let(:expected_output) do
-      <<~EXPECTED
-        +---------------+---------------------------+
-        |                 \e[0;32;49mProjects\e[0m                  |
-        +---------------+---------------------------+
-        | User name     | Repository name           |
-        +---------------+---------------------------+
-        | unhappychoice | default_reponame_from_api |
-        +---------------+---------------------------+
-      EXPECTED
-    end
-
-    it 'should show project list' do
-      allow(Launchy).to receive(:open)
-      expect(Circler::BrowseCommand).to receive(:say).with(expected_output.strip)
       Circler::BrowseCommand.run(options)
     end
   end
