@@ -53,6 +53,9 @@ jobs:
       - *update_bundler
       - *bundle_install
       - run:
+          environment:
+            COVERAGE: true
+            CODECOV_TOKEN: efe02ed0-e754-42a6-bb90-bbf345747bdc
           command: bundle exec rspec
 workflows:
   version: 2.1

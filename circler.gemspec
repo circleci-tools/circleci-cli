@@ -19,12 +19,14 @@ end
 
 def development_dependency(spec)
   spec.add_development_dependency 'bundler'
+  spec.add_development_dependency 'codecov'
   spec.add_development_dependency 'guard'
   spec.add_development_dependency 'guard-rspec'
   spec.add_development_dependency 'guard-rubocop'
   spec.add_development_dependency 'rake'
   spec.add_development_dependency 'rspec'
   spec.add_development_dependency 'rubocop'
+  spec.add_development_dependency 'simplecov'
 end
 
 def project_files
