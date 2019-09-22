@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    circler (0.6.2)
+    circler (0.6.3)
       circleci (~> 2.0.2)
       colorize (~> 0.8.1)
       faraday (>= 0.14, < 0.16)
