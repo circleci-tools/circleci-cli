@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe Circler::CancelCommand, type: :command do
+describe Circler::ProjectsCommand, type: :command do
   context 'with no input' do
     let(:options) { OpenStruct.new(token: nil) }
     let(:expected_output) do
@@ -17,7 +17,7 @@ describe Circler::CancelCommand, type: :command do
       EXPECTED
     end
 
-    it 'should show build information' do
+    it 'should show projects' do
       allow(Circler::ProjectsCommand).to receive(:say) {}
       expect(Circler::ProjectsCommand).to receive(:say).with(expected_output.strip)
       Circler::ProjectsCommand.run(options)

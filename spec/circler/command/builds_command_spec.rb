@@ -16,7 +16,7 @@ describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/Blo
       EXPECTED
     end
 
-    it 'should show build information' do
+    it 'should show builds information' do
       allow(Circler::BuildsCommand).to receive(:say) {}
       expect(Circler::BuildsCommand).to receive(:say).with(expected_output.strip)
       Circler::BuildsCommand.run(options)
@@ -25,7 +25,7 @@ describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/Blo
 
   context 'with no input' do
     let(:options) { OpenStruct.new(project: nil, branch: nil) }
-    let(:expected_url) { 'https://circleci.com/gh/unhappychoice/default_project_name_from_io' }
+
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show builds information'
   end
@@ -33,14 +33,13 @@ describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/Blo
   context 'with project input' do
     let(:project_name) { 'unhappychoice/Circler' }
     let(:options) { OpenStruct.new(project: project_name, branch: nil) }
-    let(:expected_url) { "https://circleci.com/gh/#{project_name}" }
+
     it_behaves_like 'a command show builds information'
   end
 
   context 'with branch input' do
-    let(:project_name) { 'unhappychoice/Circler' }
     let(:options) { OpenStruct.new(project: nil, branch: 'master') }
-    let(:expected_url) { "https://circleci.com/gh/#{project_name}" }
+
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show builds information'
   end

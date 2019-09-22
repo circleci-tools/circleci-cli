@@ -14,6 +14,7 @@ describe Circler::BrowseCommand, type: :command do
   context 'with no input' do
     let(:options) { OpenStruct.new(project: nil, build: nil) }
     let(:expected_url) { 'https://circleci.com/gh/unhappychoice/default_project_name_from_io' }
+
     it_behaves_like 'a command opens browser'
     it_behaves_like 'a command asks project name'
   end
@@ -22,12 +23,14 @@ describe Circler::BrowseCommand, type: :command do
     let(:project_name) { 'unhappychoice/Circler' }
     let(:options) { OpenStruct.new(project: project_name, build: nil) }
     let(:expected_url) { "https://circleci.com/gh/#{project_name}" }
+
     it_behaves_like 'a command opens browser'
   end
 
   context 'with build input' do
     let(:options) { OpenStruct.new(project: nil, build: 5) }
     let(:expected_url) { 'https://circleci.com/gh/unhappychoice/default_project_name_from_io/5' }
+
     it_behaves_like 'a command opens browser'
     it_behaves_like 'a command asks project name'
   end
