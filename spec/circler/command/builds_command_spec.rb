@@ -7,7 +7,7 @@ describe Circler::BuildsCommand, type: :command do # rubocop:disable Metrics/Blo
     let(:expected_output) do
       <<~EXPECTED
         +--------+---------+--------+---------------+--------+----------+-----------+
-        |   \e[0;32;49mRecent Builds / unhappychoice/unhappychoice/default_reponame_from_api\e[0m   |
+        |          \e[0;32;49mRecent Builds / unhappychoice/default_reponame_from_api\e[0m          |
         +--------+---------+--------+---------------+--------+----------+-----------+
         | Number | Status  | Branch | Author        | Commit | Duration | StartTime |
         +--------+---------+--------+---------------+--------+----------+-----------+

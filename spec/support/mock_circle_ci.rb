@@ -5,7 +5,7 @@ shared_context 'mock circle ci response' do # rubocop:disable Metrics/BlockLengt
   let(:build_hash) do
     {
       'username' => 'unhappychoice',
-      'reponame' => 'unhappychoice/default_reponame_from_api',
+      'reponame' => 'default_reponame_from_api',
       'status' => 'success',
       'build_num' => 1234,
       'branch' => 'master',
