@@ -1,21 +1,23 @@
-# Circler
+# circleci-cli
 
-[![Gem Version](https://badge.fury.io/rb/circler.svg)](https://badge.fury.io/rb/circler)
-[![Circle CI](https://circleci.com/gh/unhappychoice/Circler.svg?style=shield)](https://circleci.com/gh/unhappychoice/Circler)
-[![Code Climate](https://codeclimate.com/github/unhappychoice/Circler/badges/gpa.svg)](https://codeclimate.com/github/unhappychoice/Circler)
-[![codecov](https://codecov.io/gh/unhappychoice/Circler/branch/master/graph/badge.svg)](https://codecov.io/gh/unhappychoice/Circler)
-[![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/unhappychoice/Circler.svg)](https://libraries.io/github/unhappychoice/Circler)
-![](http://ruby-gem-downloads-badge.herokuapp.com/circler?type=total)
-![GitHub](https://img.shields.io/github/license/unhappychoice/Circler.svg)
+[![Gem Version](https://badge.fury.io/rb/circleci-cli.svg)](https://badge.fury.io/rb/circleci-cli)
+[![Circle CI](https://circleci.com/gh/unhappychoice/circleci-cli.svg?style=shield)](https://circleci.com/gh/unhappychoice/circleci-cli)
+[![Code Climate](https://codeclimate.com/github/unhappychoice/circleci-cli/badges/gpa.svg)](https://codeclimate.com/github/unhappychoice/circleci-cli)
+[![codecov](https://codecov.io/gh/unhappychoice/circleci-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/unhappychoice/circleci-cli)
+[![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/unhappychoice/circleci-cli.svg)](https://libraries.io/github/unhappychoice/circleci-cli)
+![](http://ruby-gem-downloads-badge.herokuapp.com/circleci-cli?type=total)
+![GitHub](https://img.shields.io/github/license/unhappychoice/circleci-cli.svg)
 
-Circler is a CLI tool for [Circle CI](https://circleci.com).
+circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/unhappychoice/circler/raw/master/movie/rec.gif)
+
+Notice: This gem is renamed from `circler` to `circleci-cli` on 2019/09/22
 
 ## Installation
 
 ```sh
-$ gem install circler
+$ gem install circleci-cli
 ```
 
 set the `CIRCLE_CI_TOKEN` environment variable. (optional)
@@ -27,14 +29,14 @@ export CIRCLE_CI_TOKEN=your-circle-ci-token
 ## Usage
 ```
 Commands:
-  circle browse          # open circle ci website
-  circle build           # show build description
-  circle builds          # list builds
-  circle help [COMMAND]  # describe available commands or one specific command
-  circle projects        # list projects
-  circle retry           # retry a build
-  circle version         # show gem version
-  circle watch           # watch a build in real time
+  circleci-cli browse          # open circle ci website
+  circleci-cli build           # show build description
+  circleci-cli builds          # list builds
+  circleci-cli help [COMMAND]  # describe available commands or one specific command
+  circleci-cli projects        # list projects
+  circleci-cli retry           # retry a build
+  circleci-cli version         # show gem version
+  circleci-cli watch           # watch a build in real time
 
 Options:
   -p user_name/project   # specify repository
@@ -44,7 +46,7 @@ Options:
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/unhappychoice/circler.
+Bug reports and pull requests are welcome on GitHub at https://github.com/unhappychoice/circleci-cli.
 
 ## License
 
