@@ -36,7 +36,7 @@ def project_files
 end
 
 Gem::Specification.new do |spec|
-  spec.name          = 'circler'
+  spec.name          = 'circleci-cli'
   spec.version       = Circler::VERSION
   spec.authors       = ['unhappychoice']
   spec.email         = ['unhappychoice@gmail.com']
