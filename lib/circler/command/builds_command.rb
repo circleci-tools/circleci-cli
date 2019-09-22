@@ -14,7 +14,7 @@ module Circler
             Build.all(username, reponame)
           end
 
-        say BuildPrinter.new(builds, pretty: should_be_pretty(options))
+        say BuildPrinter.new(builds, pretty: should_be_pretty(options)).to_s
       end
     end
   end
