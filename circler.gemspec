@@ -36,19 +36,25 @@ def project_files
 end
 
 Gem::Specification.new do |spec|
-  spec.name          = 'circleci-cli'
+  spec.name          = 'circler'
   spec.version       = Circler::VERSION
   spec.authors       = ['unhappychoice']
   spec.email         = ['unhappychoice@gmail.com']
 
-  spec.summary       = 'CLI tool for CircleCI'
-  spec.description   = 'A command line tool for CircleCI'
-  spec.homepage      = 'https://github.com/unhappychoice/circler'
+  spec.summary       = 'Moved to ---> "circleci-cli"'
+  spec.description   = 'Moved to ---> "circleci-cli"'
+  spec.homepage      = 'https://github.com/unhappychoice/circleci-cli'
   spec.license       = 'MIT'
   spec.files         = project_files
   spec.bindir        = 'exe'
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
+
+  spec.post_install_message = <<-MESSAGE
+!    The circler gem has been deprecated and has been replaced by circleci-cli.
+!    See: https://rubygems.org/gems/circleci-cli
+!    And: https://github.com/unhappychoice/circleci-cli
+  MESSAGE
 
   production_dependency spec
   development_dependency spec
