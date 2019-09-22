@@ -8,7 +8,7 @@ module Circler
         username, reponame = project_name(options).split('/')
         number = build_number(options)
         build = Build.get(username, reponame, number)
-        say StepPrinter.new(build.steps)
+        say StepPrinter.new(build.steps).to_s
       end
     end
   end

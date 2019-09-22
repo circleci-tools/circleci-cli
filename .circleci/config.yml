@@ -14,12 +14,18 @@ restore_bundle_cache: &restore_bundle_cache
   restore_cache:
     key: cache-bundler-{{ checksum "Gemfile.lock" }}
 
+install_cmake: &install_cmake
+  run:
+    name: install cmake
+    command: sudo apt-get install cmake
+
 jobs:
   build:
     docker:
       - image: circleci/ruby
     steps:
       - checkout
+      - *install_cmake
       - *restore_bundle_cache
       - *update_bundler
       - *bundle_install
@@ -32,6 +38,7 @@ jobs:
       - image: circleci/ruby
     steps:
       - checkout
+      - *install_cmake
       - *restore_bundle_cache
       - *update_bundler
       - *bundle_install
@@ -41,10 +48,14 @@ jobs:
       - image: circleci/ruby
     steps:
       - checkout
+      - *install_cmake
       - *restore_bundle_cache
       - *update_bundler
       - *bundle_install
       - run:
+          environment:
+            COVERAGE: true
+            CODECOV_TOKEN: efe02ed0-e754-42a6-bb90-bbf345747bdc
           command: bundle exec rspec
 workflows:
   version: 2.1
