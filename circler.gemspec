@@ -1,19 +1,20 @@
-# coding: utf-8
-lib = File.expand_path('../lib', __FILE__)
+# frozen_string_literal: true
+
+lib = File.expand_path('lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'circler/version'
 
 def production_dependency(spec)
-  spec.add_dependency 'pusher-client', '~> 0.6.2'
-  spec.add_dependency 'thor', '~> 0.20.0'
-  spec.add_dependency 'faraday', '>= 0.14', '< 0.16'
-  spec.add_dependency 'launchy', '~> 2.4.3'
   spec.add_dependency 'circleci', '~> 2.0.2'
-  spec.add_dependency 'rugged', '>= 0.26', '< 0.29'
-  spec.add_dependency 'terminal-table', '~> 1.8.0'
-  spec.add_dependency 'highline', '>= 1.7.8', '< 2.1.0'
   spec.add_dependency 'colorize', '~> 0.8.1'
+  spec.add_dependency 'faraday', '>= 0.14', '< 0.16'
+  spec.add_dependency 'highline', '>= 1.7.8', '< 2.1.0'
+  spec.add_dependency 'launchy', '~> 2.4.3'
+  spec.add_dependency 'pusher-client', '~> 0.6.2'
+  spec.add_dependency 'rugged', '>= 0.26', '< 0.29'
   spec.add_dependency 'terminal-notifier', '~> 2.0.0'
+  spec.add_dependency 'terminal-table', '~> 1.8.0'
+  spec.add_dependency 'thor', '~> 0.20.0'
 end
 
 def development_dependency(spec)

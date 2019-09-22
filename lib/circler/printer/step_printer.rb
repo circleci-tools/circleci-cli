@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class StepPrinter
     def initialize(steps, pretty: true)
@@ -31,6 +33,7 @@ module Circler
 
     def format_time(time)
       return '' unless time
+
       minute = format('%02d', time / 1000 / 60)
       second = format('%02d', (time / 1000) % 60)
       "#{minute}:#{second}"
@@ -43,9 +46,7 @@ module Circler
           colorize_by_status(a.name.slice(0..120), a.status),
           format_time(a.run_time_millis)
         ]
-        if a.failed? && a.log
-          table << [{ value: a.log, alignment: :left, colspan: 2 }]
-        end
+        table << [{ value: a.log, alignment: :left, colspan: 2 }] if a.failed? && a.log
       end
     end
   end

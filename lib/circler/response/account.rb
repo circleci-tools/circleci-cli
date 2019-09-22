@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class Account
     def initialize(hash)

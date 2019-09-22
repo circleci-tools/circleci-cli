@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class Build
     class << self
@@ -89,6 +91,7 @@ module Circler
 
     def format_time(time)
       return '' unless time
+
       minute = format('%02d', time / 1000 / 60)
       second = format('%02d', (time / 1000) % 60)
       "#{minute}:#{second}"

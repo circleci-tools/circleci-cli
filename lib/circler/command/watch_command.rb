@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class WatchCommand < BaseCommand
     class << self
@@ -7,7 +9,7 @@ module Circler
 
         build = get_build(options)
 
-        if build && build.running?
+        if build&.running?
           start_watch(build)
           wait_until_finish
           finalize(build, build.channel_name)

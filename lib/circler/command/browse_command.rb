@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Circler
   class BrowseCommand < BaseCommand
     class << self
@@ -10,6 +12,7 @@ module Circler
 
       def url(project, number)
         return "https://circleci.com/gh/#{project}" unless number
+
         "https://circleci.com/gh/#{project}/#{number}"
       end
     end
