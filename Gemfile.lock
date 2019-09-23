@@ -16,6 +16,12 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
+    activesupport (6.0.0)
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      i18n (>= 0.7, < 2)
+      minitest (~> 5.1)
+      tzinfo (~> 1.1)
+      zeitwerk (~> 2.1, >= 2.1.8)
     addressable (2.7.0)
       public_suffix (>= 2.0.2, < 5.0)
     ast (2.4.0)
@@ -26,12 +32,23 @@ GEM
       url
     coderay (1.1.2)
     colorize (0.8.1)
+    concurrent-ruby (1.1.5)
     diff-lcs (1.3)
     docile (1.3.2)
     faraday (0.15.4)
       multipart-post (>= 1.2, < 3)
+    faraday-http-cache (2.0.0)
+      faraday (~> 0.8)
     ffi (1.11.1)
     formatador (0.2.5)
+    github_changelog_generator (1.14.3)
+      activesupport
+      faraday-http-cache
+      multi_json
+      octokit (~> 4.6)
+      rainbow (>= 2.1)
+      rake (>= 10.0)
+      retriable (~> 2.1)
     guard (2.15.1)
       formatador (>= 0.2.4)
       listen (>= 2.7, < 4.0)
@@ -50,6 +67,8 @@ GEM
       guard (~> 2.0)
       rubocop (~> 0.20)
     highline (2.0.2)
+    i18n (1.6.0)
+      concurrent-ruby (~> 1.0)
     jaro_winkler (1.5.3)
     json (2.2.0)
     launchy (2.4.3)
@@ -60,11 +79,15 @@ GEM
       ruby_dep (~> 1.2)
     lumberjack (1.0.13)
     method_source (0.9.2)
+    minitest (5.12.0)
+    multi_json (1.13.1)
     multipart-post (2.1.1)
     nenv (0.3.0)
     notiffany (0.1.3)
       nenv (~> 0.1)
       shellany (~> 0.0)
+    octokit (4.14.0)
+      sawyer (~> 0.8.0, >= 0.5.3)
     parallel (1.17.0)
     parser (2.6.4.1)
       ast (~> 2.4.0)
@@ -80,6 +103,7 @@ GEM
     rb-fsevent (0.10.3)
     rb-inotify (0.10.0)
       ffi (~> 1.0)
+    retriable (2.1.0)
     rspec (3.8.0)
       rspec-core (~> 3.8.0)
       rspec-expectations (~> 3.8.0)
@@ -103,6 +127,9 @@ GEM
     ruby-progressbar (1.10.1)
     ruby_dep (1.5.0)
     rugged (0.28.3.1)
+    sawyer (0.8.2)
+      addressable (>= 2.3.5)
+      faraday (> 0.8, < 2.0)
     shellany (0.0.1)
     simplecov (0.17.1)
       docile (~> 1.1)
@@ -113,9 +140,13 @@ GEM
     terminal-table (1.8.0)
       unicode-display_width (~> 1.1, >= 1.1.1)
     thor (0.20.3)
+    thread_safe (0.3.6)
+    tzinfo (1.2.5)
+      thread_safe (~> 0.1)
     unicode-display_width (1.6.0)
     url (0.3.2)
     websocket (1.2.8)
+    zeitwerk (2.1.10)
 
 PLATFORMS
   ruby
@@ -124,6 +155,7 @@ DEPENDENCIES
   bundler
   circleci-cli!
   codecov
+  github_changelog_generator
   guard
   guard-rspec
   guard-rubocop
