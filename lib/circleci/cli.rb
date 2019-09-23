@@ -36,7 +36,7 @@ module CircleCI
       desc 'build', 'show build description'
       method_option :project, aliases: 'p', type: :string, banner: 'user/project'
       method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
-      method_option :last, aliases: 'l', type: :boolean, banner: 'get last build'
+      method_option :last, aliases: 'l', type: :boolean, banner: 'get last failed build'
       def build
         Command::BuildCommand.run(options)
       end
@@ -51,6 +51,7 @@ module CircleCI
       desc 'retry', 'retry a build'
       method_option :project, aliases: 'p', type: :string, banner: 'user/project'
       method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+      method_option :last, aliases: 'l', type: :boolean, banner: 'retry last failed build'
       def retry
         Command::RetryCommand.run(options)
       end

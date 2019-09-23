@@ -11,6 +11,12 @@ module CircleCI
                              .map { |b| Build.new(b) }
           end
 
+          def failed(username, reponame)
+            CircleCi::Project.new(username, reponame, 'github').recent_builds(filter: 'failed')
+                             .body
+                             .map { |b| Build.new(b) }
+          end
+
           def branch(username, reponame, branch)
             CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(branch)
                              .body
