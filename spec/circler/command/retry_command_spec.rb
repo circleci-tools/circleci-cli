@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe CircleCI::CLI::Command::RetryCommand, type: :command do
+describe CircleCI::CLI::Command::RetryCommand, type: :command do # rubocop:disable Metrics/BlockLength
   shared_examples_for 'a command retries build' do
     it 'should retry build' do
       allow(CircleCI::CLI::Command::RetryCommand).to receive(:say) {}
@@ -32,6 +32,13 @@ describe CircleCI::CLI::Command::RetryCommand, type: :command do
     let(:expected_output) { 'build unhappychoice/default_project_name_from_io 1234 is triggered' }
 
     it_behaves_like 'a command asks project name'
+    it_behaves_like 'a command retries build'
+  end
+
+  context 'with last option' do
+    let(:options) { OpenStruct.new(project: 'unhappychoice/Circler', last: true) }
+    let(:expected_output) { 'build unhappychoice/Circler 1234 is triggered' }
+
     it_behaves_like 'a command retries build'
   end
 end

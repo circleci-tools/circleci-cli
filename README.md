@@ -42,7 +42,35 @@ Options:
   -p user_name/project   # specify repository
   -b branch              # specify branch name
   -n build_number        # specify build number
+  -l last                # get or retry last failed build
   -v verbose             # show all the logs if applied to watch command
+```
+
+### Examples
+
+#### Watch your project
+```
+$ circleci-cli watch
+```
+
+#### Watch your project and show all of the build log
+```
+$ circleci-cli watch -v
+```
+
+#### Show last failed build
+```
+$ circleci-cli build --last
+```
+
+#### Retry last failed build
+```
+$ circleci-cli retry --last
+```
+
+#### Open CircleCI webpage for current project
+```
+$ circleci-cli browse
 ```
 
 Project argument will be automatically selected in your directory initialized with git.
