@@ -28,9 +28,9 @@ module CircleCI
         def bind_event_handling(channel) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
           @client.bind_event_json(channel, 'newAction') do |json|
             if @verbose
-              print_bordered json['log']['name'].light_black
+              print_bordered json['log']['name']
             else
-              print json['log']['name'].light_black
+              print json['log']['name']
             end
           end
 
@@ -56,7 +56,7 @@ module CircleCI
         end
 
         def notify_started
-          title = "👀 Start watching #{@build.project_name} ##{@build.build_number}".light_black
+          title = "👀 Start watching #{@build.project_name} ##{@build.build_number}"
           say Printer::BuildPrinter.header_for(@build, title)
         end
 

@@ -57,7 +57,7 @@ module CircleCI
           def show_interrupted_build_results # rubocop:disable Metrics/AbcSize
             @repository.builds_to_show.select(&:finished?).each do |build|
               b = Response::Build.get(build.username, build.reponame, build.build_number)
-              title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background".light_black
+              title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
               say Printer::BuildPrinter.header_for(build, title)
               say Printer::StepPrinter.new(b.steps, pretty: @options.verbose).to_s
               @repository.mark_as_shown(b.build_number)
