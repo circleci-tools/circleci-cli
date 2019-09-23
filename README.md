@@ -46,6 +46,10 @@ Options:
   -v verbose             # show all the logs if applied to watch command
 ```
 
+### Project argument
+
+Project argument will be automatically selected in your directory initialized with git.
+
 ### Examples
 
 #### Watch your project
@@ -72,8 +76,6 @@ $ circleci-cli retry --last
 ```
 $ circleci-cli browse
 ```
-
-Project argument will be automatically selected in your directory initialized with git.
 
 ## Contributing
 
