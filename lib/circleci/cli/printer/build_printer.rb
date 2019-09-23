@@ -5,12 +5,12 @@ module CircleCI
     module Printer
       class BuildPrinter
         class << self
-          def header_for(build, title) # rubocop:disable Metrics/AbcSize
+          def header_for(build, title)
             texts = [
-              ['Project:  '.light_black + build.project_name],
-              ['Build:    '.light_black + build.build_number.to_s],
-              ['Author:   '.light_black + build.author_name],
-              ['Workflow: '.light_black + "#{build.workflow_name}/#{build.workflow_job_name}"]
+              ['Project:  ' + build.project_name],
+              ['Build:    ' + build.build_number.to_s],
+              ['Author:   ' + build.author_name],
+              ['Workflow: ' + "#{build.workflow_name}/#{build.workflow_job_name}"]
             ]
             Terminal::Table.new(title: title, rows: texts, style: { width: 120 }).to_s
           end
