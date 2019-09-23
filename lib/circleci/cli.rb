@@ -36,6 +36,7 @@ module CircleCI
       desc 'build', 'show build description'
       method_option :project, aliases: 'p', type: :string, banner: 'user/project'
       method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+      method_option :last, aliases: 'l', type: :boolean, banner: 'get last build'
       def build
         Command::BuildCommand.run(options)
       end

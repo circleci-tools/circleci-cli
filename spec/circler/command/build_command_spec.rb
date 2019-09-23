@@ -46,4 +46,10 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do # rubocop:disab
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show build information'
   end
+
+  context 'with last option' do
+    let(:options) { OpenStruct.new(project: 'unhappychoice/Circler', branch: nil, last: true) }
+
+    it_behaves_like 'a command show build information'
+  end
 end
