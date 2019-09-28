@@ -1,8 +1,5 @@
 # circleci-cli
 [![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
-
-Notice: This gem is renamed from `circler` to `circleci-cli` on 2019/09/22
-
 [![Gem Version](https://badge.fury.io/rb/circleci-cli.svg)](https://badge.fury.io/rb/circleci-cli)
 [![Circle CI](https://circleci.com/gh/unhappychoice/circleci-cli.svg?style=shield)](https://circleci.com/gh/unhappychoice/circleci-cli)
 [![Code Climate](https://codeclimate.com/github/unhappychoice/circleci-cli/badges/gpa.svg)](https://codeclimate.com/github/unhappychoice/circleci-cli)
@@ -11,6 +8,7 @@ Notice: This gem is renamed from `circler` to `circleci-cli` on 2019/09/22
 ![](http://ruby-gem-downloads-badge.herokuapp.com/circleci-cli?type=total)
 ![GitHub](https://img.shields.io/github/license/unhappychoice/circleci-cli.svg)
 
+Notice: This gem is renamed from `circler` to `circleci-cli` on 2019/09/22
 circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/unhappychoice/circler/raw/master/movie/rec.gif)
