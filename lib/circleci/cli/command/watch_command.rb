@@ -11,8 +11,9 @@ module CircleCI
           def run(options) # rubocop:disable Metrics/MethodLength
             setup_token
 
+            username, reponame = project_name(options).split('/')
             @options = options
-            @repository = BuildRepository.new(*project_name(options).split('/'))
+            @repository = BuildRepository.new(username, reponame, branch: options.branch)
             @client = Networking::CircleCIPusherClient.new.tap(&:connect)
             @build_watcher = nil
 

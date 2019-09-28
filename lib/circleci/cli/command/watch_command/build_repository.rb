@@ -4,9 +4,10 @@ module CircleCI
   module CLI
     module Command
       class BuildRepository
-        def initialize(username, reponame)
+        def initialize(username, reponame, branch: nil)
           @username = username
           @reponame = reponame
+          @branch = branch
           @builds = Response::Build.all(@username, @reponame)
           @build_numbers_shown = @builds.select(&:finished?).map(&:build_number)
         end
@@ -23,6 +24,7 @@ module CircleCI
         def builds_to_show
           @builds
             .reject { |build| @build_numbers_shown.include?(build.build_number) }
+            .select { |build| @branch.nil? || build.branch.to_s == @branch.to_s }
             .sort_by(&:build_number)
         end
 
