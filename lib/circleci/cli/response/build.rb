@@ -36,7 +36,7 @@ module CircleCI
           end
         end
 
-        attr_reader :username, :build_number, :reponame, :status, :author_name, :start_time,
+        attr_reader :username, :build_number, :reponame, :branch, :status, :author_name, :start_time,
                     :workflow_name, :workflow_job_name
 
         def initialize(hash)
@@ -44,6 +44,7 @@ module CircleCI
           @username = hash['username']
           @build_number = hash['build_num']
           @reponame = hash['reponame']
+          @branch = hash['branch']
           @status = hash['status']
           @author_name = hash['author_name']
           @start_time = hash['start_time']
@@ -71,7 +72,7 @@ module CircleCI
           [
             build_number,
             colorize_by_status(status, status),
-            colorize_by_status(@hash['branch'], status),
+            colorize_by_status(branch, status),
             author_name,
             (@hash['subject'] || '').slice(0..60),
             format_time(@hash['build_time_millis']),
