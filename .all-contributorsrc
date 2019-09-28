@@ -9,6 +9,16 @@
   "imageSize": 100,
   "commit": true,
   "commitConvention": "none",
-  "contributors": [],
+  "contributors": [
+    {
+      "login": "unhappychoice",
+      "name": "Yuji Ueki",
+      "avatar_url": "https://avatars3.githubusercontent.com/u/5608948?v=4",
+      "profile": "http://blog.unhappychoice.com",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
   "contributorsPerLine": 7
 }
