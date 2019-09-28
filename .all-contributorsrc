@@ -1,5 +1,5 @@
 {
-  "projectName": "unhappychoice/circleci-cli",
+  "projectName": "circleci-cli",
   "projectOwner": "unhappychoice",
   "repoType": "github",
   "repoHost": "https://github.com",
@@ -17,6 +17,16 @@
       "profile": "http://blog.unhappychoice.com",
       "contributions": [
         "code"
+      ]
+    },
+    {
+      "login": "mattbrictson",
+      "name": "Matt Brictson",
+      "avatar_url": "https://avatars0.githubusercontent.com/u/189693?v=4",
+      "profile": "https://mattbrictson.com/",
+      "contributions": [
+        "code",
+        "test"
       ]
     }
   ],
