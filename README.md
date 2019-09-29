@@ -94,6 +94,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   <tr>
     <td align="center"><a href="http://blog.unhappychoice.com"><img src="https://avatars3.githubusercontent.com/u/5608948?v=4" width="100px;" alt="Yuji Ueki"/><br /><sub><b>Yuji Ueki</b></sub></a><br /><a href="https://github.com/unhappychoice/circleci-cli/commits?author=unhappychoice" title="Code">💻</a></td>
     <td align="center"><a href="https://mattbrictson.com/"><img src="https://avatars0.githubusercontent.com/u/189693?v=4" width="100px;" alt="Matt Brictson"/><br /><sub><b>Matt Brictson</b></sub></a><br /><a href="https://github.com/unhappychoice/circleci-cli/commits?author=mattbrictson" title="Code">💻</a> <a href="https://github.com/unhappychoice/circleci-cli/commits?author=mattbrictson" title="Tests">⚠️</a></td>
+    <td align="center"><a href="http://fzf.me"><img src="https://avatars0.githubusercontent.com/u/1462357?v=4" width="100px;" alt="Fletcher Fowler"/><br /><sub><b>Fletcher Fowler</b></sub></a><br /><a href="https://github.com/unhappychoice/circleci-cli/issues?q=author%3Afzf" title="Bug reports">🐛</a> <a href="#ideas-fzf" title="Ideas, Planning, & Feedback">🤔</a></td>
   </tr>
 </table>
 
