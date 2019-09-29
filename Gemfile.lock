@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    circleci-cli (2.1.0)
+    circleci-cli (2.2.0)
       circleci (~> 2.0.2)
       colorize (~> 0.8.1)
       faraday (>= 0.14, < 0.16)
