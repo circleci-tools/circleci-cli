@@ -66,6 +66,7 @@ module CircleCI
       desc 'watch', 'watch a build in real time'
       method_option :project, aliases: 'p', type: :string, banner: 'user/project'
       method_option :branch, aliases: 'b', type: :string, banner: 'branch'
+      method_option :user, aliases: 'u', type: :string, banner: 'user'
       method_option :verbose, aliases: 'v', type: :boolean, banner: 'verbose'
       def watch
         Command::WatchCommand.run(options)
