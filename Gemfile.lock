@@ -26,7 +26,7 @@ GEM
       public_suffix (>= 2.0.2, < 5.0)
     ast (2.4.0)
     circleci (2.0.2)
-    codecov (0.1.14)
+    codecov (0.1.15)
       json
       simplecov
       url
