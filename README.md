@@ -20,7 +20,7 @@ $ gem install circleci-cli
 ```
 
 set the `CIRCLE_CI_TOKEN` environment variable. (optional)
-
+ 
 ```sh
 export CIRCLE_CI_TOKEN=your-circle-ci-token
 ```
