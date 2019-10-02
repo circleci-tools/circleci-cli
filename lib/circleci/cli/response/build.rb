@@ -37,7 +37,7 @@ module CircleCI
         end
 
         attr_reader :username, :build_number, :reponame, :branch, :status, :author_name, :start_time,
-                    :workflow_name, :workflow_job_name
+                    :user, :workflow_name, :workflow_job_name
 
         def initialize(hash)
           @hash = hash
@@ -48,6 +48,7 @@ module CircleCI
           @status = hash['status']
           @author_name = hash['author_name']
           @start_time = hash['start_time']
+          @user = hash.dig('user', 'login')
           @workflow_name = hash.dig('workflows', 'workflow_name')
           @workflow_job_name = hash.dig('workflows', 'job_name')
         end
