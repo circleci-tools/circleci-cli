@@ -36,7 +36,7 @@ module CircleCI
 
           @client.bind_event_json(channel, 'appendAction') do |json|
             if @verbose
-              say json['out']['message']
+              Thor::Shell::Basic.new.say(json['out']['message'], nil, false)
             else
               @messages[json['step']] << json['out']['message']
             end
