@@ -39,7 +39,7 @@ module CircleCI
         attr_reader :username, :build_number, :reponame, :branch, :status, :author_name, :start_time,
                     :user, :workflow_name, :workflow_job_name
 
-        def initialize(hash)
+        def initialize(hash) # rubocop:disable Metrics/MethodLength
           @hash = hash
           @username = hash['username']
           @build_number = hash['build_num']
@@ -101,8 +101,8 @@ module CircleCI
         def format_time(time)
           return '' unless time
 
-          minute = format('%02d', time / 1000 / 60)
-          second = format('%02d', (time / 1000) % 60)
+          minute = format('%<time>02d', time: time / 1000 / 60)
+          second = format('%<time>02d', time: (time / 1000) % 60)
           "#{minute}:#{second}"
         end
       end
