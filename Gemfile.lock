@@ -41,14 +41,14 @@ GEM
       faraday (~> 0.8)
     ffi (1.11.1)
     formatador (0.2.5)
-    github_changelog_generator (1.14.3)
+    github_changelog_generator (1.15.0)
       activesupport
       faraday-http-cache
       multi_json
       octokit (~> 4.6)
-      rainbow (>= 2.1)
+      rainbow (>= 2.2.1)
       rake (>= 10.0)
-      retriable (~> 2.1)
+      retriable (~> 3.0)
     guard (2.15.1)
       formatador (>= 0.2.4)
       listen (>= 2.7, < 4.0)
@@ -102,7 +102,7 @@ GEM
     rb-fsevent (0.10.3)
     rb-inotify (0.10.0)
       ffi (~> 1.0)
-    retriable (2.1.0)
+    retriable (3.1.2)
     rspec (3.9.0)
       rspec-core (~> 3.9.0)
       rspec-expectations (~> 3.9.0)
