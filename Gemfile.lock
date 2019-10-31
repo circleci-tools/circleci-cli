@@ -69,7 +69,7 @@ GEM
     highline (2.0.3)
     i18n (1.7.0)
       concurrent-ruby (~> 1.0)
-    jaro_winkler (1.5.3)
+    jaro_winkler (1.5.4)
     json (2.2.0)
     launchy (2.4.3)
       addressable (~> 2.3)
