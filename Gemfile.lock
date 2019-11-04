@@ -144,7 +144,7 @@ GEM
     unicode-display_width (1.6.0)
     url (0.3.2)
     websocket (1.2.8)
-    zeitwerk (2.2.0)
+    zeitwerk (2.2.1)
 
 PLATFORMS
   ruby
