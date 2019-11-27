@@ -39,7 +39,7 @@ GEM
       multipart-post (>= 1.2, < 3)
     faraday-http-cache (2.0.0)
       faraday (~> 0.8)
-    ffi (1.11.2)
+    ffi (1.11.3)
     formatador (0.2.5)
     github_changelog_generator (1.15.0)
       activesupport
