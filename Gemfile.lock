@@ -41,7 +41,7 @@ GEM
       faraday (~> 0.8)
     ffi (1.12.2)
     formatador (0.2.5)
-    github_changelog_generator (1.15.0)
+    github_changelog_generator (1.15.1)
       activesupport
       faraday-http-cache
       multi_json
