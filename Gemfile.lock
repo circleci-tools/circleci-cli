@@ -130,7 +130,7 @@ GEM
     rubocop-ast (0.0.3)
       parser (>= 2.7.0.1)
     ruby-progressbar (1.10.1)
-    rugged (1.0.0)
+    rugged (1.0.1)
     sawyer (0.8.2)
       addressable (>= 2.3.5)
       faraday (> 0.8, < 2.0)
