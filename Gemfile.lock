@@ -26,10 +26,10 @@ GEM
       public_suffix (>= 2.0.2, < 5.0)
     ast (2.4.1)
     circleci (2.0.3)
-    codecov (0.1.17)
+    codecov (0.1.19)
+      colorize
       json
       simplecov
-      url
     coderay (1.1.3)
     colorize (0.8.1)
     concurrent-ruby (1.1.6)
@@ -147,7 +147,6 @@ GEM
     tzinfo (1.2.7)
       thread_safe (~> 0.1)
     unicode-display_width (1.7.0)
-    url (0.3.2)
     websocket (1.2.8)
     zeitwerk (2.3.1)
 
