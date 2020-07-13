@@ -78,7 +78,7 @@ GEM
     lumberjack (1.2.6)
     method_source (1.0.0)
     minitest (5.14.1)
-    multi_json (1.14.1)
+    multi_json (1.15.0)
     multipart-post (2.1.1)
     nenv (0.3.0)
     notiffany (0.1.3)
