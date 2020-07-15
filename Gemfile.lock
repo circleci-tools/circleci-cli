@@ -148,7 +148,7 @@ GEM
       thread_safe (~> 0.1)
     unicode-display_width (1.7.0)
     websocket (1.2.8)
-    zeitwerk (2.3.1)
+    zeitwerk (2.4.0)
 
 PLATFORMS
   ruby
