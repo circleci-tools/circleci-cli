@@ -1,5 +1,8 @@
+AllCops:
+  NewCops: enable
+
 Style/Documentation:
   Enabled: false
 
-Metrics/LineLength:
+Layout/LineLength:
   Max: 120

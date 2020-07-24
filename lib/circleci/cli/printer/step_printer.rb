@@ -9,7 +9,7 @@ module CircleCI
           @pretty = pretty
         end
 
-        def to_s # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+        def to_s # rubocop:disable Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity
           if @pretty
             Terminal::Table.new do |t|
               @steps

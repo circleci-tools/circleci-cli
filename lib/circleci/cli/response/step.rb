@@ -4,8 +4,7 @@ module CircleCI
   module CLI
     module Response
       class Step
-        attr_reader :type
-        attr_reader :status
+        attr_reader :type, :status
 
         def initialize(type, hash)
           @type = type

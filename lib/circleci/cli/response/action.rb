@@ -5,6 +5,7 @@ module CircleCI
     module Response
       class Action
         attr_reader :name, :status, :run_time_millis
+
         def initialize(hash)
           @hash = hash
           @name = hash['name']
