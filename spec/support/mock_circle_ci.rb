@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-shared_context 'mock circle ci response' do # rubocop:disable Metrics/BlockLength
+shared_context 'mock circle ci response' do
   let(:account_hash) { { 'name' => 'account name' } }
   let(:build_hash) do
     {
