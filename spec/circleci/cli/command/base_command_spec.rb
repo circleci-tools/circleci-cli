@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe CircleCI::CLI::Command::BaseCommand do # rubocop:disable Metrics/BlockLength
+describe CircleCI::CLI::Command::BaseCommand do
   describe '.reponame' do
     subject { CircleCI::CLI::Command::BaseCommand.reponame }
 
