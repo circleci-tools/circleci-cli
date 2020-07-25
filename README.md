@@ -8,7 +8,6 @@
 ![](http://ruby-gem-downloads-badge.herokuapp.com/circleci-cli?type=total)
 ![GitHub](https://img.shields.io/github/license/unhappychoice/circleci-cli.svg)
 
-Notice: This gem is renamed from `circler` to `circleci-cli` on 2019/09/22
 circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/unhappychoice/circler/raw/master/movie/rec.gif)
