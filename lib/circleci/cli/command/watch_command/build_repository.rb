@@ -14,8 +14,7 @@ module CircleCI
         end
 
         def update
-          @builds = (Response::Build.all(@username, @reponame) + @builds)
-                    .uniq(&:build_number)
+          @builds = (Response::Build.all(@username, @reponame) + @builds).uniq(&:build_number)
         end
 
         def mark_as_shown(build_number)
