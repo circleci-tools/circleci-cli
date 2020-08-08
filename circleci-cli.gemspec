@@ -39,6 +39,7 @@ end
 Gem::Specification.new do |spec|
   spec.name          = 'circleci-cli'
   spec.version       = CircleCI::CLI::VERSION
+  spec.required_ruby_version = '>= 2.5'
   spec.authors       = ['unhappychoice']
   spec.email         = ['unhappychoice@gmail.com']
 

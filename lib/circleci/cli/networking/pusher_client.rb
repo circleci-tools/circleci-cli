@@ -11,13 +11,13 @@ module CircleCI
           socket.connect(true)
         end
 
-        def bind(channel, event)
+        def bind(channel, event, &block)
           socket.subscribe(channel)
-          socket[channel].bind(event) { |data| yield data }
+          socket[channel].bind(event, &block)
         end
 
-        def bind_event_json(channel, event)
-          bind(channel, event) { |data| JSON.parse(data).each { |json| yield(json) } }
+        def bind_event_json(channel, event, &block)
+          bind(channel, event) { |data| JSON.parse(data).each(&block) }
         end
 
         def unsubscribe(channel)

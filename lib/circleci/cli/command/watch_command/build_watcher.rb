@@ -18,7 +18,7 @@ module CircleCI
         end
 
         def stop(status)
-          client.unsubscribe(@build.channel_name + '@0')
+          client.unsubscribe("#{@build.channel_name}@0")
           notify_stopped(status)
         end
 
