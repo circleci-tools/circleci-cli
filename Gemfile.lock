@@ -26,8 +26,7 @@ GEM
       public_suffix (>= 2.0.2, < 5.0)
     ast (2.4.1)
     circleci (2.0.3)
-    codecov (0.2.6)
-      colorize
+    codecov (0.2.8)
       json
       simplecov
     coderay (1.1.3)
