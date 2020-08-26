@@ -33,4 +33,28 @@ describe CircleCI::CLI::Command::BaseCommand do
       end
     end
   end
+
+  describe '.branch_name' do
+    subject { described_class.branch_name }
+
+    before do
+      head = instance_double(Rugged::Reference, name: name, branch?: branch?)
+      repo = double('Rugged::Repository', head: head)
+      allow(Rugged::Repository).to receive(:new).with('.').and_return(repo)
+    end
+
+    context 'with a valid current branch' do
+      let(:name) { 'branch' }
+      let(:branch?) { true }
+
+      it { is_expected.to eq(name) }
+    end
+
+    context 'with no current branch' do
+      let(:name) { nil }
+      let(:branch?) { false }
+
+      it { is_expected.to be_nil }
+    end
+  end
 end
