@@ -39,7 +39,18 @@
         "ideas",
         "code"
       ]
+    },
+    {
+      "login": "marcotc",
+      "name": "Marco Costa",
+      "avatar_url": "https://avatars3.githubusercontent.com/u/583503?v=4",
+      "profile": "https://datadoghq.com",
+      "contributions": [
+        "ideas",
+        "code"
+      ]
     }
   ],
-  "contributorsPerLine": 7
+  "contributorsPerLine": 7,
+  "skipCi": true
 }
