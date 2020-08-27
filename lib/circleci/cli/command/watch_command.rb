@@ -13,7 +13,12 @@ module CircleCI
 
             username, reponame = project_name(options).split('/')
             @options = options
-            @repository = BuildRepository.new(username, reponame, branch: options.branch, user: options.user)
+            @repository = BuildRepository.new(
+              username,
+              reponame,
+              branch: options.branch || branch_name,
+              user: options.user
+            )
             @client = Networking::CircleCIPusherClient.new.tap(&:connect)
             @build_watcher = nil
 
