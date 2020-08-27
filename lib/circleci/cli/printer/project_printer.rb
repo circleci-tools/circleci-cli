@@ -27,7 +27,7 @@ module CircleCI
 
         def print_pretty
           Terminal::Table.new(
-            title: 'Projects'.green,
+            title: Printer.colorize_green('Projects'),
             headings: ['User name', 'Repository name'],
             rows: @projects.map(&:information)
           ).to_s
