@@ -37,7 +37,7 @@ module CircleCI
 
         def title
           build = @builds_to_show.first
-          "Recent Builds / #{build.project_name}".green
+          Printer.colorize_green("Recent Builds / #{build.project_name}")
         end
 
         def headings

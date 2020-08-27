@@ -46,9 +46,9 @@ module CircleCI
 
             case json['log']['status']
             when 'success'
-              puts "\e[2K\r#{json['log']['name'].green}"
+              puts "\e[2K\r#{Printer.colorize_green(json['log']['name'])}"
             when 'failed'
-              puts "\e[2K\r#{json['log']['name'].red}"
+              puts "\e[2K\r#{Printer.colorize_red(json['log']['name'])}"
               @messages[json['step']].each(&method(:say))
             end
           end
@@ -63,8 +63,10 @@ module CircleCI
 
         def notify_stopped(status)
           text = case status
-                 when 'success' then "🎉 #{@build.project_name} ##{@build.build_number} has succeeded!".green
-                 when 'failed' then "😥 #{@build.project_name} ##{@build.build_number} has failed...".red
+                 when 'success'
+                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
+                 when 'failed'
+                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
                  end
 
           @verbose ? print_bordered(text) : say(text)
