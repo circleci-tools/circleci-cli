@@ -48,7 +48,8 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
   end
 
   context 'with last option' do
-    let(:options) { OpenStruct.new(project: 'unhappychoice/Circler', branch: nil, last: true) }
+    let(:project_name) { 'unhappychoice/Circler' }
+    let(:options) { OpenStruct.new(project: project_name, build: nil, last: true) }
 
     it_behaves_like 'a command show build information'
   end
