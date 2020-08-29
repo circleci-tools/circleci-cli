@@ -29,7 +29,24 @@ describe CircleCI::CLI::Command::BaseCommand do
   end
 
   describe '.branch_name' do
-    subject { described_class.branch_name(OpenStruct.new) }
+    subject { described_class.branch_name(options) }
+    let(:options) { OpenStruct.new }
+
+    context 'with all option' do
+      let(:options) { OpenStruct.new(all: true) }
+      let(:rugged_response_branch_name) { 'branch' }
+      let(:rugged_response_is_branch) { true }
+
+      it { is_expected.to eq(nil) }
+    end
+
+    context 'with branch option' do
+      let(:options) { OpenStruct.new(branch: 'optionBranch') }
+      let(:rugged_response_branch_name) { 'branch' }
+      let(:rugged_response_is_branch) { true }
+
+      it { is_expected.to eq('optionBranch') }
+    end
 
     context 'with a valid current branch' do
       let(:rugged_response_branch_name) { 'branch' }
