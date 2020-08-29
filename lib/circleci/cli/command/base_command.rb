@@ -31,13 +31,17 @@ module CircleCI
             nil
           end
 
-          def branch_name
-            repository = Rugged::Repository.new('.')
-            head = repository.head
+          def branch_name(options)
+            if options.branch
+              options.branch
+            else
+              repository = Rugged::Repository.new('.')
+              head = repository.head
 
-            return nil unless head.branch?
+              return nil unless head.branch?
 
-            head.name.sub(%r{\Arefs/heads/}, '')
+              head.name.sub(%r{\Arefs/heads/}, '')
+            end
           end
 
           def build_number(options)

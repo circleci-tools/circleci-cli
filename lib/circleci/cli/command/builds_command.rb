@@ -7,16 +7,16 @@ module CircleCI
         class << self
           def run(options)
             setup_token
-            username, reponame = project_name(options).split('/')
+            project_name = project_name(options)
+            username, reponame = project_name.split('/')
+            branch = branch_name(options)
+            builds = if branch
+                       Response::Build.branch(username, reponame, branch)
+                     else
+                       Response::Build.all(username, reponame)
+                     end
 
-            builds =
-              if options.branch
-                Response::Build.branch(username, reponame, options.branch)
-              else
-                Response::Build.all(username, reponame)
-              end
-
-            say Printer::BuildPrinter.new(builds, pretty: should_be_pretty(options)).to_s
+            say Printer::BuildPrinter.new(builds, project_name, pretty: should_be_pretty(options)).to_s
           end
         end
       end

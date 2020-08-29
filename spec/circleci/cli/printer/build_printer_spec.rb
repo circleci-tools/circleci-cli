@@ -4,7 +4,7 @@ require 'spec_helper'
 
 describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
   describe '#to_s' do
-    subject { described_class.new(builds, pretty: pretty).to_s }
+    subject { described_class.new(builds, builds.first.project_name, pretty: pretty).to_s }
 
     let(:builds) do
       [

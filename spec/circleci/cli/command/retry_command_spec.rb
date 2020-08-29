@@ -13,7 +13,7 @@ describe CircleCI::CLI::Command::RetryCommand, type: :command do
 
   context 'with no input' do
     let(:options) { OpenStruct.new(project: nil, build: nil) }
-    let(:expected_output) { 'build unhappychoice/default_project_name_from_io 1234 is triggered' }
+    let(:expected_output) { 'build user/project_name_from_io 1234 is triggered' }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command retries build'
@@ -29,7 +29,7 @@ describe CircleCI::CLI::Command::RetryCommand, type: :command do
 
   context 'with branch input' do
     let(:options) { OpenStruct.new(project: nil, build: 1234) }
-    let(:expected_output) { 'build unhappychoice/default_project_name_from_io 1234 is triggered' }
+    let(:expected_output) { 'build user/project_name_from_io 1234 is triggered' }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command retries build'
