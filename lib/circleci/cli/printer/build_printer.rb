@@ -16,8 +16,9 @@ module CircleCI
           end
         end
 
-        def initialize(builds, pretty: true)
+        def initialize(builds, project_name, pretty: true)
           @builds_to_show = builds
+          @project_name = project_name
           @pretty = pretty
         end
 
@@ -36,8 +37,7 @@ module CircleCI
         end
 
         def title
-          build = @builds_to_show.first
-          Printer.colorize_green("Recent Builds / #{build.project_name}")
+          Printer.colorize_green("Recent Builds / #{@project_name}")
         end
 
         def headings

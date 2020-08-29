@@ -16,7 +16,7 @@ module CircleCI
             @repository = BuildRepository.new(
               username,
               reponame,
-              branch: options.branch || branch_name,
+              branch: branch_name(options),
               user: options.user
             )
             @client = Networking::CircleCIPusherClient.new.tap(&:connect)
