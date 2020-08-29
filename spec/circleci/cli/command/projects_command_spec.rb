@@ -4,7 +4,7 @@ require 'spec_helper'
 
 describe CircleCI::CLI::Command::ProjectsCommand, type: :command do
   context 'with no input' do
-    let(:options) { OpenStruct.new(token: nil) }
+    let(:options) { OpenStruct.new(token: nil, pretty: true) }
     let(:expected_output) do
       <<~EXPECTED
         +---------------+---------------------------+
