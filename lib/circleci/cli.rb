@@ -17,63 +17,124 @@ require 'circleci/cli/networking'
 
 module CircleCI
   module CLI
-    class Runner < Thor
-      desc 'projects', 'list projects'
-      method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple'
+    class Runner < Thor # rubocop:disable Metrics/ClassLength
+      package_name 'circleci-cli'
+
+      desc 'projects', 'List projects'
+      method_option :pretty, type: :boolean, default: true, desc: 'Make output pretty'
       def projects
         Command::ProjectsCommand.run(options)
       end
 
-      desc 'builds', 'list builds'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :branch, aliases: 'b', type: :string, banner: 'some-branch'
-      method_option :all, aliases: 'a', type: :boolean, banner: 'target all the branches'
-      method_option :format, aliases: 'f', type: :string, banner: 'pretty/simple'
+      desc 'builds', 'List builds'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :branch,
+                    aliases: 'b',
+                    type: :string,
+                    banner: 'some-branch',
+                    default: branch_name,
+                    desc: 'A branch name you want to filter with.'
+      method_option :all,
+                    aliases: 'a',
+                    type: :boolean,
+                    default: false,
+                    desc: 'Target all the branches. This option overwrites branch option.'
+      method_option :pretty, type: :boolean, banner: 'true/false', default: true, desc: 'Make output pretty.'
       def builds
         Command::BuildsCommand.run(options)
       end
 
-      desc 'build', 'show build description'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
-      method_option :last, aliases: 'l', type: :boolean, banner: 'get last failed build'
+      desc 'build', 'Show the build result'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number', desc: 'Build number you want to get.'
+      method_option :last, aliases: 'l', type: :boolean, default: false, desc: 'Get last failed build.'
+      method_option :pretty, type: :boolean, banner: 'true/false', default: true, desc: 'Make output pretty.'
       def build
         Command::BuildCommand.run(options)
       end
 
-      desc 'browse', 'open circle ci website'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+      desc 'browse', 'Open CircleCI website'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :build,
+                    aliases: 'n',
+                    type: :numeric,
+                    banner: 'build-number',
+                    desc: 'Build number you want to browse.'
       def browse
         Command::BrowseCommand.run(options)
       end
 
-      desc 'retry', 'retry a build'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
-      method_option :last, aliases: 'l', type: :boolean, banner: 'retry last failed build'
+      desc 'retry', 'Retry a build'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :build,
+                    aliases: 'n',
+                    type: :numeric,
+                    banner: 'build-number',
+                    desc: 'Build number you want to retry.'
+      method_option :last, aliases: 'l', type: :boolean, desc: 'Retry last failed build.'
       def retry
         Command::RetryCommand.run(options)
       end
 
-      desc 'cancel', 'cancel a build'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number'
+      desc 'cancel', 'Cancel a build'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :build,
+                    aliases: 'n',
+                    type: :numeric,
+                    banner: 'build-number',
+                    desc: 'Build number you want to cancel.'
       def cancel
         Command::CancelCommand.run(options)
       end
 
-      desc 'watch', 'watch a build in real time'
-      method_option :project, aliases: 'p', type: :string, banner: 'user/project'
-      method_option :branch, aliases: 'b', type: :string, banner: 'branch'
-      method_option :all, aliases: 'a', type: :boolean, banner: 'target all the branches'
+      desc 'watch', 'Watch builds in real time'
+      method_option :project,
+                    aliases: 'p',
+                    type: :string,
+                    banner: 'user/project',
+                    desc: 'A project you want to get. Default: default git remote of current directory'
+      method_option :branch,
+                    aliases: 'b',
+                    type: :string,
+                    banner: 'some-branch',
+                    default: branch_name,
+                    desc: 'A branch name you want to filter with.'
+      method_option :all,
+                    aliases: 'a',
+                    type: :boolean,
+                    default: false,
+                    desc: 'Target all the branches. This option overwrites branch option.'
       method_option :user, aliases: 'u', type: :string, banner: 'user'
-      method_option :verbose, aliases: 'v', type: :boolean, banner: 'verbose'
+      method_option :verbose,
+                    aliases: 'v',
+                    type: :boolean,
+                    default: false,
+                    desc: 'Show all the build logs including successful build steps.'
       def watch
         Command::WatchCommand.run(options)
       end
 
-      desc 'version', 'show gem version'
+      desc 'version', 'Show gem version'
       def version
         say CircleCI::CLI::VERSION
       end
