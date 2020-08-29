@@ -27,7 +27,7 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
   end
 
   context 'with no input' do
-    let(:options) { OpenStruct.new(project: nil, build: nil) }
+    let(:options) { OpenStruct.new(project: nil, build: nil, pretty: true) }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show build information'
@@ -35,13 +35,13 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
 
   context 'with project input' do
     let(:project_name) { 'unhappychoice/Circler' }
-    let(:options) { OpenStruct.new(project: project_name, build: nil) }
+    let(:options) { OpenStruct.new(project: project_name, build: nil, pretty: true) }
 
     it_behaves_like 'a command show build information'
   end
 
   context 'with build input' do
-    let(:options) { OpenStruct.new(project: nil, build: 5) }
+    let(:options) { OpenStruct.new(project: nil, build: 5, pretty: true) }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show build information'
@@ -49,7 +49,7 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
 
   context 'with last option' do
     let(:project_name) { 'unhappychoice/Circler' }
-    let(:options) { OpenStruct.new(project: project_name, build: nil, last: true) }
+    let(:options) { OpenStruct.new(project: project_name, build: nil, last: true, pretty: true) }
 
     it_behaves_like 'a command show build information'
   end

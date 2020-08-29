@@ -26,7 +26,7 @@ describe CircleCI::CLI::Command::BuildsCommand, type: :command do
   context 'with no input' do
     let(:rugged_response_branch_name) { nil }
     let(:project_name) { io_response_project_name }
-    let(:options) { OpenStruct.new(project: nil, branch: nil) }
+    let(:options) { OpenStruct.new(project: nil, branch: nil, pretty: true) }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show builds information'
@@ -34,31 +34,14 @@ describe CircleCI::CLI::Command::BuildsCommand, type: :command do
 
   context 'with project input' do
     let(:project_name) { 'user/project_from_option_' }
-    let(:options) { OpenStruct.new(project: project_name, branch: nil) }
+    let(:options) { OpenStruct.new(project: project_name, branch: nil, pretty: true) }
 
     it_behaves_like 'a command show builds information'
   end
 
   context 'with branch input' do
     let(:project_name) { io_response_project_name }
-    let(:options) { OpenStruct.new(project: nil, branch: 'master') }
-
-    it_behaves_like 'a command asks project name'
-    it_behaves_like 'a command show builds information'
-  end
-
-  context 'with default branch' do
-    let(:project_name) { io_response_project_name }
-    let(:rugged_response_branch_name) { 'branch_name' }
-    let(:options) { OpenStruct.new(project: nil, branch: nil) }
-
-    it 'should take builds in the branch' do
-      allow(CircleCI::CLI::Command::BuildsCommand).to receive(:say) {}
-      expect(CircleCI::CLI::Response::Build).to receive(:branch)
-        .with(project_name.split('/').first, project_name.split('/').last, rugged_response_branch_name)
-        .and_return([])
-      CircleCI::CLI::Command::BuildsCommand.run(options)
-    end
+    let(:options) { OpenStruct.new(project: nil, branch: 'master', pretty: true) }
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show builds information'

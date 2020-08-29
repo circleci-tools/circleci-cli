@@ -27,26 +27,33 @@ export CIRCLE_CI_TOKEN=your-circle-ci-token
 ## Usage
 ```
 Commands:
-  circleci-cli browse          # open circle ci website
-  circleci-cli build           # show build description
-  circleci-cli builds          # list builds
-  circleci-cli help [COMMAND]  # describe available commands or one specific command
-  circleci-cli projects        # list projects
-  circleci-cli retry           # retry a build
-  circleci-cli version         # show gem version
-  circleci-cli watch           # watch a build in real time
+  circleci-cli browse               # Open CircleCI website
+  circleci-cli build                # Show the build result
+  circleci-cli builds               # List builds
+  circleci-cli cancel               # Cancel a build
+  circleci-cli help [COMMAND]       # Describe available commands or one specific command
+  circleci-cli projects             # List projects
+  circleci-cli retry                # Retry a build
+  circleci-cli version              # Show gem version
+  circleci-cli watch                # Watch builds in real time
 
 Options:
-  -p user_name/project   # specify repository
-  -b branch              # specify branch name
-  -n build_number        # specify build number
-  -l last                # get or retry last failed build
-  -v verbose             # show all the logs if applied to watch command
+  -p user_name/project              # Specify repository
+                                    # Default to the Git remote of current directory
+
+  -b branch                         # Specify branch name
+                                    # Default to the current Git branch
+
+  -a, --all, --no-all               # Ignore the branch option and stop being filtered by the branch
+                                    # Default to false
+
+  -n build_number                   # Specify build number.
+  -l last                           # Get or retry last failed build.
+  -v verbose                        # Show all the logs if applied to watch command.
+
+  --pretty=true/false, --no-pretty  # Make outputs pretty or not
+                                    # Default to true
 ```
-
-### Project argument
-
-Project argument will be automatically selected in your directory initialized with git.
 
 ### Examples
 
