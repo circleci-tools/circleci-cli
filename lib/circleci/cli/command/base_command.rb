@@ -32,7 +32,9 @@ module CircleCI
           end
 
           def branch_name(options)
-            if options.branch
+            if options.all
+              nil
+            elsif options.branch
               options.branch
             else
               repository = Rugged::Repository.new('.')
