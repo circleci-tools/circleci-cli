@@ -20,6 +20,26 @@ module CircleCI
     class Runner < Thor # rubocop:disable Metrics/ClassLength
       package_name 'circleci-cli'
 
+      class << self
+        def project
+          repository = Rugged::Repository.new('.')
+          origin = repository.remotes.find { |r| r.name == 'origin' }
+          regexp = %r{git@github.com(?::|/)([\w_-]+/[.\w_-]+?)(?:\.git)*$}
+          return Regexp.last_match(1) if origin.url =~ regexp
+
+          nil
+        end
+
+        def branch_name
+          repository = Rugged::Repository.new('.')
+          head = repository.head
+
+          return nil unless head.branch?
+
+          head.name.sub(%r{\Arefs/heads/}, '')
+        end
+      end
+
       desc 'projects', 'List projects'
       method_option :pretty, type: :boolean, default: true, desc: 'Make output pretty'
       def projects
@@ -31,7 +51,8 @@ module CircleCI
                     aliases: 'p',
                     type: :string,
                     banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :branch,
                     aliases: 'b',
                     type: :string,
@@ -53,7 +74,8 @@ module CircleCI
                     aliases: 'p',
                     type: :string,
                     banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :build, aliases: 'n', type: :numeric, banner: 'build-number', desc: 'Build number you want to get.'
       method_option :last, aliases: 'l', type: :boolean, default: false, desc: 'Get last failed build.'
       method_option :pretty, type: :boolean, banner: 'true/false', default: true, desc: 'Make output pretty.'
@@ -66,7 +88,8 @@ module CircleCI
                     aliases: 'p',
                     type: :string,
                     banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
                     type: :numeric,
@@ -81,7 +104,8 @@ module CircleCI
                     aliases: 'p',
                     type: :string,
                     banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
                     type: :numeric,
@@ -96,8 +120,8 @@ module CircleCI
       method_option :project,
                     aliases: 'p',
                     type: :string,
-                    banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
                     type: :numeric,
@@ -112,7 +136,8 @@ module CircleCI
                     aliases: 'p',
                     type: :string,
                     banner: 'user/project',
-                    desc: 'A project you want to get. Default: default git remote of current directory'
+                    default: project,
+                    desc: 'A project you want to get.'
       method_option :branch,
                     aliases: 'b',
                     type: :string,
