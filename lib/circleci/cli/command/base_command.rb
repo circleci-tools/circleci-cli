@@ -51,7 +51,7 @@ module CircleCI
           end
 
           def should_be_pretty(options)
-            options['format'] != 'simple'
+            options.pretty.nil? || options.pretty
           end
         end
       end
