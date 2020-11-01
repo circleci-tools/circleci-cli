@@ -7,7 +7,7 @@ describe CircleCI::CLI::Command::CancelCommand, type: :command do
     let(:expected_output) { 'build user/project_name_from_api 1234 is canceled.' }
 
     it 'should cancel build' do
-      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) {}
+      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) { nil }
       expect(CircleCI::CLI::Command::CancelCommand).to receive(:say).with(expected_output.strip)
       CircleCI::CLI::Command::CancelCommand.run(options)
     end
