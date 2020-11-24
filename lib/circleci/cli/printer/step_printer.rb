@@ -26,7 +26,7 @@ module CircleCI
                 step.actions.map do |a|
                   "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{a.log}\n" if a.failed? && a.log}"
                 end
-              end.flatten.join('')
+              end.flatten.join
             end.join("\n")
           end
         end
