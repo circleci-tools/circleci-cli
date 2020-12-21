@@ -37,7 +37,7 @@ GEM
       ruby2_keywords
     faraday-http-cache (2.2.0)
       faraday (>= 0.8)
-    ffi (1.14.1)
+    ffi (1.14.2)
     formatador (0.2.5)
     github_changelog_generator (1.15.2)
       activesupport
