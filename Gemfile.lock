@@ -147,7 +147,7 @@ GEM
     tzinfo (2.0.4)
       concurrent-ruby (~> 1.0)
     unicode-display_width (1.7.0)
-    websocket (1.2.8)
+    websocket (1.2.9)
     zeitwerk (2.4.2)
 
 PLATFORMS
