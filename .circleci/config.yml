@@ -22,7 +22,7 @@ install_cmake: &install_cmake
 jobs:
   build:
     docker:
-      - image: circleci/ruby
+      - image: circleci/ruby:2.7.2
     steps:
       - checkout
       - *install_cmake
@@ -35,7 +35,7 @@ jobs:
             - vendor/bundle
   rubocop:
     docker:
-      - image: circleci/ruby
+      - image: circleci/ruby:2.7.2
     steps:
       - checkout
       - *install_cmake
@@ -45,7 +45,7 @@ jobs:
       - run: bundle exec rubocop
   rspec:
     docker:
-      - image: circleci/ruby
+      - image: circleci/ruby:2.7.2
     steps:
       - checkout
       - *install_cmake
