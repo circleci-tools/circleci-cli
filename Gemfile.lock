@@ -38,7 +38,7 @@ GEM
     faraday-http-cache (2.2.0)
       faraday (>= 0.8)
     faraday-net_http (1.0.1)
-    ffi (1.14.2)
+    ffi (1.15.0)
     formatador (0.2.5)
     github_changelog_generator (1.15.2)
       activesupport
@@ -71,7 +71,7 @@ GEM
     json (2.5.1)
     launchy (2.5.0)
       addressable (~> 2.7)
-    listen (3.4.1)
+    listen (3.5.0)
       rb-fsevent (~> 0.10, >= 0.10.3)
       rb-inotify (~> 0.9, >= 0.9.10)
     lumberjack (1.2.8)
