@@ -43,7 +43,7 @@ GEM
     async-pool (0.3.5)
       async (~> 1.25)
     circleci (2.0.3)
-    codecov (0.5.1)
+    codecov (0.5.2)
       simplecov (>= 0.15, < 0.22)
     coderay (1.1.3)
     concurrent-ruby (1.1.8)
