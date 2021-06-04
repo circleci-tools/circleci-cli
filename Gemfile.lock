@@ -69,7 +69,7 @@ GEM
     ffi (1.15.1)
     fiber-local (1.0.0)
     formatador (0.2.5)
-    github_changelog_generator (1.16.3)
+    github_changelog_generator (1.16.4)
       activesupport
       async (>= 1.25.0)
       async-http-faraday
@@ -78,7 +78,6 @@ GEM
       octokit (~> 4.6)
       rainbow (>= 2.2.1)
       rake (>= 10.0)
-      retriable (~> 3.0)
     guard (2.17.0)
       formatador (>= 0.2.4)
       listen (>= 2.7, < 4.0)
@@ -141,7 +140,6 @@ GEM
     rb-inotify (0.10.1)
       ffi (~> 1.0)
     regexp_parser (2.1.1)
-    retriable (3.1.2)
     rexml (3.2.5)
     rspec (3.10.0)
       rspec-core (~> 3.10.0)
