@@ -28,7 +28,7 @@ GEM
       console (~> 1.10)
       nio4r (~> 2.3)
       timers (~> 4.1)
-    async-http (0.56.2)
+    async-http (0.56.3)
       async (~> 1.25)
       async-io (~> 1.28)
       async-pool (~> 0.2)
