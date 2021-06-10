@@ -46,7 +46,7 @@ GEM
     codecov (0.5.2)
       simplecov (>= 0.15, < 0.22)
     coderay (1.1.3)
-    concurrent-ruby (1.1.8)
+    concurrent-ruby (1.1.9)
     console (1.12.0)
       fiber-local
     diff-lcs (1.4.4)
