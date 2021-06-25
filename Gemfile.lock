@@ -68,7 +68,7 @@ GEM
     faraday-net_http_persistent (1.1.0)
     ffi (1.15.3)
     fiber-local (1.0.0)
-    formatador (0.2.5)
+    formatador (0.3.0)
     github_changelog_generator (1.16.4)
       activesupport
       async (>= 1.25.0)
