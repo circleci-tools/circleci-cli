@@ -72,7 +72,7 @@ GEM
     faraday-net_http_persistent (1.2.0)
     faraday-patron (1.0.0)
     faraday-rack (1.0.0)
-    ffi (1.15.3)
+    ffi (1.15.4)
     fiber-local (1.0.0)
     formatador (0.3.0)
     github_changelog_generator (1.16.4)
