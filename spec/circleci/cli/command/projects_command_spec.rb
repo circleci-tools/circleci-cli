@@ -7,7 +7,7 @@ describe CircleCI::CLI::Command::ProjectsCommand, type: :command do
     let(:options) { OpenStruct.new(token: nil, pretty: true) }
     let(:expected_output) do
       <<~EXPECTED
-        +---------------+---------------------------+
+        +-------------------------------------------+
         |                 \e[0;32;49mProjects\e[0m                  |
         +---------------+---------------------------+
         | User name     | Repository name           |

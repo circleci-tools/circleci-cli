@@ -62,7 +62,7 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
 
       it 'prints steps' do
         expected = <<~EXPECTED
-          +--------+---------+--------+---------------+--------+----------+-----------+
+          +---------------------------------------------------------------------------+
           |          \e[0;32;49mRecent Builds / unhappychoice/default_reponame_from_api\e[0m          |
           +--------+---------+--------+---------------+--------+----------+-----------+
           | Number | Status  | Branch | Author        | Commit | Duration | StartTime |
