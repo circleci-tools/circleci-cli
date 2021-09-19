@@ -191,7 +191,7 @@ GEM
     timers (4.3.3)
     tzinfo (2.0.4)
       concurrent-ruby (~> 1.0)
-    unicode-display_width (2.0.0)
+    unicode-display_width (2.1.0)
     websocket (1.2.9)
     zeitwerk (2.4.2)
 
