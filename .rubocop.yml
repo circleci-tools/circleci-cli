@@ -5,6 +5,9 @@ AllCops:
 Style/Documentation:
   Enabled: false
 
+Styyle/OpenStructUse:
+  Enabled: false
+
 Layout/LineLength:
   Max: 120
 

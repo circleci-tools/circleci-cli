@@ -48,8 +48,8 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
 
       it 'prints steps' do
         expected = <<~EXPECTED
-          +------------+-------+
-          +------------+-------+
+          +--------------------+
+          +--------------------+
           |       \e[0;32;49mbuild\e[0m        |
           +------------+-------+
           | Dependency | 00:01 |
@@ -59,7 +59,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           +------------+-------+
           | \e[0;31;49mTest\e[0m       | 00:01 |
           | action log         |
-          +------------+-------+
+          +--------------------+
           |       \e[0;32;49mdeploy\e[0m       |
           +------------+-------+
           | \e[0;90;49mDeploy\e[0m     | 00:30 |
