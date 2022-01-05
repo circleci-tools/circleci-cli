@@ -13,7 +13,7 @@ def production_dependency(spec)
   spec.add_dependency 'rugged', '>= 0.26', '< 1.4'
   spec.add_dependency 'terminal-notifier', '~> 2.0.0'
   spec.add_dependency 'terminal-table', '>= 1.8', '< 3.1'
-  spec.add_dependency 'thor', '>= 0.20', '< 1.2'
+  spec.add_dependency 'thor', '>= 0.20', '< 1.3'
 end
 
 def development_dependency(spec)
