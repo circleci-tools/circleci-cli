@@ -76,7 +76,7 @@ GEM
     faraday-patron (1.0.0)
     faraday-rack (1.0.0)
     faraday-retry (1.0.3)
-    ffi (1.15.4)
+    ffi (1.15.5)
     fiber-local (1.0.0)
     formatador (0.3.0)
     github_changelog_generator (1.16.4)
