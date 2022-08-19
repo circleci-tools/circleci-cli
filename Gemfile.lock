@@ -41,7 +41,7 @@ GEM
       faraday
     async-io (1.33.0)
       async
-    async-pool (0.3.10)
+    async-pool (0.3.11)
       async (>= 1.25)
     circleci (2.0.3)
     codecov (0.6.0)
