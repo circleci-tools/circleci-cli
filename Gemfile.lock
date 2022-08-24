@@ -132,7 +132,7 @@ GEM
     parser (3.1.2.1)
       ast (~> 2.4.1)
     protocol-hpack (1.4.2)
-    protocol-http (0.23.4)
+    protocol-http (0.23.5)
     protocol-http1 (0.14.4)
       protocol-http (~> 0.22)
     protocol-http2 (0.14.2)
