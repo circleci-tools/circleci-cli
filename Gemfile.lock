@@ -133,7 +133,7 @@ GEM
       ast (~> 2.4.1)
     protocol-hpack (1.4.2)
     protocol-http (0.23.10)
-    protocol-http1 (0.14.4)
+    protocol-http1 (0.14.6)
       protocol-http (~> 0.22)
     protocol-http2 (0.14.2)
       protocol-hpack (~> 1.4)
