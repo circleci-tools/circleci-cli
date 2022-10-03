@@ -199,7 +199,7 @@ GEM
       concurrent-ruby (~> 1.0)
     unicode-display_width (2.2.0)
     websocket (1.2.9)
-    zeitwerk (2.6.0)
+    zeitwerk (2.6.1)
 
 PLATFORMS
   ruby
