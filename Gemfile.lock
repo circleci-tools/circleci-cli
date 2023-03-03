@@ -24,7 +24,7 @@ GEM
     addressable (2.8.1)
       public_suffix (>= 2.0.2, < 6.0)
     ast (2.4.2)
-    async (1.30.3)
+    async (1.31.0)
       console (~> 1.10)
       nio4r (~> 2.3)
       timers (~> 4.1)
