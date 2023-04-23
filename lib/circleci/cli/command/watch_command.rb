@@ -25,7 +25,12 @@ module CircleCI
             bind_status_event
 
             loop do
-              stop_existing_watcher_if_needed
+              stopped = stop_existing_watcher_if_needed
+
+              if stopped
+                return false
+              end
+
               start_watcher_if_needed
               sleep 1
             end
@@ -43,7 +48,7 @@ module CircleCI
             return if @build_watcher.nil?
 
             build = @repository.build_for(@build_watcher.build.build_number)
-            return if build.nil? || !build.finished?
+            return false if build.nil? || !build.finished?
 
             @build_watcher.stop(build.status)
             @build_watcher = nil
