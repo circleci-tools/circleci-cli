@@ -3,15 +3,29 @@ name: test
 on: [push]
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        ruby: ['2.7.x', '2.6.x', '2.5.x']
     steps:
       - uses: actions/checkout@master
       - name: Set up Ruby
-        uses: actions/setup-ruby@v1
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.2.2
+      - name: Install bundler
+        run: gem install bundler
+      - name: Install dependencies
+        run: bundle install --jobs 4
+      - name: Run test
+        run: bundle exec rubocop lib
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ruby: ['3.2.2', '3.1.4', '3.0.6', '2.7.8', '2.6.10']
+    steps:
+      - uses: actions/checkout@master
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
       - name: Install bundler
