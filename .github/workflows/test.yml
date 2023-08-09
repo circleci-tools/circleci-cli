@@ -33,4 +33,7 @@ jobs:
       - name: Install dependencies
         run: bundle install --jobs 4
       - name: Run test
+        env:
+          COVERAGE: true
+          CODECOV_TOKEN: efe02ed0-e754-42a6-bb90-bbf345747bdc
         run: bundle exec rspec
