@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     circleci-cli (3.0.0)
-      circleci (~> 2.0.2)
+      circleci (>= 2.1.0)
       faraday (>= 0.14, < 2.8)
       highline (>= 1.7.8, < 2.2.0)
       launchy (>= 2.4.3, < 2.6.0)
@@ -43,7 +43,7 @@ GEM
       async
     async-pool (0.4.0)
       async (>= 1.25)
-    circleci (2.0.3)
+    circleci (2.1.0)
     codecov (0.6.0)
       simplecov (>= 0.15, < 0.22)
     coderay (1.1.3)
