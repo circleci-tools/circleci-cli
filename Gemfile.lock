@@ -109,7 +109,7 @@ GEM
     highline (2.1.0)
     i18n (1.14.1)
       concurrent-ruby (~> 1.0)
-    json (2.6.3)
+    json (2.7.0)
     launchy (2.5.2)
       addressable (~> 2.8)
     listen (3.8.0)
