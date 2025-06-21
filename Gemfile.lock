@@ -15,6 +15,7 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
+    abbrev (0.1.2)
     activesupport (6.1.7.6)
       concurrent-ruby (~> 1.0, >= 1.0.2)
       i18n (>= 1.6, < 2)
@@ -43,6 +44,7 @@ GEM
       async
     async-pool (0.4.0)
       async (>= 1.25)
+    base64 (0.3.0)
     childprocess (5.0.0)
     circleci (2.1.0)
     codecov (0.6.0)
@@ -211,6 +213,8 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  abbrev
+  base64
   bundler
   circleci-cli!
   codecov
