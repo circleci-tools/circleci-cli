@@ -11,13 +11,13 @@ module CircleCI
           socket.connect(true)
         end
 
-        def bind(channel, event, &block)
+        def bind(channel, event, &)
           socket.subscribe(channel)
-          socket[channel].bind(event, &block)
+          socket[channel].bind(event, &)
         end
 
-        def bind_event_json(channel, event, &block)
-          bind(channel, event) { |data| JSON.parse(data).each(&block) }
+        def bind_event_json(channel, event, &)
+          bind(channel, event) { |data| JSON.parse(data).each(&) }
         end
 
         def unsubscribe(channel)
@@ -39,7 +39,7 @@ module CircleCI
           token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :')
           res = connection.post(
             "/auth/pusher?circle-token=#{token}",
-            { socket_id: socket_id, channel_name: channel.name }
+            { socket_id:, channel_name: channel.name }
           )
           JSON.parse(res.body)['auth']
         end

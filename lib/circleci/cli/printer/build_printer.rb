@@ -12,7 +12,7 @@ module CircleCI
               ["Author:   #{build.author_name}"],
               ["Workflow: #{build.workflow_name}/#{build.workflow_job_name}"]
             ]
-            Terminal::Table.new(title: title, rows: texts, style: { width: 120 }).to_s
+            Terminal::Table.new(title:, rows: texts, style: { width: 120 }).to_s
           end
         end
 
@@ -33,7 +33,7 @@ module CircleCI
         end
 
         def print_pretty
-          Terminal::Table.new(title: title, headings: headings, rows: rows).to_s
+          Terminal::Table.new(title:, headings:, rows:).to_s
         end
 
         def title

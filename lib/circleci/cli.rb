@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-
 require 'circleci'
 require 'faraday'
 require 'highline/import'
