@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
-require 'thor'
-require 'faraday'
-require 'launchy'
-require 'terminal-table'
-require 'highline/import'
-require 'rugged'
+
 require 'circleci'
+require 'faraday'
+require 'highline/import'
+require 'launchy'
+require 'ostruct'
+require 'rugged'
 require 'terminal-notifier'
+require 'terminal-table'
+require 'thor'
 
 require 'circleci/cli/version'
 require 'circleci/cli/command'

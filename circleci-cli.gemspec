@@ -17,6 +17,8 @@ def production_dependency(spec)
 end
 
 def development_dependency(spec)
+  spec.add_development_dependency 'abbrev'
+  spec.add_development_dependency 'base64'
   spec.add_development_dependency 'bundler'
   spec.add_development_dependency 'codecov'
   spec.add_development_dependency 'github_changelog_generator'
@@ -38,13 +40,13 @@ end
 Gem::Specification.new do |spec|
   spec.name                  = 'circleci-cli'
   spec.version               = CircleCI::CLI::VERSION
-  spec.required_ruby_version = '>= 2.5'
+  spec.required_ruby_version = '>= 3.1'
   spec.authors               = ['unhappychoice']
   spec.email                 = ['unhappychoice@gmail.com']
 
   spec.summary                = 'CLI tool for CircleCI'
   spec.description            = 'A command line tool for CircleCI'
-  spec.homepage               = 'https://github.com/unhappychoice/circleci-cli'
+  spec.homepage               = 'https://github.com/circleci-tools/circleci-cli'
   spec.license                = 'MIT'
   spec.files                  = project_files
   spec.bindir                 = 'exe'
