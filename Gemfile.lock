@@ -119,7 +119,7 @@ GEM
       rubocop (< 2.0)
     highline (3.1.2)
       reline
-    i18n (1.14.5)
+    i18n (1.14.7)
       concurrent-ruby (~> 1.0)
     io-console (0.8.0)
     io-endpoint (0.15.2)
