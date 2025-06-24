@@ -158,7 +158,7 @@ GEM
     protocol-http2 (0.22.1)
       protocol-hpack (~> 1.4)
       protocol-http (~> 0.47)
-    pry (0.14.2)
+    pry (0.15.2)
       coderay (~> 1.1)
       method_source (~> 1.0)
     public_suffix (4.0.7)
