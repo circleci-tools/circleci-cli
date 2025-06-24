@@ -12,7 +12,7 @@ def production_dependency(spec)
   spec.add_dependency 'pusher-client', '~> 0.6.2'
   spec.add_dependency 'rugged', '>= 0.26', '< 1.10'
   spec.add_dependency 'terminal-notifier', '~> 2.0.0'
-  spec.add_dependency 'terminal-table', '>= 1.8', '< 3.1'
+  spec.add_dependency 'terminal-table', '>= 1.8', '< 4.1'
   spec.add_dependency 'thor', '>= 0.20', '< 1.3'
 end
 
