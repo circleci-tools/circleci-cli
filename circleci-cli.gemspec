@@ -6,7 +6,7 @@ require 'circleci/cli/version'
 
 def production_dependency(spec)
   spec.add_dependency 'circleci', '>= 2.1.0'
-  spec.add_dependency 'faraday', '>= 0.14', '< 2.8'
+  spec.add_dependency 'faraday', '>= 0.14', '< 2.14'
   spec.add_dependency 'highline', '>= 1.7.8', '< 3.2.0'
   spec.add_dependency 'launchy', '>= 2.4.3', '< 3.2.0'
   spec.add_dependency 'pusher-client', '~> 0.6.2'
