@@ -41,7 +41,7 @@ GEM
       protocol-http1 (~> 0.30)
       protocol-http2 (~> 0.22)
       traces (~> 0.10)
-    async-http-faraday (0.12.0)
+    async-http-faraday (0.21.0)
       async-http (~> 0.42)
       faraday
     async-pool (0.10.3)
@@ -110,7 +110,7 @@ GEM
     io-endpoint (0.15.2)
     io-event (1.11.0)
     io-stream (0.6.1)
-    json (2.7.2)
+    json (2.12.2)
     launchy (3.1.1)
       addressable (~> 2.8)
       childprocess (~> 5.0)
