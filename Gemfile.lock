@@ -41,7 +41,7 @@ GEM
       protocol-http1 (~> 0.30)
       protocol-http2 (~> 0.22)
       traces (~> 0.10)
-    async-http-faraday (0.21.0)
+    async-http-faraday (0.22.0)
       async-http (~> 0.42)
       faraday
     async-pool (0.10.3)
