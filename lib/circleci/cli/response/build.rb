@@ -58,7 +58,7 @@ module CircleCI
         end
 
         def finished?
-          status == 'success' || status == 'canceled' || status == 'failed' || status == 'no_tests'
+          %w[success canceled failed no_tests].include?(status)
         end
 
         def channel_name

@@ -31,7 +31,7 @@ module CircleCI
             '1cf6e0e755e419d2ac9a',
             secure: true,
             auth_method: proc { |a, b| auth(a, b) },
-            logger: Logger.new('/dev/null')
+            logger: Logger.new(File::NULL)
           )
         end
 

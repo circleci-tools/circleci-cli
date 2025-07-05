@@ -22,11 +22,11 @@ module CircleCI
             end.to_s
           else
             @steps.group_by(&:type).map do |_, steps|
-              steps.map do |step|
+              steps.flat_map do |step|
                 step.actions.map do |a|
                   "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{a.log}\n" if a.failed? && a.log}"
                 end
-              end.flatten.join
+              end.join
             end.join("\n")
           end
         end
