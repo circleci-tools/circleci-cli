@@ -5,7 +5,7 @@ AllCops:
 Style/Documentation:
   Enabled: false
 
-Styyle/OpenStructUse:
+Style/OpenStructUse:
   Enabled: false
 
 Layout/LineLength:
