@@ -10,49 +10,99 @@ module CircleCI
           @build = build
           @verbose = verbose
           @messages = Hash.new { |h, k| h[k] = [] }
+
+          @build_thread = nil
+          @step_thread = nil
+
+          @steps = build.steps
         end
 
         def start
-          bind_event_handling @build.channel_name
+          poll_build
           notify_started
         end
 
         def stop(status)
-          client.unsubscribe("#{@build.channel_name}@0")
+          update_build
+          @build_thread&.kill
+          @step_thread&.kill
           notify_stopped(status)
         end
 
         private
 
-        def bind_event_handling(channel) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
-          client.bind_event_json(channel, 'newAction') do |json|
-            if @verbose
-              print_bordered json['log']['name']
-            else
-              print json['log']['name']
-            end
-          end
-
-          client.bind_event_json(channel, 'appendAction') do |json|
-            if @verbose
-              Thor::Shell::Basic.new.say(json['out']['message'], nil, false)
-            else
-              @messages[json['step']] << json['out']['message']
-            end
-          end
-
-          client.bind_event_json(channel, 'updateAction') do |json|
-            next if @verbose
-
-            case json['log']['status']
-            when 'success'
-              puts "\e[2K\r#{Printer.colorize_green(json['log']['name'])}"
-            when 'failed'
-              puts "\e[2K\r#{Printer.colorize_red(json['log']['name'])}"
-              @messages[json['step']].each(&method(:say))
-            end
-          end
+        def poll_build
+          # TODO: Start fetching the build periodically
+          @build_thread = Thread.new do
+            loop do
+              update_build
+              sleep 5
+             end
+           end
         end
+
+        def update_build
+          build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+
+          def on_new_step(step)
+            # step_watcher.start()
+
+            if @verbose
+              print_bordered step.name
+            else
+              case step.status
+              when 'success'
+                puts "\e[2K\r#{Printer.colorize_green(step.name)}"
+              when 'failed'
+                puts "\e[2K\r#{Printer.colorize_red(step.name)}"
+              else
+                puts step.name
+              end
+            end
+          end
+
+          def on_new_step_status(step)
+            # step_watcher.stop()
+
+            return if @verbose
+            case step.status
+            when 'success'
+              puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
+            when 'failed'
+              puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
+              @messages[step].each(&method(:say))
+            end
+          end
+
+          # Calc actions diff and dispatch event
+          build.steps
+               .each { |step|
+                 on_new_step(step) unless @steps.any? { |s| s.name == step.name }
+                 on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
+               }
+
+          @steps = build.steps
+        end
+
+#        def step_watcher(step)
+#          @step_thread = Thread.new do
+#            loop do
+#              response = Faraday.new(
+#                "https://circleci.com/api/private/output/raw/github/#{@build.org}/#{@build.repo}/#{@build.number}/output//#{step.actions.step}"
+#              ).get.body
+#              active_step =
+#              if !response.empty?
+#                if @verbose
+#                  Thor::Shell::Basic.new.say(json['out']['message'], nil, false)
+#                else
+#                  @messages[json['step']] << json['out']['message']
+#                end
+#              end
+#
+#              sleep 1
+#            end
+#          end
+#        end
 
         def notify_started
           say Printer::BuildPrinter.header_for(
@@ -74,10 +124,6 @@ module CircleCI
 
         def print_bordered(text)
           say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
-        end
-
-        def client
-          @client ||= Networking::CircleCIPusherClient.new.tap(&:connect)
         end
       end
     end

@@ -82,7 +82,7 @@ module CircleCI
         end
 
         def steps
-          hash = @hash['steps'].group_by { |s| s['actions'].first['type'] }
+          hash = @hash['steps']&.group_by { |s| s['actions'].first['type'] } || {}
           hash.flat_map { |type, value| value.map { |v| Step.new(type, v) } }
         end
 
