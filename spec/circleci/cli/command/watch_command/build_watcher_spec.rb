@@ -33,13 +33,6 @@ describe CircleCI::CLI::Command::BuildWatcher do
     subject { described_class.new(build, verbose: verbose).start }
 
     before do
-      expect_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'newAction')
-      expect_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'appendAction')
-      expect_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'updateAction')
-
       expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
     end
 
@@ -86,11 +79,6 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
   describe '#stop' do
     subject { described_class.new(build, verbose: verbose).stop(status) }
-
-    before do
-      expect_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:unsubscribe).with("#{build.channel_name}@0")
-    end
 
     context 'with verbose option' do
       let(:verbose) { true }
@@ -162,13 +150,6 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
     before do
       allow_any_instance_of(described_class).to receive(:notify_started)
-
-      allow_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'newAction').and_yield(*new_actions)
-      allow_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'appendAction').and_yield(*append_actions)
-      allow_any_instance_of(CircleCI::CLI::Networking::CircleCIPusherClient)
-        .to receive(:bind_event_json).with(build.channel_name, 'updateAction').and_yield(*update_actions)
     end
 
     context 'with verbose option' do
