@@ -12,9 +12,10 @@ module CircleCI
           @messages = Hash.new { |h, k| h[k] = [] }
 
           @build_thread = nil
-          @step_thread = nil
 
           @steps = build.steps
+          @current_step = nil
+          @read_byte = 0
         end
 
         def start
@@ -25,18 +26,25 @@ module CircleCI
         def stop(status)
           update_build
           @build_thread&.kill
-          @step_thread&.kill
           notify_stopped(status)
         end
 
         private
 
         def poll_build
-          # TODO: Start fetching the build periodically
           @build_thread = Thread.new do
             loop do
               update_build
-              sleep 5
+              update_actions
+              sleep 1
+              update_actions
+              sleep 1
+              update_actions
+              sleep 1
+              update_actions
+              sleep 1
+              update_actions
+              sleep 1
              end
            end
         end
@@ -45,8 +53,6 @@ module CircleCI
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
 
           def on_new_step(step)
-            # step_watcher.start()
-
             if @verbose
               print_bordered step.name
             else
@@ -62,15 +68,13 @@ module CircleCI
           end
 
           def on_new_step_status(step)
-            # step_watcher.stop()
-
             return if @verbose
             case step.status
             when 'success'
               puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
             when 'failed'
               puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
-              @messages[step].each(&method(:say))
+              @messages[step.name].each(&method(:say))
             end
           end
 
@@ -82,27 +86,32 @@ module CircleCI
                }
 
           @steps = build.steps
+
+          next_step = build.steps.find { |s| s.status == 'running' }
+          @read_byte = 0 if @current_step&.name != next_step&.name
+          @current_step = next_step
         end
 
-#        def step_watcher(step)
-#          @step_thread = Thread.new do
-#            loop do
-#              response = Faraday.new(
-#                "https://circleci.com/api/private/output/raw/github/#{@build.org}/#{@build.repo}/#{@build.number}/output//#{step.actions.step}"
-#              ).get.body
-#              active_step =
-#              if !response.empty?
-#                if @verbose
-#                  Thor::Shell::Basic.new.say(json['out']['message'], nil, false)
-#                else
-#                  @messages[json['step']] << json['out']['message']
-#                end
-#              end
-#
-#              sleep 1
-#            end
-#          end
-#        end
+        def update_actions
+          return unless @current_step
+
+          response = Faraday.new(
+            url: "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}",
+            headers: { 'Range': "bytes=#{@read_byte}-" },
+          ).get.body
+
+          unless response.empty?
+            @read_byte += response.bytesize
+
+            if @verbose
+              Thor::Shell::Basic.new.say(response, nil, false)
+            else
+              @messages[@current_step.name] << response
+            end
+          end
+
+          sleep 1
+        end
 
         def notify_started
           say Printer::BuildPrinter.header_for(
