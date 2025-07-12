@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    circleci-cli (4.0.0)
+    circleci-cli (4.0.1)
       circleci (>= 2.1.0)
       faraday (>= 0.14, < 2.14)
       highline (>= 1.7.8, < 3.2.0)
