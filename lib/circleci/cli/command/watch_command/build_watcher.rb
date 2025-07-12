@@ -33,57 +33,56 @@ module CircleCI
 
         def poll_build
           @build_thread = Thread.new do
+            count = 0
             loop do
-              update_build
+              update_build if (count % 5).zero?
               update_actions
+
+              count += 1
               sleep 1
-              update_actions
-              sleep 1
-              update_actions
-              sleep 1
-              update_actions
-              sleep 1
-              update_actions
-              sleep 1
-             end
-           end
+            end
+          end
         end
 
+        # rubocop:disable Metrics/MethodLength
+        def on_new_step(step)
+          if @verbose
+            print_bordered step.name
+          else
+            case step.status
+            when 'success'
+              puts "\e[2K\r#{Printer.colorize_green(step.name)}"
+            when 'failed'
+              puts "\e[2K\r#{Printer.colorize_red(step.name)}"
+            else
+              puts step.name
+            end
+          end
+        end
+        # rubocop:enable Metrics/MethodLength
+
+        def on_new_step_status(step)
+          return if @verbose
+
+          case step.status
+          when 'success'
+            puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
+          when 'failed'
+            puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
+            @messages[step.name].each(&method(:say))
+          end
+        end
+
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
 
-          def on_new_step(step)
-            if @verbose
-              print_bordered step.name
-            else
-              case step.status
-              when 'success'
-                puts "\e[2K\r#{Printer.colorize_green(step.name)}"
-              when 'failed'
-                puts "\e[2K\r#{Printer.colorize_red(step.name)}"
-              else
-                puts step.name
-              end
-            end
-          end
-
-          def on_new_step_status(step)
-            return if @verbose
-            case step.status
-            when 'success'
-              puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
-            when 'failed'
-              puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
-              @messages[step.name].each(&method(:say))
-            end
-          end
-
           # Calc actions diff and dispatch event
           build.steps
-               .each { |step|
+               .each do |step|
                  on_new_step(step) unless @steps.any? { |s| s.name == step.name }
                  on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
-               }
+               end
 
           @steps = build.steps
 
@@ -91,27 +90,28 @@ module CircleCI
           @read_byte = 0 if @current_step&.name != next_step&.name
           @current_step = next_step
         end
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
+        # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
         def update_actions
           return unless @current_step
 
           response = Faraday.new(
             url: "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}",
-            headers: { 'Range': "bytes=#{@read_byte}-" },
+            headers: { Range: "bytes=#{@read_byte}-" }
           ).get.body
 
-          unless response.empty?
-            @read_byte += response.bytesize
+          return if response.empty?
 
-            if @verbose
-              Thor::Shell::Basic.new.say(response, nil, false)
-            else
-              @messages[@current_step.name] << response
-            end
+          @read_byte += response.bytesize
+
+          if @verbose
+            Thor::Shell::Basic.new.say(response, nil, false)
+          else
+            @messages[@current_step.name] << response
           end
-
-          sleep 1
         end
+        # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
         def notify_started
           say Printer::BuildPrinter.header_for(
