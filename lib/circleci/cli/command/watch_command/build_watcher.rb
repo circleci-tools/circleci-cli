@@ -96,10 +96,11 @@ module CircleCI
         def update_actions
           return unless @current_step
 
-          response = Faraday.new(
-            url: "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}",
-            headers: { Range: "bytes=#{@read_byte}-" }
-          ).get.body
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
+          headers = { 'Range' => "bytes=#{@read_byte}-" }
+          res = HTTPClient.get(url, headers)
+
+          response = res.body
 
           return if response.empty?
 

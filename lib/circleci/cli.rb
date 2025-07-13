@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'circleci'
-require 'faraday'
+
 require 'highline/import'
 require 'launchy'
 require 'ostruct'
@@ -14,6 +14,7 @@ require 'circleci/cli/version'
 require 'circleci/cli/command'
 require 'circleci/cli/response'
 require 'circleci/cli/printer'
+require 'circleci/cli/networking/http_client'
 require 'circleci/cli/networking'
 
 module CircleCI

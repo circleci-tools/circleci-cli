@@ -10,7 +10,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
 
     it 'connects to socket' do
       allow(PusherClient).to receive_message_chain(:logger, :debug)
-      allow_any_instance_of(Faraday).to receive(:post) { '' }
+      allow(Net::HTTP).to receive(:post_form) { double(body: '{"auth":""}') }
       allow_any_instance_of(described_class).to receive(:socket) { mock_socket }
 
       expect(PusherClient).to receive_message_chain(:logger, :level=).with(Logger::ERROR)
