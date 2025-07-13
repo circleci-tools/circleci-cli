@@ -37,11 +37,10 @@ module CircleCI
 
         def auth(socket_id, channel)
           token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :')
-          res = HTTPClient.post_form("https://circleci.com/auth/pusher?circle-token=#{token}", { socket_id: socket_id, channel_name: channel.name })
+          res = HTTPClient.post_form("https://circleci.com/auth/pusher?circle-token=#{token}",
+                                     { socket_id: socket_id, channel_name: channel.name })
           res['auth']
         end
-
-        
       end
     end
   end
