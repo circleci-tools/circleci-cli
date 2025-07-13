@@ -17,8 +17,8 @@ module CircleCI
         end
 
         def log
-          request(@hash['output_url'])
-            .map do |r|
+          HTTPClient.get(@hash['output_url'])
+                    .map do |r|
             r['message']
               .gsub("\r\n", "\n")
               .gsub("\e[A\r\e[2K", '')
@@ -30,12 +30,6 @@ module CircleCI
 
         def failed?
           @status == 'timedout' || @status == 'failed'
-        end
-
-        private
-
-        def request(url)
-          JSON.parse(Faraday.new(url).get.body)
         end
       end
     end

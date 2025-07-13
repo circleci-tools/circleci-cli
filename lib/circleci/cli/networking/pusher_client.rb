@@ -37,18 +37,9 @@ module CircleCI
 
         def auth(socket_id, channel)
           token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :')
-          res = connection.post(
-            "/auth/pusher?circle-token=#{token}",
-            { socket_id:, channel_name: channel.name }
-          )
-          JSON.parse(res.body)['auth']
-        end
-
-        def connection
-          Faraday.new(url: 'https://circleci.com') do |f|
-            f.request :url_encoded
-            f.adapter Faraday.default_adapter
-          end
+          res = HTTPClient.post_form("https://circleci.com/auth/pusher?circle-token=#{token}",
+                                     { socket_id: socket_id, channel_name: channel.name })
+          res['auth']
         end
       end
     end
