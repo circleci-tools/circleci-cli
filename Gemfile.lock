@@ -115,7 +115,7 @@ GEM
       reline
     i18n (1.14.7)
       concurrent-ruby (~> 1.0)
-    io-console (0.8.0)
+    io-console (0.8.1)
     io-endpoint (0.15.2)
     io-event (1.11.2)
     io-stream (0.6.1)
