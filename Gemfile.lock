@@ -134,7 +134,7 @@ GEM
     lumberjack (1.4.2)
     method_source (1.1.0)
     metrics (0.12.2)
-    minitest (5.25.5)
+    minitest (5.26.0)
     multi_json (1.17.0)
     nenv (0.3.0)
     net-http (0.6.0)
