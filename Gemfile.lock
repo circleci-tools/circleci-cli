@@ -53,7 +53,7 @@ GEM
       async (>= 1.25)
     base64 (0.3.0)
     benchmark (0.4.1)
-    bigdecimal (3.3.0)
+    bigdecimal (3.3.1)
     childprocess (5.1.0)
       logger (~> 1.5)
     circleci (2.1.0)
