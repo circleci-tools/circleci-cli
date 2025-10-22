@@ -52,7 +52,7 @@ GEM
     async-pool (0.10.3)
       async (>= 1.25)
     base64 (0.3.0)
-    benchmark (0.4.1)
+    benchmark (0.5.0)
     bigdecimal (3.3.1)
     childprocess (5.1.0)
       logger (~> 1.5)
