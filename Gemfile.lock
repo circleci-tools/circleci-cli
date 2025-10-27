@@ -147,7 +147,7 @@ GEM
       sawyer (~> 0.9)
     ostruct (0.6.3)
     parallel (1.27.0)
-    parser (3.3.9.0)
+    parser (3.3.10.0)
       ast (~> 2.4.1)
       racc
     prism (1.6.0)
