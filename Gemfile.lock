@@ -82,7 +82,7 @@ GEM
     fiber-local (1.1.0)
       fiber-storage
     fiber-storage (1.0.1)
-    formatador (1.2.1)
+    formatador (1.2.2)
       reline
     github_changelog_generator (1.16.4)
       activesupport
