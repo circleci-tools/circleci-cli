@@ -82,7 +82,7 @@ GEM
     fiber-local (1.1.0)
       fiber-storage
     fiber-storage (1.0.1)
-    formatador (1.2.2)
+    formatador (1.2.3)
       reline
     github_changelog_generator (1.16.4)
       activesupport
@@ -172,7 +172,7 @@ GEM
     rb-inotify (0.11.1)
       ffi (~> 1.0)
     regexp_parser (2.11.3)
-    reline (0.6.2)
+    reline (0.6.3)
       io-console (~> 0.5)
     rspec (3.13.2)
       rspec-core (~> 3.13.0)
