@@ -135,7 +135,7 @@ GEM
     method_source (1.1.0)
     metrics (0.12.2)
     minitest (5.27.0)
-    multi_json (1.19.0)
+    multi_json (1.19.1)
     nenv (0.3.0)
     net-http (0.9.1)
       uri (>= 0.11.1)
