@@ -2,5 +2,17 @@
 
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in circle.gemspec
 gemspec
+
+gem 'abbrev'
+gem 'base64'
+gem 'bundler'
+gem 'codecov'
+gem 'github_changelog_generator'
+gem 'guard'
+gem 'guard-rspec'
+gem 'guard-rubocop'
+gem 'rake'
+gem 'rspec'
+gem 'rubocop'
+gem 'simplecov'
