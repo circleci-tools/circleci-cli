@@ -6,7 +6,7 @@ require 'circleci/cli/version'
 
 def production_dependency(spec)
   spec.add_dependency 'circleci', '>= 2.1.0'
-  
+
   spec.add_dependency 'highline', '>= 1.7.8', '< 3.2.0'
   spec.add_dependency 'launchy', '>= 2.4.3', '< 3.2.0'
   spec.add_dependency 'pusher-client', '~> 0.6.2'
@@ -14,21 +14,6 @@ def production_dependency(spec)
   spec.add_dependency 'terminal-notifier', '~> 2.0.0'
   spec.add_dependency 'terminal-table', '>= 1.8', '< 4.1'
   spec.add_dependency 'thor', '>= 0.20', '< 1.6'
-end
-
-def development_dependency(spec)
-  spec.add_development_dependency 'abbrev'
-  spec.add_development_dependency 'base64'
-  spec.add_development_dependency 'bundler'
-  spec.add_development_dependency 'codecov'
-  spec.add_development_dependency 'github_changelog_generator'
-  spec.add_development_dependency 'guard'
-  spec.add_development_dependency 'guard-rspec'
-  spec.add_development_dependency 'guard-rubocop'
-  spec.add_development_dependency 'rake'
-  spec.add_development_dependency 'rspec'
-  spec.add_development_dependency 'rubocop'
-  spec.add_development_dependency 'simplecov'
 end
 
 def project_files
@@ -57,5 +42,4 @@ Gem::Specification.new do |spec|
   }
 
   production_dependency spec
-  development_dependency spec
 end

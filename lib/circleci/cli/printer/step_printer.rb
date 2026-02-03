@@ -15,9 +15,9 @@ module CircleCI
               @steps
                 .group_by(&:type)
                 .each do |key, steps|
-                t << :separator
-                t << [{ value: Printer.colorize_green(key), alignment: :center, colspan: 2 }]
-                steps.each { |s| print_actions(t, s) }
+                  t << :separator
+                  t << [{ value: Printer.colorize_green(key), alignment: :center, colspan: 2 }]
+                  steps.each { |s| print_actions(t, s) }
               end
             end.to_s
           else

@@ -19,11 +19,11 @@ module CircleCI
         def log
           HTTPClient.get(@hash['output_url'])
                     .map do |r|
-            r['message']
-              .gsub("\r\n", "\n")
-              .gsub("\e[A\r\e[2K", '')
-              .scan(/.{1,120}/)
-              .join("\n")
+                      r['message']
+                        .gsub("\r\n", "\n")
+                        .gsub("\e[A\r\e[2K", '')
+                        .scan(/.{1,120}/)
+                        .join("\n")
           end
             .join("\n")
         end
