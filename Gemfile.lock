@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    circleci-cli (4.0.1)
+    circleci-cli (4.0.2)
       circleci (>= 2.1.0)
       highline (>= 1.7.8, < 3.2.0)
       launchy (>= 2.4.3, < 3.2.0)
