@@ -1,38 +1,12 @@
 version: 2
 updates:
-- package-ecosystem: bundler
-  directory: "/"
-  schedule:
-    interval: daily
-    time: "12:00"
-    timezone: Asia/Tokyo
-  open-pull-requests-limit: 20
-  reviewers:
-  - unhappychoice
-  allow:
-  - dependency-type: direct
-  - dependency-type: indirect
-  ignore:
-  - dependency-name: codecov
-    versions:
-    - ">= 0.2.14.a, < 0.2.15"
-  - dependency-name: rubocop
-    versions:
-    - 1.12.1
-  - dependency-name: listen
-    versions:
-    - 3.5.0
-  - dependency-name: github_changelog_generator
-    versions:
-    - 1.16.0
-    - 1.16.1
-  - dependency-name: codecov
-    versions:
-    - 0.5.0
-  - dependency-name: regexp_parser
-    versions:
-    - 2.1.0
-    - 2.1.1
-  - dependency-name: activesupport
-    versions:
-    - 6.1.2
+  - package-ecosystem: bundler
+    directory: "/"
+    schedule:
+      interval: daily
+      time: "12:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 20
+    allow:
+      - dependency-type: direct
+      - dependency-type: indirect
