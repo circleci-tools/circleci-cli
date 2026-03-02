@@ -35,5 +35,10 @@ jobs:
       - name: Run test
         env:
           COVERAGE: true
-          CODECOV_TOKEN: efe02ed0-e754-42a6-bb90-bbf345747bdc
         run: bundle exec rspec
+      - name: Upload coverage to Codecov
+        if: matrix.ruby == '3.4.4'
+        uses: codecov/codecov-action@v5
+        with:
+          token: efe02ed0-e754-42a6-bb90-bbf345747bdc
+          files: coverage/.resultset.json

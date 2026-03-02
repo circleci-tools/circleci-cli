@@ -6,11 +6,6 @@ if ENV['COVERAGE']
   SimpleCov.start
 end
 
-if ENV['CODECOV_TOKEN']
-  require 'codecov'
-  SimpleCov.formatter = SimpleCov::Formatter::Codecov
-end
-
 $LOAD_PATH.unshift File.expand_path('../lib', __dir__)
 require 'circleci_cli'
 

@@ -7,7 +7,6 @@ gemspec
 gem 'abbrev'
 gem 'base64'
 gem 'bundler'
-gem 'codecov'
 gem 'github_changelog_generator'
 gem 'guard'
 gem 'guard-rspec'
