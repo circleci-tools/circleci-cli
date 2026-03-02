@@ -57,9 +57,6 @@ GEM
     childprocess (5.1.0)
       logger (~> 1.5)
     circleci (2.1.0)
-    codecov (0.2.12)
-      json
-      simplecov
     coderay (1.1.3)
     concurrent-ruby (1.3.6)
     connection_pool (2.5.5)
@@ -241,7 +238,6 @@ DEPENDENCIES
   base64
   bundler
   circleci-cli!
-  codecov
   github_changelog_generator
   guard
   guard-rspec
