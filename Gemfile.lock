@@ -82,12 +82,12 @@ GEM
     fiber-storage (1.0.1)
     formatador (1.2.3)
       reline
-    github_changelog_generator (1.16.4)
+    github_changelog_generator (1.17.0)
       activesupport
       async (>= 1.25.0)
       async-http-faraday
+      benchmark
       faraday-http-cache
-      multi_json
       octokit (~> 4.6)
       rainbow (>= 2.2.1)
       rake (>= 10.0)
@@ -138,7 +138,6 @@ GEM
     method_source (1.1.0)
     metrics (0.12.2)
     minitest (5.27.0)
-    multi_json (1.19.1)
     nenv (0.3.0)
     net-http (0.9.1)
       uri (>= 0.11.1)
