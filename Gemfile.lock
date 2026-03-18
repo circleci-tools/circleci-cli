@@ -82,7 +82,7 @@ GEM
     fiber-storage (1.0.1)
     formatador (1.2.3)
       reline
-    github_changelog_generator (1.17.0)
+    github_changelog_generator (1.18.0)
       activesupport
       async (>= 1.25.0)
       async-http-faraday
