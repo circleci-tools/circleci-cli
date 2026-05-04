@@ -41,7 +41,8 @@ describe CircleCI::CLI::Command::CancelCommand, type: :command do
 
     it 'shows failure message' do
       allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) { nil }
-      expect(CircleCI::CLI::Command::CancelCommand).to receive(:say).with('failed to cancel unhappychoice/Circler 1234.')
+      expect(CircleCI::CLI::Command::CancelCommand)
+        .to receive(:say).with('failed to cancel unhappychoice/Circler 1234.')
       CircleCI::CLI::Command::CancelCommand.run(options)
     end
   end

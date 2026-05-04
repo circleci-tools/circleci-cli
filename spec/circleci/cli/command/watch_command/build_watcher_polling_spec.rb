@@ -86,6 +86,43 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect(watcher).to have_received(:puts).with("\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}")
       expect(watcher).to have_received(:say).with('captured output')
     end
+
+    it 'prints new step statuses for success, failure, and in-progress steps' do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+        build_response.call(
+          [
+            step_hash.call(name: 'Build', type: 'build', status: 'success'),
+            step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 1, step: 2),
+            step_hash.call(name: 'Deploy', type: 'deploy', status: 'running', index: 2, step: 3)
+          ]
+        )
+      )
+      allow(watcher).to receive(:puts)
+
+      watcher.instance_variable_set(:@steps, [])
+      watcher.send(:update_build)
+
+      expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}")
+      expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}")
+      expect(watcher).to have_received(:puts).with('Deploy')
+    end
+
+    it 'replaces a running step with a success status line' do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+        build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'success')])
+      )
+      allow(watcher).to receive(:puts)
+
+      watcher.instance_variable_set(
+        :@steps,
+        [build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'running')]).steps.first]
+      )
+      watcher.send(:update_build)
+
+      expect(watcher).to have_received(:puts).with(
+        "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
+      )
+    end
   end
 
   describe '#update_actions' do
