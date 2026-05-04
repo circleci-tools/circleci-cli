@@ -52,4 +52,35 @@ describe CircleCI::CLI::Runner do
       it { is_expected.to be_nil }
     end
   end
+
+  describe '.start' do
+    [
+      ['projects', [], CircleCI::CLI::Command::ProjectsCommand, { 'pretty' => true }],
+      ['builds', %w[--project octocat/hello-world --branch main], CircleCI::CLI::Command::BuildsCommand,
+       { 'project' => 'octocat/hello-world', 'branch' => 'main', 'all' => false, 'pretty' => true }],
+      ['build', %w[--project octocat/hello-world --build 42], CircleCI::CLI::Command::BuildCommand,
+       { 'project' => 'octocat/hello-world', 'build' => 42, 'last' => false, 'pretty' => true }],
+      ['browse', %w[--project octocat/hello-world --build 42], CircleCI::CLI::Command::BrowseCommand,
+       { 'project' => 'octocat/hello-world', 'build' => 42 }],
+      ['retry', %w[--project octocat/hello-world --build 42], CircleCI::CLI::Command::RetryCommand,
+       { 'project' => 'octocat/hello-world', 'build' => 42 }],
+      ['cancel', %w[--project octocat/hello-world --build 42], CircleCI::CLI::Command::CancelCommand,
+       { 'project' => 'octocat/hello-world', 'build' => 42 }],
+      ['watch', %w[--project octocat/hello-world --branch main --user octocat --verbose],
+       CircleCI::CLI::Command::WatchCommand,
+       { 'project' => 'octocat/hello-world', 'branch' => 'main', 'user' => 'octocat', 'verbose' => true }]
+    ].each do |command_name, arguments, command_class, expected_options|
+      it "routes #{command_name} to #{command_class}" do
+        expect(command_class).to receive(:run) do |options|
+          expect(options.to_h.slice(*expected_options.keys)).to eq(expected_options)
+        end
+
+        described_class.start([command_name, *arguments])
+      end
+    end
+
+    it 'prints the version' do
+      expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
+    end
+  end
 end
