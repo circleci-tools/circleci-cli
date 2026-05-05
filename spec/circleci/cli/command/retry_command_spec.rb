@@ -41,4 +41,16 @@ describe CircleCI::CLI::Command::RetryCommand, type: :command do
 
     it_behaves_like 'a command retries build'
   end
+
+  context 'when retry fails' do
+    let(:project_name) { 'unhappychoice/Circler' }
+    let(:options) { OpenStruct.new(project: project_name, build: 1234) }
+    let(:build_hash) { {} }
+
+    it 'shows failure message' do
+      allow(CircleCI::CLI::Command::RetryCommand).to receive(:say) { nil }
+      expect(CircleCI::CLI::Command::RetryCommand).to receive(:say).with('failed to trigger unhappychoice/Circler 1234')
+      CircleCI::CLI::Command::RetryCommand.run(options)
+    end
+  end
 end

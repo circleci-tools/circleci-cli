@@ -33,4 +33,17 @@ describe CircleCI::CLI::Command::CancelCommand, type: :command do
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command cancels build'
   end
+
+  context 'when cancel fails' do
+    let(:project_name) { 'unhappychoice/Circler' }
+    let(:options) { OpenStruct.new(project: project_name, build: 1234) }
+    let(:build_hash) { {} }
+
+    it 'shows failure message' do
+      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) { nil }
+      expect(CircleCI::CLI::Command::CancelCommand)
+        .to receive(:say).with('failed to cancel unhappychoice/Circler 1234.')
+      CircleCI::CLI::Command::CancelCommand.run(options)
+    end
+  end
 end
