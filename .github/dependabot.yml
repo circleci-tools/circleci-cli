@@ -10,3 +10,8 @@ updates:
     allow:
       - dependency-type: direct
       - dependency-type: indirect
+    ignore:
+      # openssl must match the default gem of the Ruby in .ruby-version,
+      # otherwise rubygems/release-gem aborts with Gem::LoadError.
+      # Bump it by hand together with .ruby-version.
+      - dependency-name: openssl
