@@ -30,7 +30,7 @@ jobs:
       - name: Setup Git
         run: |
           git config --global user.email "unhappychoice@gmail.com"
-          git config --global user.name "unhappychoice"
+          git config --global user.name "Yuji Ueki"
       - name: Install gem-release
         run: gem install gem-release
       - name: Bump version
