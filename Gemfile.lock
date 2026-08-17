@@ -154,7 +154,7 @@ GEM
     protocol-http2 (0.26.2)
       protocol-hpack (~> 1.4)
       protocol-http (~> 0.62)
-    protocol-url (0.10.0)
+    protocol-url (0.18.0)
     pry (0.16.0)
       coderay (~> 1.1)
       method_source (~> 1.0)
