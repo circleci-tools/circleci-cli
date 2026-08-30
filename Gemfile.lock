@@ -7,7 +7,7 @@ PATH
       launchy (>= 2.4.3, < 3.2.0)
       pusher-client (~> 0.6.2)
       rugged (>= 0.26, < 1.10)
-      terminal-notifier (~> 2.0.0)
+      terminal-notifier (>= 2.0, < 3.1)
       terminal-table (>= 1.8, < 4.1)
       thor (>= 0.20, < 1.6)
 
@@ -208,7 +208,7 @@ GEM
     securerandom (0.4.1)
     shellany (0.0.1)
     simplecov (1.1.1)
-    terminal-notifier (2.0.0)
+    terminal-notifier (3.0.0)
     terminal-table (4.0.0)
       unicode-display_width (>= 1.1.1, < 4)
     thor (1.5.0)
