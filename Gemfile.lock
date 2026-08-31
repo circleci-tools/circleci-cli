@@ -113,7 +113,7 @@ GEM
     io-console (0.9.2)
     io-endpoint (0.18.0)
       openssl (>= 3.3.0)
-    io-event (1.19.5)
+    io-event (1.21.1)
     io-stream (0.14.0)
       openssl (>= 3.3)
     json (2.21.2)
