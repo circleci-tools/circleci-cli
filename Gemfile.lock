@@ -152,7 +152,7 @@ GEM
     protocol-http (0.71.0)
     protocol-http1 (0.41.0)
       protocol-http (~> 0.68)
-    protocol-http2 (0.26.2)
+    protocol-http2 (0.28.0)
       protocol-hpack (~> 1.4)
       protocol-http (~> 0.62)
     protocol-url (0.18.0)
