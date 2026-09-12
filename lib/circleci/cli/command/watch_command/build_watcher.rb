@@ -44,7 +44,7 @@ module CircleCI
           end
         end
 
-        # rubocop:disable Metrics/MethodLength
+        # rubocop:disable-next Metrics/MethodLength
         def on_new_step(step)
           if @verbose
             print_bordered step.name
@@ -59,7 +59,6 @@ module CircleCI
             end
           end
         end
-        # rubocop:enable Metrics/MethodLength
 
         def on_new_step_status(step)
           return if @verbose
@@ -73,7 +72,7 @@ module CircleCI
           end
         end
 
-        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
 
@@ -90,9 +89,8 @@ module CircleCI
           @read_byte = 0 if @current_step&.name != next_step&.name
           @current_step = next_step
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
-        # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+        # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
         def update_actions
           return unless @current_step
 
@@ -112,7 +110,6 @@ module CircleCI
             @messages[@current_step.name] << response
           end
         end
-        # rubocop:enable Metrics/AbcSize, Metrics/MethodLength
 
         def notify_started
           say Printer::BuildPrinter.header_for(
