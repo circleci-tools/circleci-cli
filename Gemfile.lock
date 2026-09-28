@@ -111,7 +111,7 @@ GEM
     i18n (1.15.2)
       concurrent-ruby (~> 1.0)
     io-console (0.9.4)
-    io-endpoint (0.18.0)
+    io-endpoint (0.19.0)
       openssl (>= 3.3.0)
     io-event (1.22.0)
     io-stream (0.14.0)
