@@ -2,6 +2,6 @@
 
 module CircleCI
   module CLI
-    VERSION = '4.0.3'
+    VERSION = '4.0.4'
   end
 end
