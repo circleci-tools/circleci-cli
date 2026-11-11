@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@master
       - name: Set up Ruby
@@ -18,7 +18,7 @@ jobs:
       - name: Run test
         run: bundle exec rubocop lib
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         ruby: ['3.4.4', '3.3.8']
