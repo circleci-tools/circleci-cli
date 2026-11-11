@@ -14,7 +14,7 @@ on:
 jobs:
   push:
     name: Push gem to RubyGems.org
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: release
     permissions:
