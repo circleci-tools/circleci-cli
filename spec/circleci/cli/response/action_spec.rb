@@ -20,7 +20,7 @@ describe CircleCI::CLI::Response::Action do
     end
 
     before do
-      stub_const('CircleCI::CLI::Response::Action::HTTPClient', http_client)
+      stub_const('CircleCI::CLI::Networking::HTTPClient', http_client)
       allow(http_client).to receive(:get)
         .with('https://circleci.com/output/123')
         .and_return(output)
@@ -29,6 +29,15 @@ describe CircleCI::CLI::Response::Action do
     it 'normalizes and joins log messages' do
       expect(log).to eq(["first\nline", 'a' * 120, 'a'].join("\n"))
       expect(http_client).to have_received(:get)
+    end
+
+    context 'without an output URL' do
+      let(:attributes) { {} }
+
+      it 'returns no log without making a request' do
+        expect(log).to be_nil
+        expect(http_client).not_to have_received(:get)
+      end
     end
   end
 end

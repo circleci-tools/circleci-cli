@@ -106,7 +106,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
   end
 
   describe '.show_interrupted_build_results' do
-    let(:options) { OpenStruct.new(verbose: false) }
+    let(:options) { OpenStruct.new(verbose: verbose) }
     let(:running_build) { double('running_build', finished?: false) }
     let(:finished_build) do
       double(
@@ -119,14 +119,26 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       )
     end
     let(:repository) { double('repository') }
-    let(:response_build) { double('response_build', steps: %w[step], build_number: 42) }
-    let(:step_printer) { double('step_printer', to_s: 'step output') }
+    let(:step) do
+      CircleCI::CLI::Response::Step.new('build', {
+        'actions' => [
+          { 'name' => 'Setup', 'status' => 'success', 'output_url' => 'https://circleci.com/output/setup' },
+          { 'name' => 'Test', 'status' => 'failed', 'output_url' => 'https://circleci.com/output/test' },
+          { 'name' => 'Deploy', 'status' => 'not_run' }
+        ]
+      })
+    end
+    let(:response_build) { double('response_build', steps: [step], build_number: 42) }
+    let(:verbose) { false }
 
-    it 'prints finished background builds and marks them as shown' do
+    before do
       described_class.instance_variable_set(:@options, options)
       described_class.instance_variable_set(:@repository, repository)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(response_build)
-      allow(CircleCI::CLI::Printer::StepPrinter).to receive(:new).and_return(step_printer)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
+        .with('https://circleci.com/output/setup').and_return([{ 'message' => 'setup log' }])
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
+        .with('https://circleci.com/output/test').and_return([{ 'message' => 'test log' }])
       allow(described_class).to receive(:say)
 
       expect(repository).to receive(:builds_to_show).and_return([running_build, finished_build])
@@ -134,12 +146,26 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
         .with(finished_build, a_string_including('Result of user/repo #42 completed in background'))
         .and_return('header output')
-      expect(CircleCI::CLI::Printer::StepPrinter).to receive(:new).with(%w[step], pretty: false)
       expect(described_class).to receive(:say).with('header output')
-      expect(described_class).to receive(:say).with('step output')
       expect(repository).to receive(:mark_as_shown).with(42)
+    end
+
+    it 'prints only failed action logs by default' do
+      expect(described_class).to receive(:say).with(a_string_including('test log')) do |output|
+        expect(output).not_to include('setup log')
+      end
 
       described_class.send(:show_interrupted_build_results)
+    end
+
+    context 'with verbose enabled' do
+      let(:verbose) { true }
+
+      it 'prints both successful and failed action logs' do
+        expect(described_class).to receive(:say).with(include('setup log', 'test log'))
+
+        described_class.send(:show_interrupted_build_results)
+      end
     end
   end
 end
