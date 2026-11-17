@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 
 describe CircleCI::CLI::Command::BuildWatcher, type: :command do
-  let(:thread) { instance_double(Thread, kill: nil) }
   let(:step_hash) do
     lambda do |name:, type:, status:, index: 0, step: 0|
       action = { 'type' => type, 'name' => name, 'status' => status, 'index' => index, 'step' => step }
@@ -50,23 +50,76 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
     it 'prints new verbose steps and streams their output' do
-      allow(Thread).to receive(:new) do |&block|
-        block.call
-        thread
-      rescue Interrupt
-        thread
-      end
-      allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
+      streamed = Queue.new
+      allow(shell).to receive(:say) { streamed << true }
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).and_return(response)
       allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
 
-      watcher.start
+      worker = watcher.start
+      Timeout.timeout(5) { streamed.pop }
+      watcher.stop('success')
 
       expect(watcher).to have_received(:say).with(a_string_including('| Test'))
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
       expect(shell).to have_received(:say).with('step output', nil, false)
+    ensure
+      worker&.kill&.join
+    end
+  end
+
+  describe '#stop' do
+    let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'running')] }
+    let(:watcher) { described_class.new(build) }
+    let(:failed_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
+
+    it 'finishes an in-flight poll and refreshes before reporting completion' do
+      stop_requested = watcher.instance_variable_get(:@stop_requested)
+      stopping = Queue.new
+      refreshing = Queue.new
+      resume_refresh = Queue.new
+      output = []
+      refresh_threads = []
+
+      allow(stop_requested).to receive(:pop).with(timeout: 1).and_return(nil)
+      allow(stop_requested).to receive(:close).and_wrap_original do |close|
+        close.call
+        stopping << true
+      end
+      allow(watcher).to receive(:puts) { |line| output << line }
+      allow(watcher).to receive(:say) { |line| output << line }
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
+        .and_return(instance_double('response', body: 'buffered output'), instance_double('response', body: ''))
+      allow(CircleCI::CLI::Response::Build).to receive(:get) do
+        refresh_threads << Thread.current
+        next build if refresh_threads.one?
+
+        refreshing << true
+        resume_refresh.pop
+        failed_build
+      end
+
+      worker = watcher.start
+      Timeout.timeout(5) { refreshing.pop }
+      stopper = Thread.new { watcher.stop('failed') }
+      Timeout.timeout(5) { stopping.pop }
+      resume_refresh << true
+      Timeout.timeout(5) { refreshing.pop }
+      expect(output.grep(/has failed/)).to be_empty
+      resume_refresh << true
+      expect(stopper.join(5)).to eq(stopper)
+
+      expect(refresh_threads).to eq([worker, worker, worker])
+      expect(output.drop(1)).to eq(
+        [
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}",
+          'buffered output',
+          CircleCI::CLI::Printer.colorize_red('😥 user/repo #1234 has failed...')
+        ]
+      )
+    ensure
+      [worker, stopper].compact.each { |thread| thread.kill.join }
     end
   end
 

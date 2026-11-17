@@ -33,6 +33,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
     subject { described_class.new(build, verbose: verbose).start }
 
     before do
+      allow_any_instance_of(described_class).to receive(:poll_build)
       expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
     end
 
@@ -79,6 +80,10 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
   describe '#stop' do
     subject { described_class.new(build, verbose: verbose).stop(status) }
+
+    before do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
+    end
 
     context 'with verbose option' do
       let(:verbose) { true }
@@ -149,6 +154,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
     let(:update_actions) { [{ 'step' => 'step1', 'log' => { 'status' => 'failed', 'name' => 'update action' } }] }
 
     before do
+      allow_any_instance_of(described_class).to receive(:poll_build)
       allow_any_instance_of(described_class).to receive(:notify_started)
     end
 

@@ -11,7 +11,7 @@ module CircleCI
           @verbose = verbose
           @messages = Hash.new { |h, k| h[k] = [] }
 
-          @build_thread = nil
+          @stop_requested = Queue.new
 
           @steps = build.steps
           @current_step = nil
@@ -19,28 +19,30 @@ module CircleCI
         end
 
         def start
-          poll_build
           notify_started
+          @build_thread = poll_build
         end
 
         def stop(status)
-          update_build
-          @build_thread&.kill
+          @stop_requested.close
+          @build_thread ||= poll_build
+          @build_thread.join
           notify_stopped(status)
         end
 
         private
 
         def poll_build
-          @build_thread = Thread.new do
+          Thread.new do
             count = 0
-            loop do
+            until @stop_requested.closed?
               update_build if (count % 5).zero?
               update_actions
 
               count += 1
-              sleep 1
+              @stop_requested.pop(timeout: 1)
             end
+            update_build
           end
         end
 
@@ -74,18 +76,15 @@ module CircleCI
 
         # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         def update_build
-          build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          steps = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number).steps
+          steps.each do |step|
+            on_new_step(step) unless @steps.any? { |s| s.name == step.name }
+            on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
+          end
 
-          # Calc actions diff and dispatch event
-          build.steps
-               .each do |step|
-                 on_new_step(step) unless @steps.any? { |s| s.name == step.name }
-                 on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
-               end
+          @steps = steps
 
-          @steps = build.steps
-
-          next_step = build.steps.find { |s| s.status == 'running' }
+          next_step = steps.find { |s| s.status == 'running' }
           @read_byte = 0 if @current_step&.name != next_step&.name
           @current_step = next_step
         end
