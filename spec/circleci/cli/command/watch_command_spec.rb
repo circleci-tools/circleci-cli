@@ -67,11 +67,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     it 'stops the current watcher when the tracked build has finished' do
       described_class.instance_variable_set(:@repository, repository)
       described_class.instance_variable_set(:@build_watcher, watcher)
-      allow(described_class).to receive(:show_interrupted_build_results)
 
       expect(repository).to receive(:build_for).with(42).and_return(finished_build)
       expect(watcher).to receive(:stop).with('success')
-      expect(described_class).to receive(:show_interrupted_build_results)
 
       described_class.send(:stop_existing_watcher_if_needed)
 
@@ -102,6 +100,27 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.send(:start_watcher_if_needed)
 
       expect(described_class.instance_variable_get(:@build_watcher)).to eq(build_watcher)
+    end
+
+    it 'prints a newly completed build only once when no live build is available' do
+      build_response = CircleCI::CLI::Response::Build
+      finished_build = build_response.new(
+        'username' => 'user', 'reponame' => 'repo', 'build_num' => 42, 'status' => 'success'
+      )
+      allow(build_response).to receive(:all).with('user', 'repo').and_return([], [finished_build])
+      real_repository = CircleCI::CLI::Command::BuildRepository.new('user', 'repo')
+      real_repository.update
+      described_class.instance_variable_set(:@options, options)
+      described_class.instance_variable_set(:@repository, real_repository)
+      described_class.instance_variable_set(:@build_watcher, nil)
+      allow(described_class).to receive(:say)
+
+      expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(finished_build)
+      expect(described_class).to receive(:say)
+        .with(a_string_including('Result of user/repo #42 completed in background')).once
+      expect(CircleCI::CLI::Command::BuildWatcher).not_to receive(:new)
+
+      2.times { described_class.send(:start_watcher_if_needed) }
     end
   end
 

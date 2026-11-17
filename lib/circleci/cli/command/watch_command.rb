@@ -47,14 +47,15 @@ module CircleCI
 
             @build_watcher.stop(build.status)
             @build_watcher = nil
-            show_interrupted_build_results
           end
 
           def start_watcher_if_needed
-            build_to_watch = @repository.builds_to_show.select(&:running?).first
-            return unless build_to_watch && @build_watcher.nil?
+            return unless @build_watcher.nil?
 
             show_interrupted_build_results
+            build_to_watch = @repository.builds_to_show.find(&:running?)
+            return unless build_to_watch
+
             @repository.mark_as_shown(build_to_watch.build_number)
             @build_watcher = BuildWatcher.new(build_to_watch, verbose: @options.verbose)
             @build_watcher.start

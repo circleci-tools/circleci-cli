@@ -54,7 +54,7 @@ module CircleCI
         end
 
         def running?
-          status == 'running' || status || 'queued'
+          %w[running queued].include?(status)
         end
 
         def finished?
