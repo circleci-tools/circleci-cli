@@ -9,7 +9,7 @@ module CircleCI
       class WatchCommand < BaseCommand
         class << self
           def run(options) # rubocop:disable Metrics/MethodLength
-            setup_token
+            token = setup_token
 
             username, reponame = project_name(options).split('/')
             @options = options
@@ -19,7 +19,7 @@ module CircleCI
               branch: branch_name(options),
               user: options.user
             )
-            @client = Networking::CircleCIPusherClient.new.tap(&:connect)
+            @client = Networking::CircleCIPusherClient.new(token:).tap(&:connect)
             @build_watcher = nil
 
             bind_status_event
