@@ -33,7 +33,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
     subject { described_class.new(build, verbose: verbose).start }
 
     before do
-      expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
+      expect_any_instance_of(described_class).to receive(:puts).with(expected.strip)
     end
 
     context 'with verbose option' do
@@ -92,7 +92,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
             | \e[0;32;49m🎉 unhappychoice/default_reponame_from_api #1234 has succeeded!\e[0m                                                      |
             +----------------------------------------------------------------------------------------------------------------------+
           EXPECTED
-          expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
+          expect_any_instance_of(described_class).to receive(:puts).with(satisfy { |table| table.to_s == expected.strip })
 
           subject
         end
@@ -107,7 +107,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
             | \e[0;31;49m😥 unhappychoice/default_reponame_from_api #1234 has failed...\e[0m                                                       |
             +----------------------------------------------------------------------------------------------------------------------+
           EXPECTED
-          expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
+          expect_any_instance_of(described_class).to receive(:puts).with(satisfy { |table| table.to_s == expected.strip })
 
           subject
         end
@@ -122,7 +122,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
         it 'prints message' do
           expect_any_instance_of(described_class)
-            .to receive(:say).with("\e[0;32;49m🎉 unhappychoice/default_reponame_from_api #1234 has succeeded!\e[0m")
+            .to receive(:puts).with("\e[0;32;49m🎉 unhappychoice/default_reponame_from_api #1234 has succeeded!\e[0m")
 
           subject
         end
@@ -133,7 +133,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
         it 'prints message' do
           expect_any_instance_of(described_class)
-            .to receive(:say).with("\e[0;31;49m😥 unhappychoice/default_reponame_from_api #1234 has failed...\e[0m")
+            .to receive(:puts).with("\e[0;31;49m😥 unhappychoice/default_reponame_from_api #1234 has failed...\e[0m")
 
           subject
         end
@@ -161,7 +161,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
           | new action                                                                                                           |
           +----------------------------------------------------------------------------------------------------------------------+
         EXPECTED
-        allow_any_instance_of(described_class).to receive(:say).with(expected.strip)
+        allow_any_instance_of(described_class).to receive(:puts).with(satisfy { |table| table.to_s == expected.strip })
         allow_any_instance_of(Thor::Shell::Basic).to receive(:say).with('append action', nil, false)
 
         subject
@@ -174,7 +174,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
       it 'prints log name' do
         allow_any_instance_of(described_class).to receive(:print).with('new action')
         allow_any_instance_of(described_class).to receive(:puts).with("\e[2K\r\e[0;31;49mupdate action\e[0m")
-        allow_any_instance_of(described_class).to receive(:say).with('append action')
+        allow_any_instance_of(described_class).to receive(:puts).with('append action')
         subject
       end
     end

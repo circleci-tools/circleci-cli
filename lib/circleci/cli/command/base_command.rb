@@ -15,7 +15,7 @@ module CircleCI
             if options.project
               options.project
             else
-              say Printer::ProjectPrinter.new(Response::Project.all).to_s
+              puts Printer::ProjectPrinter.new(Response::Project.all)
               ask('Input user-name/project-name :')
             end
           end

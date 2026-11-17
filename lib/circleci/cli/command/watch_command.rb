@@ -64,14 +64,14 @@ module CircleCI
             @repository.builds_to_show.select(&:finished?).each do |build|
               b = Response::Build.get(build.username, build.reponame, build.build_number)
               title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
-              say Printer::BuildPrinter.header_for(build, title)
-              say Printer::StepPrinter.new(b.steps, pretty: @options.verbose).to_s
+              puts Printer::BuildPrinter.header_for(build, title)
+              puts Printer::StepPrinter.new(b.steps, pretty: @options.verbose)
               @repository.mark_as_shown(b.build_number)
             end
           end
 
           def print_bordered(text)
-            say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
+            puts Terminal::Table.new(rows: [[text]], style: { width: 120 })
           end
         end
       end
