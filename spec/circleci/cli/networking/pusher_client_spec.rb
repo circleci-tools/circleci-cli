@@ -35,6 +35,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
 
     it 'uses the environment token in the auth callback' do
       allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('token')
+      expect(client).not_to receive(:ask)
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
 
       connect
@@ -50,9 +51,10 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       )
     end
 
-    it 'prompts for a token when the environment token is missing' do
+    it 'passes the token from the hidden prompt to the auth callback' do
       allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return(nil)
-      allow(client).to receive(:ask).with('Circle CI token ? :').and_return('prompted-token')
+      question = HighLine::Question.new('Circle CI token ? :', String)
+      allow(client).to receive(:ask).with('Circle CI token ? :').and_yield(question).and_return('prompted-token')
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
 
       connect
@@ -60,7 +62,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       channel = double('channel', name: 'private-builds')
       socket_options.fetch(:auth_method).call('socket-id', channel)
 
-      expect(client).to have_received(:ask).with('Circle CI token ? :')
+      expect(question.echo).to be(false)
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:post_form).with(
         'https://circleci.com/auth/pusher?circle-token=prompted-token',
         socket_id: 'socket-id',
