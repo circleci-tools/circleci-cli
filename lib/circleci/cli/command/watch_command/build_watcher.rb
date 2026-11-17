@@ -72,20 +72,19 @@ module CircleCI
           end
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
+          steps = build.steps.each do |step|
+            statuses = previous_statuses[step.name]
+            next on_new_step(step) unless statuses
 
-          # Calc actions diff and dispatch event
-          build.steps
-               .each do |step|
-                 on_new_step(step) unless @steps.any? { |s| s.name == step.name }
-                 on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
-               end
+            on_new_step_status(step) unless statuses == [step.status]
+          end
+          @steps = steps
 
-          @steps = build.steps
-
-          next_step = build.steps.find { |s| s.status == 'running' }
+          next_step = steps.find { |step| step.status == 'running' }
           @read_byte = 0 if @current_step&.name != next_step&.name
           @current_step = next_step
         end

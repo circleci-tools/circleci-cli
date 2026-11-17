@@ -75,6 +75,52 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:watcher) { described_class.new(build, verbose: false) }
     let(:updated_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
 
+    context 'with many unchanged steps' do
+      let(:initial_steps) do
+        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success') }
+      end
+      let(:updated_build) { build_response.call(initial_steps) }
+
+      it 'reads previous names and materializes incoming steps once without printing transitions' do
+        previous_steps = build.steps
+        allow(build).to receive(:steps).and_return(previous_steps)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        previous_steps.each { |step| expect(step).to receive(:name).once.and_call_original }
+        expect(updated_build).to receive(:steps).once.and_call_original
+        expect(watcher).not_to receive(:puts)
+        expect(watcher).not_to receive(:say)
+
+        watcher.send(:update_build)
+      end
+    end
+
+    context 'when previous steps with the same name have different statuses' do
+      let(:initial_steps) do
+        [
+          step_hash.call(name: 'Build', type: 'build', status: 'success'),
+          step_hash.call(name: 'Build', type: 'build', status: 'failed'),
+          step_hash.call(name: 'Test', type: 'test', status: 'success'),
+          step_hash.call(name: 'Test', type: 'test', status: 'success')
+        ]
+      end
+      let(:updated_build) { build_response.call(initial_steps) }
+
+      it 'prints a transition for each step with a same-name predecessor in a different status' do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        allow(watcher).to receive(:puts)
+
+        watcher.send(:update_build)
+
+        expect(watcher).to have_received(:puts).exactly(2).times
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
+        ).once
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
+        ).once
+      end
+    end
+
     it 'prints failed statuses and replays buffered output' do
       watcher.instance_variable_get(:@messages)['Build'] << 'captured output'
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
