@@ -72,8 +72,8 @@ module CircleCI
         def information
           [
             build_number,
-            colorize_by_status(status, status),
-            colorize_by_status(branch, status),
+            status,
+            branch,
             author_name,
             (@hash['subject'] || '').slice(0..60),
             format_time(@hash['build_time_millis']),
@@ -87,16 +87,6 @@ module CircleCI
         end
 
         private
-
-        def colorize_by_status(string, status)
-          case status
-          when 'success', 'fixed' then Printer.colorize_green(string)
-          when 'canceled' then Printer.colorize_yellow(string)
-          when 'failed' then Printer.colorize_red(string)
-          when 'no_tests', 'not_run' then Printer.colorize_light_black(string)
-          else string
-          end
-        end
 
         def format_time(time)
           return '' unless time

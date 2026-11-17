@@ -29,7 +29,9 @@ module CircleCI
         private
 
         def print_compact
-          rows.map { |row| pad_columns_by_space(row, max_row_widths) }.join("\n")
+          build_rows = rows
+          widths = max_row_widths(build_rows)
+          build_rows.map { |row| pad_columns_by_space(row, widths) }.join("\n")
         end
 
         def print_pretty
@@ -45,13 +47,15 @@ module CircleCI
         end
 
         def rows
-          @builds_to_show.map(&:information)
+          @builds_to_show.map do |build|
+            number, status, branch, *details = build.information
+            [number, Printer.colorize_by_status(status, status), Printer.colorize_by_status(branch, status), *details]
+          end
         end
 
-        def max_row_widths
-          @builds_to_show
-            .map(&:information)
-            .map { |array| array.map(&:to_s).map(&:size) }
+        def max_row_widths(build_rows)
+          build_rows
+            .map { |row| row.map { |column| column_width(column) } }
             .transpose
             .map(&:max)
         end
@@ -66,8 +70,12 @@ module CircleCI
 
         def pad_column_by_space(column, max_widths, index)
           column_string = column.to_s
-          spaces = ' ' * (max_widths[index] - column_string.size)
+          spaces = ' ' * (max_widths[index] - column_width(column_string))
           column_string + spaces
+        end
+
+        def column_width(column)
+          column.to_s.gsub(/\e\[[\d;]*m/, '').size
         end
       end
     end
