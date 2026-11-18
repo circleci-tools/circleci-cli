@@ -6,7 +6,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v7.0.1
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -23,7 +23,7 @@ jobs:
       matrix:
         ruby: ['3.4.4', '3.3.8']
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v7.0.1
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
