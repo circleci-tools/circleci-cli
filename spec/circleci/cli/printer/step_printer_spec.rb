@@ -43,7 +43,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
             'status' => 'success',
             'actions' => [
               {
-                'type' => 'test', 'name' => 'Test', 'status' => 'failed', 'run_time_millis' => 1_200,
+                'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200,
                 'output_url' => 'https://circleci.com/output/123'
               }
             ]
@@ -64,7 +64,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'with pretty option' do
       let(:pretty) { true }
 
-      it 'prints steps' do
+      it 'prints steps with a red timed-out action' do
         expected = <<~EXPECTED
           +--------------------+
           +--------------------+
@@ -91,7 +91,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
-      it 'prints steps' do
+      it 'prints steps with a red timed-out action' do
         expected = <<~EXPECTED
           Dependency
           \e[0;32;49mCheckout\e[0m

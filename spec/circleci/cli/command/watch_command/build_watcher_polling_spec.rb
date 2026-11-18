@@ -4,7 +4,7 @@ require 'spec_helper'
 require 'timeout'
 
 describe CircleCI::CLI::Command::BuildWatcher, type: :command do
-  let(:thread) { instance_double(Thread, kill: nil) }
+  let(:thread) { instance_double(Thread, kill: nil, join: nil) }
   let(:step_hash) do
     lambda do |name:, type:, status:, index: 0, step: 0|
       action = { 'type' => type, 'name' => name, 'status' => status, 'index' => index, 'step' => step }
@@ -42,7 +42,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect(request).to be_a(Net::HTTP::Get)
       expect(request.path).to eq(output_path)
       expect(request['Range']).to eq("bytes=#{offset}-")
-      response = instance_double(Net::HTTPPartialContent)
+      response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
       allow(response).to receive(:read_body) do |&read_chunk|
         chunks.each(&read_chunk)
         raise error if error
@@ -130,6 +130,65 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
 
         expect { watcher.stop('success') }.to output(a_string_including(build.project_name)).to_stdout
+      end
+    end
+  end
+
+  context 'when an action publishes a final chunk between polls' do
+    let(:initial_steps) { [step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)] }
+    let(:finished_build) do
+      build_response.call([step_hash.call(name: 'Test', type: 'test', status: status, index: 1, step: 2)])
+    end
+
+    before do
+      allow(Thread).to receive(:new) do |&block|
+        catch(:end_polling) { block.call }
+        thread
+      end
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        throw :end_polling if polls == poll_count
+      end
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect_output_response(0, "first output\n")
+      allow(watcher).to receive(:notify_started)
+    end
+
+    context 'with verbose output' do
+      let(:watcher) { described_class.new(build, verbose: true) }
+      let(:status) { 'success' }
+      let(:poll_count) { 6 }
+
+      it 'streams the final chunk on the regular refresh exactly once before completion' do
+        response = Net::HTTPRangeNotSatisfiable.new('1.1', '416', 'Range Not Satisfiable')
+        allow(response).to receive(:read_body).and_yield('No more bytes')
+        expect(http).to receive(:request).ordered.exactly(4).times do |request, &read_response|
+          expect(request['Range']).to eq('bytes=13-')
+          read_response.call(response)
+        end
+        expect_output_response(13, "final output\n")
+
+        expect do
+          watcher.start
+          watcher.stop(status)
+        end.to output(/\Afirst output\nfinal output\n.*has succeeded!/m).to_stdout
+      end
+    end
+
+    context 'with default output' do
+      let(:watcher) { described_class.new(build) }
+      let(:status) { 'failed' }
+      let(:poll_count) { 1 }
+
+      it 'includes the final chunk in the failed-step output when stopped' do
+        expect_output_response(13, "final output\n")
+
+        expect do
+          watcher.start
+          watcher.stop(status)
+        end.to output(/Test[^\n]*\nfirst output\nfinal output\n.*has failed/m).to_stdout
       end
     end
   end
@@ -260,7 +319,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
       path = messages.values.first.instance_variable_get(:@file).path
       expect(messages.values.first.instance_variable_get(:@memory)).to be_nil
-      finish_step('failed')
+      finish_step('failed', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
 
       expect do
         watcher.send(:update_build)
@@ -274,7 +333,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       collect_responses
       path = messages.values.first.instance_variable_get(:@file).path
       expect(messages.values.first.instance_variable_get(:@memory)).to be_nil
-      finish_step('failed')
+      finish_step('failed', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
 
       expect do
         watcher.send(:update_build)
@@ -287,7 +346,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     it 'discards output and removes the spill file after success' do
       collect_responses
       path = messages.values.first.instance_variable_get(:@file).path
-      finish_step('success')
+      finish_step('success', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
 
       expect { watcher.send(:update_build) }.not_to output.to_stdout
       expect(messages).to be_empty
@@ -307,7 +366,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     it 'stops polling and removes the spill file while the response body is blocked' do
       reading = Queue.new
       release = Queue.new
-      response = instance_double(Net::HTTPPartialContent)
+      response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
       allow(http).to receive(:request).and_yield(response)
       allow(response).to receive(:read_body) do |&read_chunk|
         read_chunk.call(first_chunk)
@@ -347,7 +406,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       it 'only reports the failed step and replays its buffered output once' do
         expect_output_response(0, last_chunk)
         watcher.send(:update_actions)
-        finish_step('failed', other_steps: [successful_step])
+        finish_step('failed', final_offset: last_chunk.bytesize, other_steps: [successful_step])
 
         expect do
           watcher.send(:update_build)
@@ -361,7 +420,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
-    def finish_step(status, other_steps: [])
+    def finish_step(status, final_offset:, other_steps: [])
+      expect_output_response(final_offset)
       finished_step = step_hash.call(name: 'Test', type: 'test', status: status)
       finished = build_response.call([finished_step, *other_steps])
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished)

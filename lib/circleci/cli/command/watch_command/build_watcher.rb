@@ -14,6 +14,7 @@ module CircleCI
           @messages = {}
 
           @build_thread = nil
+          @poll_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -26,8 +27,8 @@ module CircleCI
         end
 
         def stop(status)
-          stop_polling
-          update_build
+          @poll_lock.synchronize { stop_polling }
+          update_build(stopping: true)
           notify_stopped(status)
         ensure
           close
@@ -52,11 +53,12 @@ module CircleCI
 
         def poll_build
           @build_thread = Thread.new do
-            count = 0
-            loop do
-              update_build if (count % 5).zero?
-              update_actions
-              count += 1
+            0.step do |count|
+              @poll_lock.synchronize do
+                update_build if (count % 5).zero?
+                update_actions
+              end
+
               sleep 1
             end
           end
@@ -105,27 +107,39 @@ module CircleCI
           [action&.index, action&.step, step.name]
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-        def update_build
+        def update_build(stopping: false)
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          steps = build.steps
+          next_step = steps.find { |step| step.status == 'running' } unless stopping
+          action_changed = action_position(@current_step) != action_position(next_step)
+          update_actions if action_changed
+
+          notify_step_changes(steps)
+          @steps = steps
+          @read_byte = 0 if action_changed
+          @current_step = next_step
+        end
+
+        def notify_step_changes(steps)
           previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
-          steps = build.steps.each do |step|
+          steps.each do |step|
             previous_status = previous_statuses[step_key(step)]
             next on_new_step(step) unless previous_status
 
             on_new_step_status(step) unless previous_status == step.status
           end
-          @steps = steps
+        end
 
-          next_step = steps.find { |step| step.status == 'running' }
-          @read_byte = 0 if (@current_step && step_key(@current_step)) != (next_step && step_key(next_step))
-          @current_step = next_step
+        def action_position(step)
+          action = step&.actions&.first
+          [action.index, action.step] if action
         end
 
         def update_actions
-          return unless @current_step
+          position = action_position(@current_step)
+          return unless position
 
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           Networking::HTTPClient.get_raw(url, headers) { |response| read_output(response) }
         rescue EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
@@ -134,9 +148,10 @@ module CircleCI
         end
 
         def read_output(response)
+          successful = response.is_a?(Net::HTTPSuccess)
           needs_newline = false
           response.read_body do |chunk|
-            next if chunk.empty?
+            next if !successful || chunk.empty?
 
             write_output(chunk)
             @read_byte += chunk.bytesize

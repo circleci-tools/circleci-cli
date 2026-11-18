@@ -77,6 +77,12 @@ module CircleCI
         Command::BuildsCommand.run(git_options(infer_branch: true))
       end
 
+      desc 'run RUN_ID', 'Show all workflows and jobs in a run'
+      map 'run' => :show_run
+      def show_run(run_id)
+        say Command::RunCommand.run(run_id)
+      end
+
       desc 'build', 'Show the build result'
       method_option :project,
                     aliases: 'p',
