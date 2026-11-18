@@ -16,11 +16,11 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     lambda do |steps|
       CircleCI::CLI::Response::Build.new(
         'username' => 'user',
-        'reponame' => 'repo',
+        'reponame' => reponame,
         'status' => 'running',
         'build_num' => 1234,
         'branch' => 'main',
-        'author_name' => 'owner',
+        'author_name' => 'Owner <%= "metadata" %>',
         'subject' => 'Commit',
         'build_time_millis' => 1000,
         'start_time' => 100_000,
@@ -28,6 +28,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       )
     end
   end
+  let(:reponame) { 'repo' }
   let(:build) { build_response.call(initial_steps) }
 
   let(:http) { instance_double(Net::HTTP) }
@@ -49,10 +50,11 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       build_response.call(
         [
           step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)
+          step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)
         ]
       )
     end
+    let(:step_name) { 'Test <%= "step" %>' }
 
     it 'prints new verbose steps and streams their output' do
       allow(Thread).to receive(:new) do |&block|
@@ -66,14 +68,28 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         polls += 1
         raise Interrupt if polls == 2
       end
-      allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      log_tail = " done <%= \"log\" %>\n"
       expect_output_chunk(0, 'é')
-      expect_output_chunk(2, " done\n")
+      expect_output_chunk(2, log_tail)
 
-      expect { watcher.start }.to output("é done\n").to_stdout
-      expect(watcher).to have_received(:say).with(a_string_including('| Test'))
+      expect { watcher.start }
+        .to output(a_string_including(step_name, "é#{log_tail}", build.author_name)).to_stdout
+    end
+  end
+
+  describe '#stop' do
+    let(:initial_steps) { [] }
+    let(:reponame) { 'Repo <%= "metadata" %>' }
+
+    [true, false].each do |verbose|
+      it "prints completion metadata literally with verbose=#{verbose}" do
+        watcher = described_class.new(build, verbose:)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
+
+        expect { watcher.stop('success') }.to output(a_string_including(build.project_name)).to_stdout
+      end
     end
   end
 
@@ -129,15 +145,12 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     end
 
     it 'prints failed statuses and replays buffered output' do
-      watcher.instance_variable_get(:@messages)['Build'] << 'captured output'
+      log = 'captured output <%= "log" %>'
+      watcher.instance_variable_get(:@messages)['Build'] << log
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(watcher).to receive(:puts)
-      allow(watcher).to receive(:say)
+      status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
-      watcher.send(:update_build)
-
-      expect(watcher).to have_received(:puts).with("\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}")
-      expect(watcher).to have_received(:say).with('captured output')
+      expect { watcher.send(:update_build) }.to output("#{status}\n#{log}\n").to_stdout
     end
 
     it 'prints new step statuses for success, failure, and in-progress steps' do
