@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 describe CircleCI::CLI::Command::BuildWatcher, type: :command do
-  let(:thread) { instance_double(Thread, kill: nil) }
+  let(:thread) { instance_double(Thread, kill: nil, join: nil) }
   let(:step_hash) do
     lambda do |name:, type:, status:, index: 0, step: 0|
       action = { 'type' => type, 'name' => name, 'status' => status, 'index' => index, 'step' => step }
@@ -30,10 +30,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
   let(:build) { build_response.call(initial_steps) }
 
-  before do
-    stub_const('CircleCI::CLI::Command::BuildWatcher::HTTPClient', CircleCI::CLI::Networking::HTTPClient)
-  end
-
   describe '#start' do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: true) }
@@ -59,13 +55,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).and_return(response)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_return(response)
       allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
 
       watcher.start
 
       expect(watcher).to have_received(:say).with(a_string_including('| Test'))
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=0-')
       expect(shell).to have_received(:say).with('step output', nil, false)
     end
   end
@@ -73,7 +69,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   describe '#update_build' do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: false) }
-    let(:updated_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
 
     context 'with many unchanged steps' do
       let(:initial_steps) do
@@ -119,18 +114,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
         ).once
       end
-    end
-
-    it 'prints failed statuses and replays buffered output' do
-      watcher.instance_variable_get(:@messages)['Build'] << 'captured output'
-      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(watcher).to receive(:puts)
-      allow(watcher).to receive(:say)
-
-      watcher.send(:update_build)
-
-      expect(watcher).to have_received(:puts).with("\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}")
-      expect(watcher).to have_received(:say).with('captured output')
     end
 
     it 'prints new step statuses for success, failure, and in-progress steps' do
@@ -183,15 +166,86 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'buffers output and skips empty response bodies' do
       watcher.instance_variable_set(:@current_step, current_step)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw)
         .and_return(instance_double('response', body: 'step output'), instance_double('response', body: ''))
 
       watcher.send(:update_actions)
       watcher.send(:update_actions)
 
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=11-')
-      expect(watcher.instance_variable_get(:@messages)['Test']).to eq(['step output'])
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=0-')
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=11-')
+      expect(watcher.instance_variable_get(:@messages).size).to eq(1)
+    end
+  end
+
+  describe 'buffered step output' do
+    let(:initial_steps) { [step_hash.call(name: 'Test', type: 'test', status: 'running')] }
+    let(:watcher) { described_class.new(build) }
+    let(:messages) { watcher.instance_variable_get(:@messages) }
+    let(:first_chunk) { 'x' * (192 * 1024) }
+    let(:second_chunk) { 'y' * (128 * 1024) }
+    let(:last_chunk) { "last\n" }
+
+    before do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
+      allow(watcher).to receive(:puts)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_return(
+        instance_double('response', body: first_chunk),
+        instance_double('response', body: second_chunk),
+        instance_double('response', body: last_chunk)
+      )
+      watcher.send(:update_build)
+      watcher.send(:update_actions)
+      expect(messages.values.first.instance_variable_get(:@file)).to be_nil
+      watcher.send(:update_actions)
+      watcher.send(:update_actions)
+    end
+
+    after { watcher.close }
+
+    it 'replays all collected chunks once after failure and removes the spill file' do
+      path = messages.values.first.instance_variable_get(:@file).path
+      expect(messages.values.first.instance_variable_get(:@memory)).to be_nil
+      finish_step('failed')
+
+      expect do
+        watcher.send(:update_build)
+        watcher.send(:update_build)
+      end.to output("#{first_chunk}\n#{second_chunk}\n#{last_chunk}").to_stdout
+      expect(messages).to be_empty
+      expect(File.exist?(path)).to be(false)
+    end
+
+    it 'discards output and removes the spill file after success' do
+      path = messages.values.first.instance_variable_get(:@file).path
+      finish_step('success')
+
+      expect { watcher.send(:update_build) }.not_to output.to_stdout
+      expect(messages).to be_empty
+      expect(File.exist?(path)).to be(false)
+    end
+
+    it 'removes an active step spill file when closed' do
+      path = messages.values.first.instance_variable_get(:@file).path
+
+      watcher.close
+
+      expect(messages).to be_empty
+      expect(File.exist?(path)).to be(false)
+    end
+
+    it 'removes the spill file if the final build refresh fails' do
+      path = messages.values.first.instance_variable_get(:@file).path
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_raise(IOError)
+
+      expect { watcher.stop('failed') }.to raise_error(IOError)
+      expect(messages).to be_empty
+      expect(File.exist?(path)).to be(false)
+    end
+
+    def finish_step(status)
+      finished = build_response.call([step_hash.call(name: 'Test', type: 'test', status: status)])
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished)
     end
   end
 end

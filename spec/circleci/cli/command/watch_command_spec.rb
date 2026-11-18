@@ -19,11 +19,15 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:repository) { double('repository') }
     let(:client) { double('client', connect: nil) }
 
-    it 'initializes dependencies and exits on interrupt' do
+    it 'closes the active watcher on interrupt' do
+      watcher = instance_double(CircleCI::CLI::Command::BuildWatcher)
+
       allow(described_class).to receive(:setup_token)
       allow(described_class).to receive(:bind_status_event)
       allow(described_class).to receive(:stop_existing_watcher_if_needed)
-      allow(described_class).to receive(:start_watcher_if_needed)
+      allow(described_class).to receive(:start_watcher_if_needed) do
+        described_class.instance_variable_set(:@build_watcher, watcher)
+      end
       allow(described_class).to receive(:sleep).with(1).and_raise(Interrupt)
       allow(described_class).to receive(:say)
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
@@ -36,6 +40,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(described_class).to receive(:stop_existing_watcher_if_needed)
       expect(described_class).to receive(:start_watcher_if_needed)
       expect(described_class).to receive(:say).with('Exited')
+      expect(watcher).to receive(:close)
 
       described_class.run(options)
     end

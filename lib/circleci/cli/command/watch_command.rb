@@ -31,6 +31,9 @@ module CircleCI
             end
           rescue Interrupt
             say 'Exited'
+          ensure
+            @build_watcher&.close
+            @build_watcher = nil
           end
 
           private

@@ -1,17 +1,20 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/watch_command/step_log'
+
 module CircleCI
   module CLI
     module Command
-      class BuildWatcher
+      class BuildWatcher # rubocop:disable Metrics/ClassLength
         attr_reader :build
 
         def initialize(build, verbose: false)
           @build = build
           @verbose = verbose
-          @messages = Hash.new { |h, k| h[k] = [] }
+          @messages = {}
 
           @build_thread = nil
+          @poll_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -24,23 +27,47 @@ module CircleCI
         end
 
         def stop(status)
+          stop_polling
           update_build
-          @build_thread&.kill
           notify_stopped(status)
+        ensure
+          close
+        end
+
+        def close
+          stop_polling
+        ensure
+          @messages.each_value(&:close)
+          @messages.clear
         end
 
         private
+
+        def stop_polling
+          thread = @poll_lock.synchronize do
+            thread = @build_thread
+            @build_thread = nil
+            thread&.kill
+            thread
+          end
+          thread&.join
+        end
 
         def poll_build
           @build_thread = Thread.new do
             count = 0
             loop do
-              update_build if (count % 5).zero?
-              update_actions
-
+              poll_once(refresh_build: (count % 5).zero?)
               count += 1
               sleep 1
             end
+          end
+        end
+
+        def poll_once(refresh_build:)
+          @poll_lock.synchronize do
+            update_build if refresh_build
+            update_actions
           end
         end
 
@@ -63,13 +90,26 @@ module CircleCI
         def on_new_step_status(step)
           return if @verbose
 
-          case step.status
+          status = step.status
+          case status
           when 'success'
             puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
           when 'failed'
             puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
-            @messages[step.name].each(&method(:say))
           end
+          finish_step_log(step, status) unless status == 'running'
+        end
+
+        def finish_step_log(step, status)
+          log = @messages.delete(step_key(step))
+          log&.write_to($stdout) if status == 'failed'
+        ensure
+          log&.close
+        end
+
+        def step_key(step)
+          action = step.actions.first
+          [action&.index, action&.step, step.name]
         end
 
         # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
@@ -85,7 +125,7 @@ module CircleCI
           @steps = steps
 
           next_step = steps.find { |step| step.status == 'running' }
-          @read_byte = 0 if @current_step&.name != next_step&.name
+          @read_byte = 0 if (@current_step && step_key(@current_step)) != (next_step && step_key(next_step))
           @current_step = next_step
         end
 
@@ -95,9 +135,7 @@ module CircleCI
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          res = HTTPClient.get(url, headers)
-
-          response = res.body
+          response = Networking::HTTPClient.get_raw(url, headers).body
 
           return if response.empty?
 
@@ -106,7 +144,7 @@ module CircleCI
           if @verbose
             Thor::Shell::Basic.new.say(response, nil, false)
           else
-            @messages[@current_step.name] << response
+            (@messages[step_key(@current_step)] ||= StepLog.new).append(response)
           end
         end
 
