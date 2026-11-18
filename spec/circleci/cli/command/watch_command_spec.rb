@@ -18,16 +18,24 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
   describe '.run' do
     let(:repository) { double('repository') }
     let(:client) { double('client', connect: nil) }
+    let(:config) { Struct.new(:token).new }
 
-    it 'initializes dependencies and exits on interrupt' do
-      allow(described_class).to receive(:setup_token)
+    before do
+      allow(CircleCi).to receive(:configure).and_yield(config)
+      allow(ENV).to receive(:fetch).and_call_original
       allow(described_class).to receive(:bind_status_event)
       allow(described_class).to receive(:stop_existing_watcher_if_needed)
       allow(described_class).to receive(:start_watcher_if_needed)
       allow(described_class).to receive(:sleep).with(1).and_raise(Interrupt)
       allow(described_class).to receive(:say)
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
-      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
+    end
+
+    it 'initializes dependencies and exits on interrupt' do
+      expect(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).once.and_return('env-token')
+      expect(described_class).not_to receive(:ask)
+      expect(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new)
+        .with(token: 'env-token').and_return(client)
 
       expect(CircleCI::CLI::Command::BuildRepository).to receive(:new)
         .with('user', 'repo', branch: 'main', user: 'octocat')
@@ -38,6 +46,19 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(described_class).to receive(:say).with('Exited')
 
       described_class.run(options)
+
+      expect(config.token).to eq('env-token')
+    end
+
+    it 'prompts once and passes the same token to CircleCI and Pusher' do
+      expect(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).once.and_return(nil)
+      expect(described_class).to receive(:ask).with('Circle CI token ? :').once.and_return('prompted-token')
+      expect(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new)
+        .with(token: 'prompted-token').and_return(client)
+
+      described_class.run(options)
+
+      expect(config.token).to eq('prompted-token')
     end
   end
 
