@@ -3,7 +3,7 @@
 module CircleCI
   module CLI
     module Command
-      class BuildWatcher
+      class BuildWatcher # rubocop:disable Metrics/ClassLength
         attr_reader :build
 
         def initialize(build, verbose: false)
@@ -12,6 +12,7 @@ module CircleCI
           @messages = Hash.new { |h, k| h[k] = [] }
 
           @build_thread = nil
+          @poll_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -24,8 +25,10 @@ module CircleCI
         end
 
         def stop(status)
-          update_build
-          @build_thread&.kill
+          @poll_lock.synchronize do
+            @build_thread&.kill
+            update_build(stopping: true)
+          end
           notify_stopped(status)
         end
 
@@ -33,12 +36,12 @@ module CircleCI
 
         def poll_build
           @build_thread = Thread.new do
-            count = 0
-            loop do
-              update_build if (count % 5).zero?
-              update_actions
+            0.step do |count|
+              @poll_lock.synchronize do
+                update_build if (count % 5).zero?
+                update_actions
+              end
 
-              count += 1
               sleep 1
             end
           end
@@ -68,38 +71,43 @@ module CircleCI
             puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
           when 'failed'
             puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
-            @messages[step.name].each(&method(:say))
+            @messages[step.name].each(&method(:puts))
           end
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
-        def update_build
+        def update_build(stopping: false)
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          steps = build.steps
+          next_step = steps.find { |step| step.status == 'running' } unless stopping
+          action_changed = action_position(@current_step) != action_position(next_step)
+          update_actions if action_changed
+
+          notify_step_changes(steps)
+          @steps = steps
+          @read_byte = 0 if action_changed
+          @current_step = next_step
+        end
+
+        def notify_step_changes(steps)
           previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
-          steps = build.steps.each do |step|
+          steps.each do |step|
             statuses = previous_statuses[step.name]
             next on_new_step(step) unless statuses
 
             on_new_step_status(step) unless statuses == [step.status]
           end
-          @steps = steps
-
-          next_step = steps.find { |step| step.status == 'running' }
-          @read_byte = 0 if @current_step&.name != next_step&.name
-          @current_step = next_step
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+        def action_position(step)
+          action = step&.actions&.first
+          [action.index, action.step] if action
+        end
+
         def update_actions
           return unless @current_step
 
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
-          headers = { 'Range' => "bytes=#{@read_byte}-" }
-          res = HTTPClient.get(url, headers)
-
-          response = res.body
-
-          return if response.empty?
+          response = read_action_output
+          return if response.nil? || response.empty?
 
           @read_byte += response.bytesize
 
@@ -110,26 +118,34 @@ module CircleCI
           end
         end
 
+        def read_action_output
+          position = action_position(@current_step).join('/')
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position}"
+          response = Networking::HTTPClient.get_raw(url, 'Range' => "bytes=#{@read_byte}-")
+          response.body if response.is_a?(Net::HTTPSuccess)
+        end
+
         def notify_started
-          say Printer::BuildPrinter.header_for(
+          puts Printer::BuildPrinter.header_for(
             @build,
             "👀 Start watching #{@build.project_name} ##{@build.build_number}"
           )
         end
 
         def notify_stopped(status)
+          build_name = "#{@build.project_name} ##{@build.build_number}"
           text = case status
-                 when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
-                 when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
+                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
+                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
+                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
-          @verbose ? print_bordered(text) : say(text)
+          @verbose ? print_bordered(text) : puts(text)
         end
 
         def print_bordered(text)
-          say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
+          puts Terminal::Table.new(rows: [[text]], style: { width: 120 })
         end
       end
     end

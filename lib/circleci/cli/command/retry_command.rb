@@ -9,13 +9,14 @@ module CircleCI
             setup_token
             username, reponame = project_name(options).split('/')
             number = build_number_for(username, reponame, options)
+            return say 'No failed build found.' if options.last && number.nil?
 
             build = Response::Build.retry(username, reponame, number)
 
             if build&.username
-              say "build #{username}/#{reponame} #{build.build_number} is triggered"
+              puts "build #{username}/#{reponame} #{build.build_number} is triggered"
             else
-              say "failed to trigger #{username}/#{reponame} #{number}"
+              puts "failed to trigger #{username}/#{reponame} #{number}"
             end
           end
 

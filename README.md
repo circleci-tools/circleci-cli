@@ -22,6 +22,17 @@ set the `CIRCLE_CI_TOKEN` environment variable. (optional)
 export CIRCLE_CI_TOKEN=your-circle-ci-token
 ```
 
+## Quick start
+
+In a local checkout of a GitHub project that builds on CircleCI, switch to the branch you want to inspect and run:
+
+```sh
+circleci-cli builds
+```
+
+Enter your CircleCI API token when prompted if `CIRCLE_CI_TOKEN` is unset.
+The command identifies the project from the GitHub `origin` remote and shows a table of recent builds on the current branch, including their build numbers and statuses.
+
 ## Usage
 ```
 Commands:
@@ -32,6 +43,7 @@ Commands:
   circleci-cli help [COMMAND]       # Describe available commands or one specific command
   circleci-cli projects             # List projects
   circleci-cli retry                # Retry a build
+  circleci-cli run RUN_ID           # Show all workflows and jobs in a run
   circleci-cli version              # Show gem version
   circleci-cli watch                # Watch builds in real time
 
@@ -55,6 +67,21 @@ Options:
 ```
 
 ### Examples
+
+#### Show every job in a run
+
+With `CIRCLE_CI_TOKEN` set, list your recent runs with the CircleCI API and
+copy the `id` next to the run number you want:
+
+```sh
+curl -fsS -G 'https://circleci.com/api/v3/runs' \
+  -H "Authorization: Bearer ${CIRCLE_CI_TOKEN}" \
+  --data-urlencode 'filter[user_id]=me' | jq -r '.data[] | [.attributes.number, .id] | @tsv'
+circleci-cli run 123e4567-e89b-12d3-a456-426614174000
+```
+
+On projects supported by `build`, use the displayed job number to inspect its
+steps, for example `circleci-cli build -p user/project -n 42`.
 
 #### Watch your project
 ```
@@ -84,6 +111,7 @@ $ circleci-cli browse
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/circleci-tools/circleci-cli.
+See the [contributing guide](CONTRIBUTING.md) for development setup and checks.
 
 ## License
 

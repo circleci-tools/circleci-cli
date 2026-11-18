@@ -47,12 +47,15 @@ module CircleCI
         end
 
         def rows
-          @builds_to_show.map(&:information)
+          @builds_to_show.map do |build|
+            number, status, branch, *details = build.information
+            [number, Printer.colorize_by_status(status, status), Printer.colorize_by_status(branch, status), *details]
+          end
         end
 
         def max_row_widths(build_rows)
           build_rows
-            .map { |array| array.map(&:to_s).map(&:size) }
+            .map { |row| row.map { |column| column_width(column) } }
             .transpose
             .map(&:max)
         end
@@ -67,8 +70,12 @@ module CircleCI
 
         def pad_column_by_space(column, max_widths, index)
           column_string = column.to_s
-          spaces = ' ' * (max_widths[index] - column_string.size)
+          spaces = ' ' * (max_widths[index] - column_width(column_string))
           column_string + spaces
+        end
+
+        def column_width(column)
+          column.to_s.gsub(/\e\[[\d;]*m/, '').size
         end
       end
     end

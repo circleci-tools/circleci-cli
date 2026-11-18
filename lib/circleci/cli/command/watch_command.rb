@@ -9,7 +9,7 @@ module CircleCI
       class WatchCommand < BaseCommand
         class << self
           def run(options) # rubocop:disable Metrics/MethodLength
-            setup_token
+            token = setup_token
 
             username, reponame = project_name(options).split('/')
             @options = options
@@ -19,24 +19,41 @@ module CircleCI
               branch: branch_name(options),
               user: options.user
             )
-            @client = Networking::CircleCIPusherClient.new.tap(&:connect)
+            @client = Networking::CircleCIPusherClient.new(token:).tap(&:connect)
             @build_watcher = nil
+            @refresh_lock = Mutex.new
+            @refresh_pending = false
 
             bind_status_event
-
-            loop do
-              stop_existing_watcher_if_needed
-              start_watcher_if_needed
-              sleep 1
-            end
+            watch_builds
           rescue Interrupt
             say 'Exited'
           end
 
           private
 
+          def watch_builds
+            loop do
+              refresh_builds_if_needed
+              stop_existing_watcher_if_needed
+              start_watcher_if_needed
+              sleep 1
+            end
+          end
+
           def bind_status_event
-            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') { @repository.update }
+            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') do
+              @refresh_lock.synchronize { @refresh_pending = true }
+            end
+          end
+
+          def refresh_builds_if_needed
+            pending = @refresh_lock.synchronize do
+              pending_refresh = @refresh_pending
+              @refresh_pending = false
+              pending_refresh
+            end
+            @repository.update if pending
           end
 
           def stop_existing_watcher_if_needed
@@ -46,16 +63,21 @@ module CircleCI
             return if build.nil? || !build.finished?
 
             @build_watcher.stop(build.status)
+            @repository.mark_as_shown(build.build_number)
             @build_watcher = nil
-            show_interrupted_build_results
           end
 
           def start_watcher_if_needed
-            build_to_watch = @repository.builds_to_show.select(&:running?).first
-            return unless build_to_watch && @build_watcher.nil?
+            return unless @build_watcher.nil?
 
+            builds = @repository.builds_to_show
+            return if builds.empty?
+
+            candidate = builds.find { |build| !build.finished? && build.running? }
+            build_to_watch = @repository.watch(candidate.build_number) if candidate
             show_interrupted_build_results
-            @repository.mark_as_shown(build_to_watch.build_number)
+            return unless build_to_watch
+
             @build_watcher = BuildWatcher.new(build_to_watch, verbose: @options.verbose)
             @build_watcher.start
           end
@@ -64,14 +86,10 @@ module CircleCI
             @repository.builds_to_show.select(&:finished?).each do |build|
               b = Response::Build.get(build.username, build.reponame, build.build_number)
               title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
-              say Printer::BuildPrinter.header_for(build, title)
-              say Printer::StepPrinter.new(b.steps, pretty: @options.verbose).to_s
+              puts Printer::BuildPrinter.header_for(build, title)
+              puts Printer::StepPrinter.new(b.steps, pretty: @options.verbose)
               @repository.mark_as_shown(b.build_number)
             end
-          end
-
-          def print_bordered(text)
-            say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
           end
         end
       end
