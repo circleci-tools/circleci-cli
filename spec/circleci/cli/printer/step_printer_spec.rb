@@ -28,8 +28,9 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           {
             'status' => 'success',
             'actions' => [
+              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 1200 },
               {
-                'type' => 'build', 'name' => 'Dependency', 'status' => 'success', 'run_time_millis' => 1200,
+                'type' => 'build', 'name' => 'Checkout', 'status' => 'success', 'run_time_millis' => 1200,
                 'output_url' => 'https://circleci.com/output/456'
               },
               { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
@@ -69,7 +70,8 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           +--------------------+
           |       \e[0;32;49mbuild\e[0m        |
           +------------+-------+
-          | \e[0;32;49mDependency\e[0m | 00:01 |
+          | Dependency | 00:01 |
+          | \e[0;32;49mCheckout\e[0m   | 00:01 |
           | \e[0;33;49mBuild\e[0m      | 00:25 |
           +------------+-------+
           |        \e[0;32;49mtest\e[0m        |
@@ -91,7 +93,8 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
 
       it 'prints steps' do
         expected = <<~EXPECTED
-          \e[0;32;49mDependency\e[0m
+          Dependency
+          \e[0;32;49mCheckout\e[0m
           \e[0;33;49mBuild\e[0m
 
           \e[0;31;49mTest\e[0m
