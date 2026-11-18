@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
+require 'open3'
+require 'rbconfig'
 require 'spec_helper'
+require 'tmpdir'
 
 describe CircleCI::CLI::Runner do
   describe '#project' do
@@ -53,6 +56,32 @@ describe CircleCI::CLI::Runner do
     end
   end
 
+  describe 'the executable' do
+    [false, true].each do |git_checkout|
+      location = git_checkout ? 'a repository without origin' : 'outside Git'
+
+      it "prints the version in #{location}" do
+        root = File.expand_path('../../..', __dir__)
+        Dir.mktmpdir('cli-startup-', root) do |directory|
+          if git_checkout
+            repository = Rugged::Repository.init_at(directory)
+            tree = Rugged::Tree::Builder.new(repository).write
+            signature = { name: 'CLI Test', email: 'cli@example.com', time: Time.now }
+            Rugged::Commit.create(repository, tree: tree, parents: [], message: 'Initial commit',
+                                              author: signature, committer: signature, update_ref: 'HEAD')
+          end
+
+          output, error, status = Open3.capture3(
+            RbConfig.ruby, "-I#{root}/lib", "#{root}/exe/circleci-cli", 'version', chdir: directory
+          )
+
+          expect(status.success?).to be(true), error
+          expect(output).to eq("#{CircleCI::CLI::VERSION}\n")
+        end
+      end
+    end
+  end
+
   describe '.start' do
     [
       ['projects', [], CircleCI::CLI::Command::ProjectsCommand, { 'pretty' => true }],
@@ -71,6 +100,7 @@ describe CircleCI::CLI::Runner do
        { 'project' => 'octocat/hello-world', 'branch' => 'main', 'user' => 'octocat', 'verbose' => true }]
     ].each do |command_name, arguments, command_class, expected_options|
       it "routes #{command_name} to #{command_class}" do
+        expect(Rugged::Repository).not_to receive(:new)
         expect(command_class).to receive(:run) do |options|
           expect(options.to_h.slice(*expected_options.keys)).to eq(expected_options)
         end
@@ -93,14 +123,84 @@ describe CircleCI::CLI::Runner do
         allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_call_original
         path = "/api/v1.1/project/github/octocat/hello-world/tree/#{encoded_branch}"
         expect(http).to receive(:request).with(having_attributes(uri: having_attributes(path: path)), nil)
-                                         .and_return(instance_double(Net::HTTPOK, body: '[]'))
+                                         .and_return(instance_double(Net::HTTPOK, code: '200', body: '[]'))
 
         described_class.start(['builds', '-p', 'octocat/hello-world', '-b', branch])
+        end
+      end
+
+    it 'infers the project and branch for builds' do
+      allow(mock_rugged_head).to receive(:name).and_return('refs/heads/feature/topic')
+      expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(
+        hash_including('project' => 'user/local-repository-from-rugged', 'branch' => 'feature/topic')
+      )
+
+      described_class.start(%w[builds])
+    end
+
+    it 'skips branch inference with --all' do
+      expect(Rugged::Repository).not_to receive(:new)
+      expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(hash_including('all' => true))
+
+      described_class.start(%w[builds --project octocat/hello-world --all])
+    end
+
+    context 'outside Git' do
+      before do
+        allow(Rugged::Repository).to receive(:new).with('.').and_raise(Rugged::RepositoryError)
+      end
+
+      it 'leaves project selection to the command' do
+        expect(CircleCI::CLI::Command::BrowseCommand).to receive(:run).with(hash_including('project' => nil))
+
+        described_class.start(%w[browse])
+      end
+
+      it 'dispatches builds with an explicit project and no branch' do
+        expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(
+          hash_including('project' => 'octocat/hello-world', 'branch' => nil)
+        )
+
+        described_class.start(%w[builds --project octocat/hello-world])
+      end
+    end
+
+    it 'leaves the branch unset when HEAD has no commit' do
+      allow(mock_rugged_repository).to receive(:head).and_raise(Rugged::ReferenceError)
+      expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(hash_including('branch' => nil))
+
+      described_class.start(%w[builds --project octocat/hello-world])
+    end
+
+    context 'without an origin remote' do
+      let(:mock_rugged_remotes) { [] }
+
+      it 'leaves project selection to the command and still infers the branch' do
+        expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(
+          hash_including('project' => nil, 'branch' => rugged_response_branch_name)
+        )
+
+        described_class.start(%w[builds])
+      end
+
+      it 'uses the explicit project' do
+        expect(mock_rugged_repository).not_to receive(:remotes)
+        expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(
+          hash_including('project' => 'octocat/hello-world', 'branch' => rugged_response_branch_name)
+        )
+
+        described_class.start(%w[builds --project octocat/hello-world])
       end
     end
 
     it 'prints the version' do
+      expect(Rugged::Repository).not_to receive(:new)
       expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
+    end
+
+    it 'shows usage for the build command' do
+      expect { described_class.start(%w[help build]) }
+        .to output(/Usage:\n  \S+ build\b.*Show the build result/m).to_stdout
     end
   end
 end

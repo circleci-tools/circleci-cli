@@ -8,34 +8,34 @@ module CircleCI
       class Build
         class << self
           def all(username, reponame)
-            CircleCi::Project.new(username, reponame, 'github').recent_builds
-                             .body
-                             .map { |b| Build.new(b) }
+            response = CircleCi::Project.new(username, reponame, 'github').recent_builds
+            Response.body!(response).map { |b| Build.new(b) }
           end
 
           def failed(username, reponame)
-            CircleCi::Project.new(username, reponame, 'github').recent_builds(filter: 'failed')
-                             .body
-                             .map { |b| Build.new(b) }
+            response = CircleCi::Project.new(username, reponame, 'github').recent_builds(filter: 'failed')
+            Response.body!(response).map { |b| Build.new(b) }
           end
 
           def branch(username, reponame, branch)
             encoded_branch = URI.encode_uri_component(branch)
-            CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(encoded_branch)
-                             .body
-                             .map { |b| Build.new(b) }
+            response = CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(encoded_branch)
+            Response.body!(response).map { |b| Build.new(b) }
           end
 
           def get(username, reponame, number)
-            Build.new(CircleCi::Build.new(username, reponame, 'github', number).get.body)
+            response = CircleCi::Build.new(username, reponame, 'github', number).get
+            Build.new(Response.body!(response))
           end
 
           def retry(username, reponame, number)
-            Build.new(CircleCi::Build.new(username, reponame, 'github', number).retry.body)
+            response = CircleCi::Build.new(username, reponame, 'github', number).retry
+            Build.new(Response.body!(response))
           end
 
           def cancel(username, reponame, number)
-            Build.new(CircleCi::Build.new(username, reponame, 'github', number).cancel.body)
+            response = CircleCi::Build.new(username, reponame, 'github', number).cancel
+            Build.new(Response.body!(response))
           end
         end
 
