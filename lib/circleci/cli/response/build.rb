@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'uri'
+
 module CircleCI
   module CLI
     module Response
@@ -18,7 +20,8 @@ module CircleCI
           end
 
           def branch(username, reponame, branch)
-            CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(branch)
+            encoded_branch = URI.encode_uri_component(branch)
+            CircleCi::Project.new(username, reponame, 'github').recent_builds_branch(encoded_branch)
                              .body
                              .map { |b| Build.new(b) }
           end

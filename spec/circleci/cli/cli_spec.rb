@@ -79,6 +79,26 @@ describe CircleCI::CLI::Runner do
       end
     end
 
+    [
+      ['release#1', 'release%231'],
+      ['café', 'caf%C3%A9'],
+      ['feature/topic', 'feature%2Ftopic']
+    ].each do |branch, encoded_branch|
+      it "encodes #{branch} in the builds request" do
+        allow(CircleCI::CLI::Command::BuildsCommand).to receive(:setup_token)
+        allow(CircleCI::CLI::Command::BuildsCommand).to receive(:say)
+        http = instance_double(Net::HTTP)
+        allow(Net::HTTP).to receive(:new).and_return(http)
+        allow(http).to receive(:start).and_yield(http)
+        allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_call_original
+        path = "/api/v1.1/project/github/octocat/hello-world/tree/#{encoded_branch}"
+        expect(http).to receive(:request).with(having_attributes(uri: having_attributes(path: path)), nil)
+                                         .and_return(instance_double(Net::HTTPOK, body: '[]'))
+
+        described_class.start(['builds', '-p', 'octocat/hello-world', '-b', branch])
+      end
+    end
+
     it 'prints the version' do
       expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
     end
