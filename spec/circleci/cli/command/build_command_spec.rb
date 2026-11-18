@@ -20,9 +20,28 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
     end
 
     it 'should show build information' do
-      allow(CircleCI::CLI::Command::BuildCommand).to receive(:say) { nil }
-      expect(CircleCI::CLI::Command::BuildCommand).to receive(:say).with(expected_output.strip)
-      CircleCI::CLI::Command::BuildCommand.run(options)
+      expect { described_class.run(options) }.to output(a_string_including(expected_output)).to_stdout
+    end
+  end
+
+  context 'with a failed action' do
+    let(:log) { 'Build log contains <%= "example" %>' }
+    let(:action_name) { 'Test <%= "metadata" %>' }
+    let(:output_url) { 'https://example.test/output' }
+
+    before do
+      build_hash['steps'].last['actions'].first.merge!(
+        'name' => action_name, 'status' => 'failed', 'output_url' => output_url
+      )
+      http_client = CircleCI::CLI::Networking::HTTPClient
+      allow(http_client).to receive(:get).with(output_url).and_return([{ 'message' => log }])
+    end
+
+    [true, false].each do |pretty|
+      it "prints the action name and log literally with pretty=#{pretty}" do
+        options = OpenStruct.new(project: 'user/repo', build: 1234, pretty:)
+        expect { described_class.run(options) }.to output(a_string_including(action_name, log)).to_stdout
+      end
     end
   end
 
