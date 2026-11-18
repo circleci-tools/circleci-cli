@@ -21,22 +21,39 @@ module CircleCI
             )
             @client = Networking::CircleCIPusherClient.new(token:).tap(&:connect)
             @build_watcher = nil
+            @refresh_lock = Mutex.new
+            @refresh_pending = false
 
             bind_status_event
-
-            loop do
-              stop_existing_watcher_if_needed
-              start_watcher_if_needed
-              sleep 1
-            end
+            watch_builds
           rescue Interrupt
             say 'Exited'
           end
 
           private
 
+          def watch_builds
+            loop do
+              refresh_builds_if_needed
+              stop_existing_watcher_if_needed
+              start_watcher_if_needed
+              sleep 1
+            end
+          end
+
           def bind_status_event
-            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') { @repository.update }
+            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') do
+              @refresh_lock.synchronize { @refresh_pending = true }
+            end
+          end
+
+          def refresh_builds_if_needed
+            pending = @refresh_lock.synchronize do
+              pending_refresh = @refresh_pending
+              @refresh_pending = false
+              pending_refresh
+            end
+            @repository.update if pending
           end
 
           def stop_existing_watcher_if_needed
@@ -48,7 +65,6 @@ module CircleCI
             @build_watcher.stop(build.status)
             @repository.mark_as_shown(build.build_number)
             @build_watcher = nil
-            show_interrupted_build_results
           end
 
           def start_watcher_if_needed
@@ -70,14 +86,10 @@ module CircleCI
             @repository.builds_to_show.select(&:finished?).each do |build|
               b = Response::Build.get(build.username, build.reponame, build.build_number)
               title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
-              say Printer::BuildPrinter.header_for(build, title)
-              say Printer::StepPrinter.new(b.steps, pretty: @options.verbose, verbose: @options.verbose).to_s
+              puts Printer::BuildPrinter.header_for(build, title)
+              puts Printer::StepPrinter.new(b.steps, pretty: @options.verbose, verbose: @options.verbose)
               @repository.mark_as_shown(b.build_number)
             end
-          end
-
-          def print_bordered(text)
-            say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
           end
         end
       end
