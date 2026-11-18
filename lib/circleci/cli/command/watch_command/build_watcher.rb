@@ -62,7 +62,7 @@ module CircleCI
             puts "\e[1A\e[2K\r#{Printer.colorize_green(name)}"
           when 'failed'
             puts "\e[1A\e[2K\r#{Printer.colorize_red(name)}"
-            @messages[step.name].each(&method(:say))
+            @messages[step.name].each(&method(:puts))
           end
         end
 
@@ -104,7 +104,7 @@ module CircleCI
         end
 
         def notify_started
-          say Printer::BuildPrinter.header_for(
+          puts Printer::BuildPrinter.header_for(
             @build,
             "👀 Start watching #{@build.project_name} ##{@build.build_number}"
           )
@@ -119,11 +119,11 @@ module CircleCI
                  when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
-          @verbose ? print_bordered(text) : say(text)
+          @verbose ? print_bordered(text) : puts(text)
         end
 
         def print_bordered(text)
-          say Terminal::Table.new(rows: [[text]], style: { width: 120 }).to_s
+          puts Terminal::Table.new(rows: [[text]], style: { width: 120 })
         end
       end
     end

@@ -154,26 +154,24 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
     let(:repository) { double('repository') }
     let(:response_build) { double('response_build', steps: %w[step], build_number: 42) }
-    let(:step_printer) { double('step_printer', to_s: 'step output') }
+    let(:step_printer) { double('step_printer', to_s: 'step output <%= "log" %>') }
 
     it 'prints finished background builds and marks them as shown' do
       described_class.instance_variable_set(:@options, options)
       described_class.instance_variable_set(:@repository, repository)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(response_build)
       allow(CircleCI::CLI::Printer::StepPrinter).to receive(:new).and_return(step_printer)
-      allow(described_class).to receive(:say)
 
       expect(repository).to receive(:builds_to_show).and_return([running_build, finished_build])
       expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', 'repo', 42)
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
         .with(finished_build, a_string_including('Result of user/repo #42 completed in background'))
-        .and_return('header output')
+        .and_return('header output <%= "metadata" %>')
       expect(CircleCI::CLI::Printer::StepPrinter).to receive(:new).with(%w[step], pretty: false)
-      expect(described_class).to receive(:say).with('header output')
-      expect(described_class).to receive(:say).with('step output')
       expect(repository).to receive(:mark_as_shown).with(42)
 
-      described_class.send(:show_interrupted_build_results)
+      expect { described_class.send(:show_interrupted_build_results) }
+        .to output("header output <%= \"metadata\" %>\nstep output <%= \"log\" %>\n").to_stdout
     end
   end
 end
