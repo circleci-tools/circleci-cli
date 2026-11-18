@@ -18,9 +18,7 @@ describe CircleCI::CLI::Command::ProjectsCommand, type: :command do
     end
 
     it 'should show projects' do
-      allow(CircleCI::CLI::Command::ProjectsCommand).to receive(:say) { nil }
-      expect(CircleCI::CLI::Command::ProjectsCommand).to receive(:say).with(expected_output.strip)
-      CircleCI::CLI::Command::ProjectsCommand.run(options)
+      expect { described_class.run(options) }.to output(a_string_including(expected_output)).to_stdout
     end
   end
 end

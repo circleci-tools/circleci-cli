@@ -23,6 +23,23 @@ describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
     end
   end
 
+  describe '.get_raw' do
+    let(:url) { 'https://example.com/output' }
+    let(:http) { instance_double(Net::HTTP) }
+
+    before do
+      allow(Net::HTTP).to receive(:start).with('example.com', 443, use_ssl: true).and_yield(http)
+    end
+
+    it 'returns the partial HTTP response without parsing it as JSON' do
+      response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
+      expect(http).to receive(:request).with(satisfy { |request| request['Range'] == 'bytes=13-' })
+                                       .and_return(response)
+
+      expect(described_class.get_raw(url, 'Range' => 'bytes=13-')).to be(response)
+    end
+  end
+
   describe '.post_form' do
     let(:url) { 'https://example.com/auth' }
     let(:uri) { URI(url) }

@@ -11,9 +11,9 @@ module CircleCI
             number = build_number(options)
             build = Response::Build.cancel(username, reponame, number)
             if build.username
-              say "build #{build.project_name} #{build.build_number} is canceled."
+              puts "build #{build.project_name} #{build.build_number} is canceled."
             else
-              say "failed to cancel #{username}/#{reponame} #{number}."
+              puts "failed to cancel #{username}/#{reponame} #{number}."
             end
           end
         end
