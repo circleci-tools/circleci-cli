@@ -3,6 +3,7 @@
 if ENV['COVERAGE']
   require 'simplecov'
   SimpleCov.add_filter ['spec']
+  SimpleCov.minimum_coverage line: 99
   SimpleCov.start
 end
 

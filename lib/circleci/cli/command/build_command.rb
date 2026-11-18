@@ -12,7 +12,7 @@ module CircleCI
             return say 'No failed build found.' if options.last && number.nil?
 
             build = Response::Build.get(username, reponame, number)
-            say Printer::StepPrinter.new(build.steps, pretty: options.pretty).to_s
+            puts Printer::StepPrinter.new(build.steps, pretty: options.pretty)
           end
 
           private

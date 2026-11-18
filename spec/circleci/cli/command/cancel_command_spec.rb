@@ -7,8 +7,8 @@ describe CircleCI::CLI::Command::CancelCommand, type: :command do
     let(:expected_output) { 'build user/project_name_from_api 1234 is canceled.' }
 
     it 'should cancel build' do
-      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) { nil }
-      expect(CircleCI::CLI::Command::CancelCommand).to receive(:say).with(expected_output.strip)
+      allow(CircleCI::CLI::Command::CancelCommand).to receive(:puts) { nil }
+      expect(CircleCI::CLI::Command::CancelCommand).to receive(:puts).with(expected_output.strip)
       CircleCI::CLI::Command::CancelCommand.run(options)
     end
   end
@@ -40,9 +40,9 @@ describe CircleCI::CLI::Command::CancelCommand, type: :command do
     let(:build_hash) { {} }
 
     it 'shows failure message' do
-      allow(CircleCI::CLI::Command::CancelCommand).to receive(:say) { nil }
+      allow(CircleCI::CLI::Command::CancelCommand).to receive(:puts) { nil }
       expect(CircleCI::CLI::Command::CancelCommand)
-        .to receive(:say).with('failed to cancel unhappychoice/Circler 1234.')
+        .to receive(:puts).with('failed to cancel unhappychoice/Circler 1234.')
       CircleCI::CLI::Command::CancelCommand.run(options)
     end
   end

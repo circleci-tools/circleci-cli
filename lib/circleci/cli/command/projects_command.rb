@@ -7,7 +7,7 @@ module CircleCI
         class << self
           def run(options)
             setup_token
-            say Printer::ProjectPrinter.new(Response::Project.all, pretty: options.pretty).to_s
+            puts Printer::ProjectPrinter.new(Response::Project.all, pretty: options.pretty)
           end
         end
       end
