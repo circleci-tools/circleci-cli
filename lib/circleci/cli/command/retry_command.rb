@@ -9,6 +9,7 @@ module CircleCI
             setup_token
             username, reponame = project_name(options).split('/')
             number = build_number_for(username, reponame, options)
+            return say 'No failed build found.' if options.last && number.nil?
 
             build = Response::Build.retry(username, reponame, number)
 

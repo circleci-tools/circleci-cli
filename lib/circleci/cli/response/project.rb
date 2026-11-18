@@ -13,7 +13,7 @@ module CircleCI
         end
 
         def self.all
-          CircleCi::Projects.new.get.body.map { |p| Project.new(p) }
+          Response.body!(CircleCi::Projects.new.get).map { |p| Project.new(p) }
         end
       end
     end
