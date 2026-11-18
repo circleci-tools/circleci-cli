@@ -79,6 +79,26 @@ describe CircleCI::CLI::Runner do
       end
     end
 
+    {
+      'build' => CircleCI::CLI::Command::BuildCommand,
+      'retry' => CircleCI::CLI::Command::RetryCommand
+    }.each do |command_name, command_class|
+      %w[-l --last].each do |flag|
+        it "accepts #{flag} without a value for #{command_name}" do
+          expect(command_class).to receive(:run).with(hash_including('last' => true))
+
+          described_class.start([command_name, flag])
+        end
+      end
+    end
+
+    it 'accepts the short verbose and user options for watch' do
+      expect(CircleCI::CLI::Command::WatchCommand).to receive(:run)
+        .with(hash_including('verbose' => true, 'user' => 'octocat'))
+
+      described_class.start(%w[watch -v -u octocat])
+    end
+
     it 'prints the version' do
       expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
     end
