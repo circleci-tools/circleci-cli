@@ -29,14 +29,22 @@ shared_context 'mock circle ci response' do
 
   let(:project_hash) { { 'username' => 'unhappychoice', 'reponame' => 'default_reponame_from_api' } }
 
+  let(:http_status) { '200' }
+  let(:builds_body) { [build_hash] }
+  let(:projects_body) { [project_hash] }
+
+  def circleci_response(body)
+    CircleCi::Response.new(double('HTTP response', code: http_status, body: JSON.generate(body)))
+  end
+
   before do
     allow(CircleCi::User).to receive_message_chain(:me, :body) { account_hash }
-    allow_any_instance_of(CircleCi::Project).to receive_message_chain(:recent_builds, :body) { [build_hash] }
-    allow_any_instance_of(CircleCi::Project).to receive_message_chain(:recent_builds_branch, :body) { [build_hash] }
-    allow_any_instance_of(CircleCi::Build).to receive_message_chain(:get, :body) { build_hash }
-    allow_any_instance_of(CircleCi::Build).to receive_message_chain(:retry, :body) { build_hash }
-    allow_any_instance_of(CircleCi::Build).to receive_message_chain(:cancel, :body) { build_hash }
-    allow_any_instance_of(CircleCi::Projects).to receive_message_chain(:get, :body) { [project_hash] }
+    allow_any_instance_of(CircleCi::Project).to receive(:recent_builds).and_return(circleci_response(builds_body))
+    allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_return(circleci_response(builds_body))
+    allow_any_instance_of(CircleCi::Build).to receive(:get).and_return(circleci_response(build_hash))
+    allow_any_instance_of(CircleCi::Build).to receive(:retry).and_return(circleci_response(build_hash))
+    allow_any_instance_of(CircleCi::Build).to receive(:cancel).and_return(circleci_response(build_hash))
+    allow_any_instance_of(CircleCi::Projects).to receive(:get).and_return(circleci_response(projects_body))
   end
 end
 

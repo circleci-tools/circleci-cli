@@ -6,7 +6,7 @@ module CircleCI
       class BrowseCommand < BaseCommand
         class << self
           def run(options)
-            setup_token
+            setup_token unless options.project
             project = project_name(options)
             number = options.build
             Launchy.open url(project, number)
