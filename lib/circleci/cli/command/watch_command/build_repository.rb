@@ -9,31 +9,71 @@ module CircleCI
           @user = user
           @reponame = reponame
           @branch = branch
+          @mutex = Mutex.new
           @builds = fetch_builds
-          @build_numbers_shown = @builds.select(&:finished?).map(&:build_number)
+          @recent_build_numbers = @builds.to_set(&:build_number)
+          @build_numbers_shown = @builds.select(&:finished?).to_set(&:build_number)
         end
 
         def update
-          @builds = (fetch_builds + @builds).uniq(&:build_number)
+          response = fetch_builds
+
+          @mutex.synchronize { retain_builds(response) }
         end
 
         def mark_as_shown(build_number)
-          @build_numbers_shown = (@build_numbers_shown + [build_number]).uniq
+          @mutex.synchronize do
+            @watched_build_number = nil if @watched_build_number == build_number
+            if @recent_build_numbers.include?(build_number)
+              @build_numbers_shown.add(build_number)
+            else
+              @builds.reject! { |build| build.build_number == build_number }
+              @build_numbers_shown.delete(build_number)
+            end
+          end
+        end
+
+        def watch(build_number)
+          @mutex.synchronize do
+            build = find_build(build_number)
+            next unless build && !build.finished?
+
+            @watched_build_number = build_number
+            build
+          end
         end
 
         def builds_to_show
-          @builds
-            .reject { |build| @build_numbers_shown.include?(build.build_number) }
-            .select { |build| @branch.nil? || build.branch == @branch }
-            .select { |build| @user.nil? || build.user == @user }
-            .sort_by(&:build_number)
+          @mutex.synchronize { @builds.select { |build| pending?(build) }.sort_by(&:build_number) }
         end
 
         def build_for(build_number)
-          @builds.find { |build| build.build_number == build_number }
+          @mutex.synchronize { find_build(build_number) }
         end
 
         private
+
+        def retain_builds(response)
+          @recent_build_numbers = response.to_set(&:build_number)
+          @builds = (response + @builds.select { |build| retain?(build) }).uniq(&:build_number)
+          @build_numbers_shown.keep_if { |number| @recent_build_numbers.include?(number) }
+          @builds
+        end
+
+        def retain?(build)
+          build.build_number == @watched_build_number || pending?(build)
+        end
+
+        def pending?(build)
+          build.build_number != @watched_build_number &&
+            !@build_numbers_shown.include?(build.build_number) &&
+            (@branch.nil? || build.branch == @branch) &&
+            (@user.nil? || build.user == @user)
+        end
+
+        def find_build(build_number)
+          @builds.find { |build| build.build_number == build_number }
+        end
 
         def fetch_builds
           return Response::Build.branch(@username, @reponame, @branch) if @branch

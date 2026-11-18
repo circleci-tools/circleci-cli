@@ -1,0 +1,31 @@
+{
+  "run": {
+    "data": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "attributes": {"number": 123, "phase": "started", "current_outcome": null}
+    }
+  },
+  "workflows_first_page": {
+    "data": [
+      {"id": "123e4567-e89b-12d3-a456-426614174001", "attributes": {"name": "checks", "phase": "started"}}
+    ],
+    "page": {"next": "cursor+/=", "prev": null}
+  },
+  "workflows_last_page": {
+    "data": [
+      {"id": "123e4567-e89b-12d3-a456-426614174002", "attributes": {"name": "deploy", "phase": "started"}}
+    ],
+    "page": {"next": null, "prev": "previous"}
+  },
+  "checks_jobs": {
+    "data": [
+      {"attributes": {"name": "test", "phase": "ended", "outcome": "failed", "number": 42, "type": "build"}},
+      {"attributes": {"name": "lint", "phase": "running", "outcome": null, "number": 43, "type": "build"}}
+    ]
+  },
+  "deploy_jobs": {
+    "data": [
+      {"attributes": {"name": "approve", "phase": "waiting", "outcome": null, "number": null, "type": "approval"}}
+    ]
+  }
+}
