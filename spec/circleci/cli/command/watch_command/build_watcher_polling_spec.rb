@@ -31,8 +31,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:build) { build_response.call(initial_steps) }
   let(:step_name) { "Test\r\e[2K" }
   let(:escaped_step_name) { 'Test\x0D\x1B[2K' }
-  let(:log_output) { "first\r\nsecond\r\e[2K\nthird" }
-  let(:escaped_log_output) { "first\nsecond\\x0D\\x1B[2K\nthird" }
+  let(:log_output) { "é first\r\nsecond\r\e[2K\u009B\nthird".b + "\x9D".b }
+  let(:escaped_log_output) { "é first\nsecond\\x0D\\x1B[2K\\x9B\nthird\\x9D" }
 
   let(:http) { instance_double(Net::HTTP) }
   let(:output_path) { '/api/private/output/raw/github/user/repo/1234/output/1/2' }
@@ -73,11 +73,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
-      first_chunk = "é#{log_output}"
-      expect_output_chunk(0, first_chunk)
-      expect_output_chunk(first_chunk.bytesize, " done\n")
+      expect_output_chunk(0, log_output)
+      expect_output_chunk(log_output.bytesize, " done\n".b)
 
-      expect { watcher.start }.to output("é#{escaped_log_output} done\n").to_stdout
+      expect { watcher.start }.to output("#{escaped_log_output} done\n").to_stdout
       expect(watcher).to have_received(:say).with(a_string_including("| #{escaped_step_name}"))
     end
   end
@@ -196,7 +195,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.instance_variable_set(:@current_step, current_step)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       expect_output_chunk(0, log_output)
-      expect_output_chunk(log_output.bytesize, '')
+      expect_output_chunk(log_output.bytesize, ''.b)
 
       watcher.send(:update_actions)
       watcher.send(:update_actions)

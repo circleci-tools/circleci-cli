@@ -27,12 +27,19 @@ module CircleCI
         def escape_controls(value, multiline: false)
           return value unless value.is_a?(String)
 
-          text = multiline ? value.gsub("\r\n", "\n") : value
+          text = value.encoding == Encoding::BINARY ? decode_binary_text(value) : value
+          text = text.gsub("\r\n", "\n") if multiline
           controls = multiline ? /[[:cntrl:]&&[^\n]]/ : /[[:cntrl:]]/
           text.gsub(controls) { |character| format('\\x%02X', character.ord) }
         end
 
         private
+
+        def decode_binary_text(value)
+          value.dup.force_encoding(Encoding::UTF_8).scrub do |invalid_bytes|
+            invalid_bytes.bytes.map { |byte| format('\\x%02X', byte) }.join
+          end
+        end
 
         def colorize(string, color_code)
           "\e[#{color_code}m#{string}\e[0m"
