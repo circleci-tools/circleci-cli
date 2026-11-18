@@ -37,7 +37,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
   before { allow(http).to receive(:max_retries=).with(0) }
 
-  def expect_output_response(offset, *chunks)
+  def expect_output_response(offset, *chunks, error: nil)
     expect(http).to receive(:request).ordered do |request, &read_response|
       expect(request).to be_a(Net::HTTP::Get)
       expect(request.path).to eq(output_path)
@@ -45,6 +45,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       response = instance_double(Net::HTTPPartialContent)
       allow(response).to receive(:read_body) do |&read_chunk|
         chunks.each(&read_chunk)
+        raise error if error
       end
       read_response.call(response)
     end
@@ -86,6 +87,20 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect { watcher.start }
         .to output(a_string_including(step_name, "é#{log_tail}", build.author_name)).to_stdout
+    end
+
+    it 'continues polling from the last byte received after a connection reset' do
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        raise Interrupt if polls == 2
+      end
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect_output_response(0, 'é', error: Errno::ECONNRESET)
+      expect_output_response(2, " done\n")
+
+      expect { watcher.start }.to output(a_string_matching(/\A[^é]*é done\n[^é]*\z/)).to_stdout
     end
 
     it 'fetches build details immediately and every five polling iterations' do

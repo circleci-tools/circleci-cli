@@ -128,6 +128,9 @@ module CircleCI
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           Networking::HTTPClient.get_raw(url, headers) { |response| read_output(response) }
+        rescue EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+               Errno::ECONNRESET, Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
+          # The next poll requests the remaining bytes.
         end
 
         def read_output(response)
