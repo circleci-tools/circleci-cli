@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 
 describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:thread) { instance_double(Thread, kill: nil) }
@@ -280,6 +281,33 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
+    end
+
+    it 'stops polling and removes the spill file while the response body is blocked' do
+      reading = Queue.new
+      release = Queue.new
+      response = instance_double(Net::HTTPPartialContent)
+      allow(watcher).to receive(:say)
+      allow(http).to receive(:request).and_yield(response)
+      allow(response).to receive(:read_body) do |&read_chunk|
+        read_chunk.call(first_chunk)
+        read_chunk.call(second_chunk)
+        reading << messages.values.first.instance_variable_get(:@file).path
+        release.pop
+      end
+
+      watcher.start
+      poller = watcher.instance_variable_get(:@build_thread)
+      path = Timeout.timeout(5) { reading.pop }
+      expect(File.exist?(path)).to be(true)
+
+      Timeout.timeout(5) { watcher.close }
+
+      expect(poller).not_to be_alive
+      expect(messages).to be_empty
+      expect(File.exist?(path)).to be(false)
+    ensure
+      release << true
     end
 
     it 'removes the spill file if the final build refresh fails' do

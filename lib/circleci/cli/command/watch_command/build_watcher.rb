@@ -14,7 +14,6 @@ module CircleCI
           @messages = {}
 
           @build_thread = nil
-          @poll_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -44,30 +43,22 @@ module CircleCI
         private
 
         def stop_polling
-          thread = @poll_lock.synchronize do
-            thread = @build_thread
+          Thread.handle_interrupt(Interrupt => :never) do
+            @build_thread&.kill
+            @build_thread&.join
             @build_thread = nil
-            thread&.kill
-            thread
           end
-          thread&.join
         end
 
         def poll_build
           @build_thread = Thread.new do
             count = 0
             loop do
-              poll_once(refresh_build: (count % 5).zero?)
+              update_build if (count % 5).zero?
+              update_actions
               count += 1
               sleep 1
             end
-          end
-        end
-
-        def poll_once(refresh_build:)
-          @poll_lock.synchronize do
-            update_build if refresh_build
-            update_actions
           end
         end
 
@@ -101,10 +92,12 @@ module CircleCI
         end
 
         def finish_step_log(step, status)
-          log = @messages.delete(step_key(step))
+          key = step_key(step)
+          log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
           log&.close
+          @messages.delete(key)
         end
 
         def step_key(step)
@@ -154,7 +147,10 @@ module CircleCI
             $stdout.write(chunk)
             $stdout.flush
           else
-            (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+            # Defer thread termination until any spill file is registered for cleanup.
+            Thread.handle_interrupt(Object => :never) do
+              (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+            end
           end
         end
 
