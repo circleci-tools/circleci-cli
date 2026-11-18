@@ -8,20 +8,10 @@ module CircleCI
     module Networking
       module HTTPClient
         def self.get(url, headers = {})
-          JSON.parse(request(url, headers).body)
+          JSON.parse(get_raw(url, headers).body)
         end
 
         def self.get_raw(url, headers = {})
-          response = request(url, headers)
-          response.body if response.is_a?(Net::HTTPSuccess)
-        end
-
-        def self.post_form(url, params = {})
-          res = Net::HTTP.post_form(URI(url), params)
-          JSON.parse(res.body)
-        end
-
-        def self.request(url, headers)
           uri = URI(url)
           req = Net::HTTP::Get.new(uri)
           headers.each { |key, value| req[key] = value }
@@ -29,7 +19,12 @@ module CircleCI
             http.request(req)
           end
         end
-        private_class_method :request
+
+        def self.post_form(url, params = {})
+          uri = URI(url)
+          res = Net::HTTP.post_form(uri, params)
+          JSON.parse(res.body)
+        end
       end
     end
   end

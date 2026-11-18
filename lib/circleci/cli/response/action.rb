@@ -17,8 +17,7 @@ module CircleCI
         end
 
         def log
-          HTTPClient.get(@hash['output_url'])
-                    .map do |r|
+          Networking::HTTPClient.get(@hash['output_url']).map do |r|
             r['message']
               .gsub("\r\n", "\n")
               .gsub("\e[A\r\e[2K", '')

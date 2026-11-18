@@ -31,20 +31,12 @@ describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
       allow(Net::HTTP).to receive(:start).with('example.com', 443, use_ssl: true).and_yield(http)
     end
 
-    it 'returns a partial response body without parsing it as JSON' do
+    it 'returns the partial HTTP response without parsing it as JSON' do
       response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
-      allow(response).to receive(:body).and_return("final output\n")
       expect(http).to receive(:request).with(satisfy { |request| request['Range'] == 'bytes=13-' })
                                        .and_return(response)
 
-      expect(described_class.get_raw(url, 'Range' => 'bytes=13-')).to eq("final output\n")
-    end
-
-    it 'ignores an unsatisfiable range response' do
-      response = Net::HTTPRangeNotSatisfiable.new('1.1', '416', 'Range Not Satisfiable')
-      allow(http).to receive(:request).and_return(response)
-
-      expect(described_class.get_raw(url, 'Range' => 'bytes=13-')).to be_nil
+      expect(described_class.get_raw(url, 'Range' => 'bytes=13-')).to be(response)
     end
   end
 

@@ -103,15 +103,10 @@ module CircleCI
           [action.index, action.step] if action
         end
 
-        # rubocop:disable-next Metrics/MethodLength
         def update_actions
           return unless @current_step
 
-          position = action_position(@current_step).join('/')
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position}"
-          headers = { 'Range' => "bytes=#{@read_byte}-" }
-          response = Networking::HTTPClient.get_raw(url, headers)
-
+          response = read_action_output
           return if response.nil? || response.empty?
 
           @read_byte += response.bytesize
@@ -123,6 +118,13 @@ module CircleCI
           end
         end
 
+        def read_action_output
+          position = action_position(@current_step).join('/')
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position}"
+          response = Networking::HTTPClient.get_raw(url, 'Range' => "bytes=#{@read_byte}-")
+          response.body if response.is_a?(Net::HTTPSuccess)
+        end
+
         def notify_started
           say Printer::BuildPrinter.header_for(
             @build,
@@ -131,11 +133,12 @@ module CircleCI
         end
 
         def notify_stopped(status)
+          build_name = "#{@build.project_name} ##{@build.build_number}"
           text = case status
-                 when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
-                 when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
+                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
+                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
+                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
           @verbose ? print_bordered(text) : say(text)
