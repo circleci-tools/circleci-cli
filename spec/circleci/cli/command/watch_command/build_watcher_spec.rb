@@ -85,6 +85,36 @@ describe CircleCI::CLI::Command::BuildWatcher do
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
     end
 
+    {
+      'canceled' => 'was canceled.',
+      'no_tests' => 'ran no tests.'
+    }.each do |terminal_status, outcome|
+      context "when status is #{terminal_status}" do
+        let(:status) { terminal_status }
+        let(:message) { "unhappychoice/default_reponame_from_api #1234 #{outcome}" }
+
+        context 'with verbose option' do
+          let(:verbose) { true }
+
+          it 'prints the build and its outcome inside the table' do
+            expect_any_instance_of(described_class).to receive(:say).with(/\A\+-+\+\n\|[^\n]*#{Regexp.escape(message)}/)
+
+            subject
+          end
+        end
+
+        context 'without verbose option' do
+          let(:verbose) { false }
+
+          it 'prints the build and its outcome on one line' do
+            expect_any_instance_of(described_class).to receive(:say).with(/\A[^\n]*#{Regexp.escape(message)}[^\n]*\z/)
+
+            subject
+          end
+        end
+      end
+    end
+
     context 'with verbose option' do
       let(:verbose) { true }
 
