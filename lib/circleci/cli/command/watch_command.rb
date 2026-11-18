@@ -69,10 +69,6 @@ module CircleCI
               @repository.mark_as_shown(b.build_number)
             end
           end
-
-          def print_bordered(text)
-            puts Terminal::Table.new(rows: [[text]], style: { width: 120 })
-          end
         end
       end
     end
