@@ -95,9 +95,7 @@ module CircleCI
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          res = HTTPClient.get(url, headers)
-
-          response = res.body
+          response = Networking::HTTPClient.get_raw(url, headers).body
 
           return if response.empty?
 
