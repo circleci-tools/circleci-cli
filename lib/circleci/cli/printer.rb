@@ -24,6 +24,14 @@ module CircleCI
           colorize(string, '0;90;49')
         end
 
+        def escape_controls(value, multiline: false)
+          return value unless value.is_a?(String)
+
+          text = multiline ? value.gsub("\r\n", "\n") : value
+          controls = multiline ? /[[:cntrl:]&&[^\n]]/ : /[[:cntrl:]]/
+          text.gsub(controls) { |character| format('\\x%02X', character.ord) }
+        end
+
         private
 
         def colorize(string, color_code)

@@ -71,13 +71,13 @@ module CircleCI
 
         def information
           [
-            build_number,
+            Printer.escape_controls(build_number),
             colorize_by_status(status, status),
             colorize_by_status(branch, status),
-            author_name,
-            (@hash['subject'] || '').slice(0..60),
+            Printer.escape_controls(author_name),
+            commit_subject,
             format_time(@hash['build_time_millis']),
-            start_time
+            Printer.escape_controls(start_time)
           ]
         end
 
@@ -88,7 +88,12 @@ module CircleCI
 
         private
 
+        def commit_subject
+          Printer.escape_controls((@hash['subject'] || '').slice(0..60))
+        end
+
         def colorize_by_status(string, status)
+          string = Printer.escape_controls(string)
           case status
           when 'success', 'fixed' then Printer.colorize_green(string)
           when 'canceled' then Printer.colorize_yellow(string)

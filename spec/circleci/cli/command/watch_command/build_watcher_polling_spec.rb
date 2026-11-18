@@ -29,6 +29,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     end
   end
   let(:build) { build_response.call(initial_steps) }
+  let(:step_name) { "Test\r\e[2K" }
+  let(:escaped_step_name) { 'Test\x0D\x1B[2K' }
+  let(:log_output) { "first\r\nsecond\r\e[2K\nthird" }
+  let(:escaped_log_output) { "first\nsecond\\x0D\\x1B[2K\nthird" }
 
   before do
     stub_const('CircleCI::CLI::Command::BuildWatcher::HTTPClient', CircleCI::CLI::Networking::HTTPClient)
@@ -41,12 +45,12 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       build_response.call(
         [
           step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)
+          step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)
         ]
       )
     end
     let(:shell) { instance_double(Thor::Shell::Basic, say: nil) }
-    let(:response) { instance_double('response', body: 'step output') }
+    let(:response) { instance_double('response', body: log_output) }
     let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
     it 'prints new verbose steps and streams their output' do
@@ -64,9 +68,9 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       watcher.start
 
-      expect(watcher).to have_received(:say).with(a_string_including('| Test'))
+      expect(watcher).to have_received(:say).with(a_string_including("| #{escaped_step_name}"))
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(shell).to have_received(:say).with('step output', nil, false)
+      expect(shell).to have_received(:say).with(escaped_log_output, nil, false)
     end
   end
 
@@ -138,7 +142,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         build_response.call(
           [
             step_hash.call(name: 'Build', type: 'build', status: 'success'),
-            step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 1, step: 2),
+            step_hash.call(name: step_name, type: 'test', status: 'failed', index: 1, step: 2),
             step_hash.call(name: 'Deploy', type: 'deploy', status: 'running', index: 2, step: 3)
           ]
         )
@@ -149,24 +153,24 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_build)
 
       expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}")
-      expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}")
+      expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_red(escaped_step_name)}")
       expect(watcher).to have_received(:puts).with('Deploy')
     end
 
     it 'replaces a running step with a success status line' do
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
-        build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'success')])
+        build_response.call([step_hash.call(name: step_name, type: 'build', status: 'success')])
       )
       allow(watcher).to receive(:puts)
 
       watcher.instance_variable_set(
         :@steps,
-        [build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'running')]).steps.first]
+        [build_response.call([step_hash.call(name: step_name, type: 'build', status: 'running')]).steps.first]
       )
       watcher.send(:update_build)
 
       expect(watcher).to have_received(:puts).with(
-        "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
+        "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green(escaped_step_name)}"
       )
     end
   end
@@ -176,7 +180,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:watcher) { described_class.new(build, verbose: false) }
     let(:current_step) do
       build_response.call(
-        [step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)]
+        [step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)]
       ).steps.first
     end
     let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
@@ -184,14 +188,14 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     it 'buffers output and skips empty response bodies' do
       watcher.instance_variable_set(:@current_step, current_step)
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
-        .and_return(instance_double('response', body: 'step output'), instance_double('response', body: ''))
+        .and_return(instance_double('response', body: log_output), instance_double('response', body: ''))
 
       watcher.send(:update_actions)
       watcher.send(:update_actions)
 
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=11-')
-      expect(watcher.instance_variable_get(:@messages)['Test']).to eq(['step output'])
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => "bytes=#{log_output.bytesize}-")
+      expect(watcher.instance_variable_get(:@messages)[step_name]).to eq([escaped_log_output])
     end
   end
 end

@@ -11,8 +11,6 @@ module CircleCI
           @verbose = verbose
           @messages = Hash.new { |h, k| h[k] = [] }
 
-          @build_thread = nil
-
           @steps = build.steps
           @current_step = nil
           @read_byte = 0
@@ -44,30 +42,26 @@ module CircleCI
           end
         end
 
-        # rubocop:disable-next Metrics/MethodLength
         def on_new_step(step)
-          if @verbose
-            print_bordered step.name
-          else
-            case step.status
-            when 'success'
-              puts "\e[2K\r#{Printer.colorize_green(step.name)}"
-            when 'failed'
-              puts "\e[2K\r#{Printer.colorize_red(step.name)}"
-            else
-              puts step.name
-            end
+          name = Printer.escape_controls(step.name)
+          return print_bordered(name) if @verbose
+
+          case step.status
+          when 'success' then puts "\e[2K\r#{Printer.colorize_green(name)}"
+          when 'failed' then puts "\e[2K\r#{Printer.colorize_red(name)}"
+          else puts name
           end
         end
 
         def on_new_step_status(step)
           return if @verbose
 
+          name = Printer.escape_controls(step.name)
           case step.status
           when 'success'
-            puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
+            puts "\e[1A\e[2K\r#{Printer.colorize_green(name)}"
           when 'failed'
-            puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
+            puts "\e[1A\e[2K\r#{Printer.colorize_red(name)}"
             @messages[step.name].each(&method(:say))
           end
         end
@@ -103,6 +97,7 @@ module CircleCI
 
           @read_byte += response.bytesize
 
+          response = Printer.escape_controls(response, multiline: true)
           if @verbose
             Thor::Shell::Basic.new.say(response, nil, false)
           else
@@ -118,11 +113,12 @@ module CircleCI
         end
 
         def notify_stopped(status)
+          build_label = Printer.escape_controls("#{@build.project_name} ##{@build.build_number}")
           text = case status
                  when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
+                   Printer.colorize_green("🎉 #{build_label} has succeeded!")
                  when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                   Printer.colorize_red("😥 #{build_label} has failed...")
                  end
 
           @verbose ? print_bordered(text) : say(text)

@@ -7,12 +7,13 @@ module CircleCI
         class << self
           def header_for(build, title)
             texts = [
-              ["Project:  #{build.project_name}"],
-              ["Build:    #{build.build_number}"],
-              ["Author:   #{build.author_name}"],
-              ["Workflow: #{build.workflow_name}/#{build.workflow_job_name}"]
+              "Project:  #{build.project_name}",
+              "Build:    #{build.build_number}",
+              "Author:   #{build.author_name}",
+              "Workflow: #{build.workflow_name}/#{build.workflow_job_name}"
             ]
-            Terminal::Table.new(title:, rows: texts, style: { width: 120 }).to_s
+            rows = texts.map { |text| [Printer.escape_controls(text)] }
+            Terminal::Table.new(title: Printer.escape_controls(title), rows:, style: { width: 120 }).to_s
           end
         end
 
@@ -39,7 +40,7 @@ module CircleCI
         end
 
         def title
-          Printer.colorize_green("Recent Builds / #{@project_name}")
+          Printer.colorize_green("Recent Builds / #{Printer.escape_controls(@project_name)}")
         end
 
         def headings

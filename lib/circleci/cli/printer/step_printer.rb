@@ -16,7 +16,7 @@ module CircleCI
                 .group_by(&:type)
                 .each do |key, steps|
                 t << :separator
-                t << [{ value: Printer.colorize_green(key), alignment: :center, colspan: 2 }]
+                t << [{ value: Printer.colorize_green(Printer.escape_controls(key)), alignment: :center, colspan: 2 }]
                 steps.each { |s| print_actions(t, s) }
               end
             end.to_s
@@ -24,7 +24,8 @@ module CircleCI
             @steps.group_by(&:type).map do |_, steps|
               steps.flat_map do |step|
                 step.actions.map do |a|
-                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{a.log}\n" if a.failed? && a.log}"
+                  log = escaped_log(a)
+                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{log}\n" if log}"
                 end
               end.join
             end.join("\n")
@@ -34,6 +35,7 @@ module CircleCI
         private
 
         def colorize_by_status(string, status)
+          string = Printer.escape_controls(string)
           case status
           when 'success', 'fixed' then Printer.colorize_green(string)
           when 'canceled' then Printer.colorize_yellow(string)
@@ -41,6 +43,10 @@ module CircleCI
           when 'no_tests', 'not_run' then Printer.colorize_light_black(string)
           else string
           end
+        end
+
+        def escaped_log(action)
+          Printer.escape_controls(action.log, multiline: true) if action.failed?
         end
 
         def format_time(time)
@@ -58,7 +64,8 @@ module CircleCI
               colorize_by_status(a.name.slice(0..120), a.status),
               format_time(a.run_time_millis)
             ]
-            table << [{ value: a.log, alignment: :left, colspan: 2 }] if a.failed? && a.log
+            log = escaped_log(a)
+            table << [{ value: log, alignment: :left, colspan: 2 }] if log
           end
         end
       end
