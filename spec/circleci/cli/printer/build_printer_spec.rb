@@ -38,7 +38,7 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
           {
             'username' => 'unhappychoice',
             'reponame' => 'default_reponame_from_api',
-            'status' => 'failed',
+            'status' => 'timedout',
             'build_num' => 1236,
             'branch' => 'master',
             'author_name' => 'unhappychoice',
@@ -46,7 +46,7 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
             'start_time' => 120_000,
             'steps' => [
               {
-                'status' => 'failed',
+                'status' => 'timedout',
                 'actions' => [
                   { 'type' => 'build', 'name' => 'Build', 'status' => 'success', 'run_time_millis' => 1290 }
                 ]
@@ -60,16 +60,16 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
     context 'with pretty option' do
       let(:pretty) { true }
 
-      it 'prints steps' do
+      it 'prints builds with a red timed-out status and branch' do
         expected = <<~EXPECTED
-          +---------------------------------------------------------------------------+
-          |          \e[0;32;49mRecent Builds / unhappychoice/default_reponame_from_api\e[0m          |
-          +--------+---------+--------+---------------+--------+----------+-----------+
-          | Number | Status  | Branch | Author        | Commit | Duration | StartTime |
-          +--------+---------+--------+---------------+--------+----------+-----------+
-          | 1234   | \e[0;32;49msuccess\e[0m | \e[0;32;49mmaster\e[0m | unhappychoice |        | 00:23    | 100000    |
-          | 1236   | \e[0;31;49mfailed\e[0m  | \e[0;31;49mmaster\e[0m | unhappychoice |        | 00:09    | 120000    |
-          +--------+---------+--------+---------------+--------+----------+-----------+
+          +----------------------------------------------------------------------------+
+          |          \e[0;32;49mRecent Builds / unhappychoice/default_reponame_from_api\e[0m           |
+          +--------+----------+--------+---------------+--------+----------+-----------+
+          | Number | Status   | Branch | Author        | Commit | Duration | StartTime |
+          +--------+----------+--------+---------------+--------+----------+-----------+
+          | 1234   | \e[0;32;49msuccess\e[0m  | \e[0;32;49mmaster\e[0m | unhappychoice |        | 00:23    | 100000    |
+          | 1236   | \e[0;31;49mtimedout\e[0m | \e[0;31;49mmaster\e[0m | unhappychoice |        | 00:09    | 120000    |
+          +--------+----------+--------+---------------+--------+----------+-----------+
         EXPECTED
         expect(subject).to eq expected.strip
       end
@@ -78,12 +78,24 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
-      it 'prints aligned rows in build order and reads information once per build' do
+      context 'with an uncolored build' do
+        let(:builds) do
+          super() + [CircleCI::CLI::Response::Build.new(
+            'build_num' => 1237, 'status' => 'running', 'branch' => 'master', 'author_name' => 'unhappychoice'
+          )]
+        end
+
+        it 'aligns columns by visible width' do
+          expect(subject.lines.last).to start_with('1237  running   master  unhappychoice')
+        end
+      end
+
+      it 'prints aligned builds with a red timed-out status and reads information once per build' do
         builds.each { |build| expect(build).to receive(:information).once.and_call_original }
 
         expected = <<~EXPECTED
-          1234  \e[0;32;49msuccess\e[0m  \e[0;32;49mmaster\e[0m  unhappychoice    00:23  100000
-          1236  \e[0;31;49mfailed\e[0m   \e[0;31;49mmaster\e[0m  unhappychoice    00:09  120000
+          1234  \e[0;32;49msuccess\e[0m   \e[0;32;49mmaster\e[0m  unhappychoice    00:23  100000
+          1236  \e[0;31;49mtimedout\e[0m  \e[0;31;49mmaster\e[0m  unhappychoice    00:09  120000
         EXPECTED
         expect(subject).to eq expected.strip
       end

@@ -8,6 +8,16 @@ require 'circleci/cli/response/action'
 
 module CircleCI
   module CLI
-    module Response; end
+    module Response
+      def self.body!(response)
+        body = response.body
+        return body if response.success?
+
+        message = "CircleCI API error (HTTP #{response.code})"
+        detail = body['message'] if body.is_a?(Hash)
+        message += ": #{detail}" if detail.is_a?(String) && !detail.strip.empty?
+        raise Thor::Error, message
+      end
+    end
   end
 end
