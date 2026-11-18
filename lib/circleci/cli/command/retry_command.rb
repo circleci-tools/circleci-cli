@@ -14,9 +14,9 @@ module CircleCI
             build = Response::Build.retry(username, reponame, number)
 
             if build&.username
-              say "build #{username}/#{reponame} #{build.build_number} is triggered"
+              puts "build #{username}/#{reponame} #{build.build_number} is triggered"
             else
-              say "failed to trigger #{username}/#{reponame} #{number}"
+              puts "failed to trigger #{username}/#{reponame} #{number}"
             end
           end
 
