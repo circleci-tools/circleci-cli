@@ -155,10 +155,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.instance_variable_set(:@options, options)
       described_class.instance_variable_set(:@repository, real_repository)
       described_class.instance_variable_set(:@build_watcher, nil)
-      allow(described_class).to receive(:say)
+      allow(described_class).to receive(:puts)
 
       expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(finished_build)
-      expect(described_class).to receive(:say)
+      expect(described_class).to receive(:puts)
         .with(a_string_including('Result of user/repo #42 completed in background')).once
       expect(CircleCI::CLI::Command::BuildWatcher).not_to receive(:new)
 
