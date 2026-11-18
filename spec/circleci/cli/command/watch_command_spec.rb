@@ -83,7 +83,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:build) { double('build', build_number: 42) }
     let(:watcher) { double('watcher', build:) }
     let(:repository) { double('repository') }
-    let(:finished_build) { double('finished_build', finished?: true, status: 'success') }
+    let(:finished_build) { double('finished_build', build_number: 42, finished?: true, status: 'success') }
 
     it 'stops the current watcher when the tracked build has finished' do
       described_class.instance_variable_set(:@repository, repository)
@@ -92,6 +92,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       expect(repository).to receive(:build_for).with(42).and_return(finished_build)
       expect(watcher).to receive(:stop).with('success')
+      expect(repository).to receive(:mark_as_shown).with(42)
       expect(described_class).to receive(:show_interrupted_build_results)
 
       described_class.send(:stop_existing_watcher_if_needed)
@@ -101,8 +102,8 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
   end
 
   describe '.start_watcher_if_needed' do
-    let(:waiting_build) { double('waiting_build', running?: false) }
-    let(:running_build) { double('running_build', running?: true, build_number: 42) }
+    let(:waiting_build) { double('waiting_build', finished?: false, running?: false) }
+    let(:running_build) { double('running_build', finished?: false, running?: true, build_number: 42) }
     let(:repository) { double('repository') }
     let(:build_watcher) { double('build_watcher', start: nil) }
 
@@ -115,7 +116,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       expect(repository).to receive(:builds_to_show).and_return([waiting_build, running_build])
       expect(described_class).to receive(:show_interrupted_build_results)
-      expect(repository).to receive(:mark_as_shown).with(42)
+      expect(repository).to receive(:watch).with(42).and_return(running_build)
       expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new)
         .with(running_build, verbose: true)
       expect(build_watcher).to receive(:start)
@@ -123,6 +124,18 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.send(:start_watcher_if_needed)
 
       expect(described_class.instance_variable_get(:@build_watcher)).to eq(build_watcher)
+    end
+
+    it 'processes pending completions when there is no running build' do
+      finished_build = double('finished_build', finished?: true)
+      described_class.instance_variable_set(:@repository, repository)
+      described_class.instance_variable_set(:@build_watcher, nil)
+
+      expect(repository).to receive(:builds_to_show).and_return([finished_build])
+      expect(described_class).to receive(:show_interrupted_build_results)
+      expect(CircleCI::CLI::Command::BuildWatcher).not_to receive(:new)
+
+      described_class.send(:start_watcher_if_needed)
     end
   end
 
