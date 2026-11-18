@@ -10,7 +10,7 @@ describe CircleCI::CLI::Command::BrowseCommand, type: :command do
 
   shared_examples_for 'a command opens browser' do
     it 'should open browser' do
-      allow(CircleCI::CLI::Command::BrowseCommand).to receive(:say)
+      allow(CircleCI::CLI::Command::BrowseCommand).to receive(:puts)
       expect(Launchy).to receive(:open).with(expected_url)
       CircleCI::CLI::Command::BrowseCommand.run(options)
     end

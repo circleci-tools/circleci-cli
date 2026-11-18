@@ -17,9 +17,17 @@ describe CircleCI::CLI::Command::BuildsCommand, type: :command do
     end
 
     it 'should show builds information' do
-      allow(CircleCI::CLI::Command::BuildsCommand).to receive(:say) { nil }
-      expect(CircleCI::CLI::Command::BuildsCommand).to receive(:say).with(expected_output.strip)
-      CircleCI::CLI::Command::BuildsCommand.run(options)
+      expect { described_class.run(options) }.to output(a_string_including(expected_output)).to_stdout
+    end
+  end
+
+  [true, false].each do |pretty|
+    it "prints build metadata literally with pretty=#{pretty}" do
+      subject = 'Commit <%= "example" %>'
+      build_hash['subject'] = subject
+      options = OpenStruct.new(project: 'user/repo', pretty:)
+
+      expect { described_class.run(options) }.to output(a_string_including(subject)).to_stdout
     end
   end
 
