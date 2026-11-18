@@ -6,7 +6,7 @@ module CircleCI
       class BaseCommand
         class << self
           def setup_token
-            token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :')
+            token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :') { |question| question.echo = false }
             CircleCi.configure { |config| config.token = token }
             token
           end
@@ -15,7 +15,7 @@ module CircleCI
             if options.project
               options.project
             else
-              say Printer::ProjectPrinter.new(Response::Project.all).to_s
+              puts Printer::ProjectPrinter.new(Response::Project.all)
               ask('Input user-name/project-name :')
             end
           end
