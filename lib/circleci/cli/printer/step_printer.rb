@@ -25,7 +25,7 @@ module CircleCI
               steps.flat_map do |step|
                 step.actions.map do |a|
                   log = escaped_log(a)
-                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{log}\n" if log}"
+                  "#{action_name(a)}\n#{"#{log}\n" if log}"
                 end
               end.join
             end.join("\n")
@@ -34,15 +34,9 @@ module CircleCI
 
         private
 
-        def colorize_by_status(string, status)
-          string = Printer.escape_controls(string)
-          case status
-          when 'success', 'fixed' then Printer.colorize_green(string)
-          when 'canceled' then Printer.colorize_yellow(string)
-          when 'failed', 'timedout' then Printer.colorize_red(string)
-          when 'no_tests', 'not_run' then Printer.colorize_light_black(string)
-          else string
-          end
+        def action_name(action)
+          name = Printer.escape_controls(action.name.slice(0..120))
+          Printer.colorize_by_status(name, action.status)
         end
 
         def escaped_log(action)
@@ -61,7 +55,7 @@ module CircleCI
           table << :separator
           step.actions.each do |a|
             table << [
-              colorize_by_status(a.name.slice(0..120), a.status),
+              action_name(a),
               format_time(a.run_time_millis)
             ]
             log = escaped_log(a)

@@ -33,6 +33,16 @@ module CircleCI
           text.gsub(controls) { |character| format('\\x%02X', character.ord) }
         end
 
+        def colorize_by_status(string, status)
+          case status
+          when 'success', 'fixed' then colorize_green(string)
+          when 'canceled' then colorize_yellow(string)
+          when 'failed', 'timedout' then colorize_red(string)
+          when 'no_tests', 'not_run' then colorize_light_black(string)
+          else string
+          end
+        end
+
         private
 
         def decode_binary_text(value)

@@ -57,7 +57,7 @@ module CircleCI
         end
 
         def running?
-          status == 'running' || status || 'queued'
+          %w[running queued].include?(status)
         end
 
         def finished?
@@ -74,13 +74,13 @@ module CircleCI
 
         def information
           [
-            Printer.escape_controls(build_number),
-            colorize_by_status(status, status),
-            colorize_by_status(branch, status),
-            Printer.escape_controls(author_name),
-            commit_subject,
+            build_number,
+            status,
+            branch,
+            author_name,
+            (@hash['subject'] || '').slice(0..60),
             format_time(@hash['build_time_millis']),
-            Printer.escape_controls(start_time)
+            start_time
           ]
         end
 
@@ -90,21 +90,6 @@ module CircleCI
         end
 
         private
-
-        def commit_subject
-          Printer.escape_controls((@hash['subject'] || '').slice(0..60))
-        end
-
-        def colorize_by_status(string, status)
-          string = Printer.escape_controls(string)
-          case status
-          when 'success', 'fixed' then Printer.colorize_green(string)
-          when 'canceled' then Printer.colorize_yellow(string)
-          when 'failed' then Printer.colorize_red(string)
-          when 'no_tests', 'not_run' then Printer.colorize_light_black(string)
-          else string
-          end
-        end
 
         def format_time(time)
           return '' unless time

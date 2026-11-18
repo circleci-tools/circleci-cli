@@ -43,7 +43,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect(request).to be_a(Net::HTTP::Get)
       expect(request.path).to eq(output_path)
       expect(request['Range']).to eq("bytes=#{offset}-")
-      instance_double(Net::HTTPPartialContent, body: body)
+      output_response(body)
+    end
+  end
+
+  def output_response(body)
+    Net::HTTPPartialContent.new('1.1', '206', 'Partial Content').tap do |response|
+      allow(response).to receive(:body).and_return(body)
     end
   end
 
@@ -94,6 +100,74 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
 
         expect { watcher.stop('success') }.to output(a_string_including(build.project_name)).to_stdout
+      end
+    end
+  end
+
+  context 'when an action publishes a final chunk between polls' do
+    let(:initial_steps) { [step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)] }
+    let(:watcher) { described_class.new(build, verbose: verbose) }
+    let(:final_chunk) { "final output\n" }
+    let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
+    let(:finished_build) do
+      build_response.call([step_hash.call(name: 'Test', type: 'test', status: status, index: 1, step: 2)])
+    end
+
+    before do
+      allow(Thread).to receive(:new) do |&block|
+        catch(:end_polling) { block.call }
+        thread
+      end
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        throw :end_polling if polls == poll_count
+      end
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(url, { 'Range' => 'bytes=0-' })
+        .and_return(output_response("first output\n"))
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(url, { 'Range' => 'bytes=13-' }) do
+        if polls >= poll_count - 1
+          output_response(final_chunk)
+        else
+          Net::HTTPRangeNotSatisfiable.new('1.1', '416', 'Range Not Satisfiable')
+        end
+      end
+      allow(watcher).to receive(:notify_started)
+    end
+
+    context 'with verbose output' do
+      let(:verbose) { true }
+      let(:status) { 'success' }
+      let(:poll_count) { 6 }
+
+      it 'streams the final chunk on the regular refresh exactly once before completion' do
+        shell = instance_double(Thor::Shell::Basic)
+        allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
+        expect(shell).to receive(:say).with("first output\n", nil, false).once.ordered
+        expect(shell).to receive(:say).with(final_chunk, nil, false).once.ordered
+        expect(watcher).to receive(:puts).ordered do |table|
+          expect(table.to_s).to include('has succeeded!')
+        end
+
+        watcher.start
+        watcher.stop(status)
+      end
+    end
+
+    context 'with default output' do
+      let(:verbose) { false }
+      let(:status) { 'failed' }
+      let(:poll_count) { 1 }
+
+      it 'includes the final chunk in the failed-step output when stopped' do
+        expect(watcher).to receive(:puts).with(a_string_including('Test')).ordered
+        expect(watcher).to receive(:puts).with("first output\n").once.ordered
+        expect(watcher).to receive(:puts).with(final_chunk).once.ordered
+        expect(watcher).to receive(:puts).with(a_string_including('has failed')).ordered
+
+        watcher.start
+        watcher.stop(status)
       end
     end
   end
