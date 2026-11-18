@@ -14,9 +14,9 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: .ruby-version
-      - name: Install bundler
-        run: gem install bundler
       - name: Install dependencies
+        env:
+          BUNDLE_FROZEN: "true"
         run: bundle install --jobs 4
       - name: Run test
         run: bundle exec rubocop lib
@@ -31,9 +31,9 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-      - name: Install bundler
-        run: gem install bundler
       - name: Install dependencies
+        env:
+          BUNDLE_FROZEN: "true"
         run: bundle install --jobs 4
       - name: Run test
         env:
