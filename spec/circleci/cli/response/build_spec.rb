@@ -16,9 +16,17 @@ describe CircleCI::CLI::Response::Build do
   end
 
   describe '#running?' do
-    subject(:running?) { described_class.new(base_attributes.merge('status' => 'running')).running? }
+    %w[running queued].each do |status|
+      it "returns true for #{status}" do
+        expect(described_class.new(base_attributes.merge('status' => status))).to be_running
+      end
+    end
 
-    it { is_expected.to be(true) }
+    [nil, *%w[success canceled failed no_tests not_run]].each do |status|
+      it "returns false for #{status.inspect}" do
+        expect(described_class.new(base_attributes.merge('status' => status)).running?).to be(false)
+      end
+    end
   end
 
   describe '#channel_name' do

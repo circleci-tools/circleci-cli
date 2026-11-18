@@ -65,7 +65,6 @@ module CircleCI
             @build_watcher.stop(build.status)
             @repository.mark_as_shown(build.build_number)
             @build_watcher = nil
-            show_interrupted_build_results
           end
 
           def start_watcher_if_needed
