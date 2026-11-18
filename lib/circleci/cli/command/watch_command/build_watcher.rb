@@ -129,22 +129,32 @@ module CircleCI
           @current_step = next_step
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
         def update_actions
           return unless @current_step
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          response = Networking::HTTPClient.get_raw(url, headers).body
+          Networking::HTTPClient.get_raw(url, headers) { |response| read_output(response) }
+        end
 
-          return if response.empty?
+        def read_output(response)
+          needs_newline = false
+          response.read_body do |chunk|
+            next if chunk.empty?
 
-          @read_byte += response.bytesize
+            write_output(chunk)
+            @read_byte += chunk.bytesize
+            needs_newline = !chunk.end_with?("\n")
+          end
+          write_output("\n") if needs_newline && !@verbose
+        end
 
+        def write_output(chunk)
           if @verbose
-            Thor::Shell::Basic.new.say(response, nil, false)
+            $stdout.write(chunk)
+            $stdout.flush
           else
-            (@messages[step_key(@current_step)] ||= StepLog.new).append(response)
+            (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
           end
         end
 
@@ -156,11 +166,12 @@ module CircleCI
         end
 
         def notify_stopped(status)
+          build_name = "#{@build.project_name} ##{@build.build_number}"
           text = case status
-                 when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
-                 when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
+                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
+                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
+                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
           @verbose ? print_bordered(text) : say(text)

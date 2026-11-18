@@ -33,6 +33,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
     subject { described_class.new(build, verbose: verbose).start }
 
     before do
+      allow_any_instance_of(described_class).to receive(:poll_build)
       expect_any_instance_of(described_class).to receive(:say).with(expected.strip)
     end
 
@@ -79,6 +80,36 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
   describe '#stop' do
     subject { described_class.new(build, verbose: verbose).stop(status) }
+
+    {
+      'canceled' => 'was canceled.',
+      'no_tests' => 'ran no tests.'
+    }.each do |terminal_status, outcome|
+      context "when status is #{terminal_status}" do
+        let(:status) { terminal_status }
+        let(:message) { "unhappychoice/default_reponame_from_api #1234 #{outcome}" }
+
+        context 'with verbose option' do
+          let(:verbose) { true }
+
+          it 'prints the build and its outcome inside the table' do
+            expect_any_instance_of(described_class).to receive(:say).with(/\A\+-+\+\n\|[^\n]*#{Regexp.escape(message)}/)
+
+            subject
+          end
+        end
+
+        context 'without verbose option' do
+          let(:verbose) { false }
+
+          it 'prints the build and its outcome on one line' do
+            expect_any_instance_of(described_class).to receive(:say).with(/\A[^\n]*#{Regexp.escape(message)}[^\n]*\z/)
+
+            subject
+          end
+        end
+      end
+    end
 
     context 'with verbose option' do
       let(:verbose) { true }
@@ -149,6 +180,7 @@ describe CircleCI::CLI::Command::BuildWatcher do
     let(:update_actions) { [{ 'step' => 'step1', 'log' => { 'status' => 'failed', 'name' => 'update action' } }] }
 
     before do
+      allow_any_instance_of(described_class).to receive(:poll_build)
       allow_any_instance_of(described_class).to receive(:notify_started)
     end
 

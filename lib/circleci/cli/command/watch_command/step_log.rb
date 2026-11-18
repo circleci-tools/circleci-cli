@@ -14,8 +14,8 @@ module CircleCI
         end
 
         def append(chunk)
-          spill if @memory && @memory.size + chunk.bytesize + 1 > MEMORY_LIMIT
-          (@file || @memory).puts(chunk)
+          spill if @memory && @memory.size + chunk.bytesize > MEMORY_LIMIT
+          (@file || @memory).write(chunk)
         end
 
         def write_to(output)
