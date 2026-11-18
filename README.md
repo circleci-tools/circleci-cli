@@ -32,6 +32,7 @@ Commands:
   circleci-cli help [COMMAND]       # Describe available commands or one specific command
   circleci-cli projects             # List projects
   circleci-cli retry                # Retry a build
+  circleci-cli run RUN_ID           # Show all workflows and jobs in a run
   circleci-cli version              # Show gem version
   circleci-cli watch                # Watch builds in real time
 
@@ -54,6 +55,21 @@ Options:
 ```
 
 ### Examples
+
+#### Show every job in a run
+
+With `CIRCLE_CI_TOKEN` set, list your recent runs with the CircleCI API and
+copy the `id` next to the run number you want:
+
+```sh
+curl -fsS -G 'https://circleci.com/api/v3/runs' \
+  -H "Authorization: Bearer ${CIRCLE_CI_TOKEN}" \
+  --data-urlencode 'filter[user_id]=me' | jq -r '.data[] | [.attributes.number, .id] | @tsv'
+circleci-cli run 123e4567-e89b-12d3-a456-426614174000
+```
+
+On projects supported by `build`, use the displayed job number to inspect its
+steps, for example `circleci-cli build -p user/project -n 42`.
 
 #### Watch your project
 ```
