@@ -22,6 +22,17 @@ set the `CIRCLE_CI_TOKEN` environment variable. (optional)
 export CIRCLE_CI_TOKEN=your-circle-ci-token
 ```
 
+## Quick start
+
+In a local checkout of a GitHub project that builds on CircleCI, switch to the branch you want to inspect and run:
+
+```sh
+circleci-cli builds
+```
+
+Enter your CircleCI API token when prompted if `CIRCLE_CI_TOKEN` is unset.
+The command identifies the project from the GitHub `origin` remote and shows a table of recent builds on the current branch, including their build numbers and statuses.
+
 ## Usage
 ```
 Commands:
