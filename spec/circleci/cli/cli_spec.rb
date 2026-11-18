@@ -82,5 +82,10 @@ describe CircleCI::CLI::Runner do
     it 'prints the version' do
       expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
     end
+
+    it 'shows usage for the build command' do
+      expect { described_class.start(%w[help build]) }
+        .to output(/Usage:\n  \S+ build\b.*Show the build result/m).to_stdout
+    end
   end
 end
