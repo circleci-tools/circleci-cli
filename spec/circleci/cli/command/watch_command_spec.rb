@@ -60,6 +60,18 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       expect(config.token).to eq('prompted-token')
     end
+
+    it 'closes the active watcher when interrupted' do
+      watcher = instance_double(CircleCI::CLI::Command::BuildWatcher)
+      allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('env-token')
+      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
+      allow(described_class).to receive(:start_watcher_if_needed) do
+        described_class.instance_variable_set(:@build_watcher, watcher)
+      end
+      expect(watcher).to receive(:close)
+
+      described_class.run(options)
+    end
   end
 
   describe '.bind_status_event' do

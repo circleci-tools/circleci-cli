@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'socket'
+require 'timeout'
 
 describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:thread) { instance_double(Thread, kill: nil) }
@@ -30,7 +32,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
   let(:build) { build_response.call(initial_steps) }
 
-  let(:http) { instance_double(Net::HTTP) }
+  let(:http) { instance_double(Net::HTTP, finish: nil) }
   let(:output_path) { '/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
   def expect_output_chunk(offset, body)
@@ -68,12 +70,53 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
       expect_output_chunk(0, 'é')
       expect_output_chunk(2, " done\n")
 
       expect { watcher.start }.to output("é done\n").to_stdout
       expect(watcher).to have_received(:say).with(a_string_including('| Test'))
+    end
+
+    it 'reuses a TCP connection, reconnects after a server close, and closes on stop' do
+      server = TCPServer.new('127.0.0.1', 0)
+      first = second = nil
+      allow(watcher).to receive(:say)
+      allow(watcher).to receive(:sleep).with(1)
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true) do
+        Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+      end
+      allow_any_instance_of(Thor::Shell::Basic).to receive(:say)
+
+      Timeout.timeout(5) do
+        watcher.start
+        first = server.accept
+        serve_poll(first, 0, 'é')
+        serve_poll(first, 2, '')
+        first.close
+
+        second = server.accept
+        expect_poll(second, 2)
+        watcher.stop('success')
+        expect(second.read).to eq('')
+      end
+    ensure
+      watcher.close
+      first&.close unless first&.closed?
+      second&.close
+      server&.close
+    end
+
+    def serve_poll(socket, offset, body)
+      expect_poll(socket, offset)
+      socket.write("HTTP/1.1 206 Partial Content\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+    end
+
+    def expect_poll(socket, offset)
+      expect(socket.gets).to eq("GET #{output_path} HTTP/1.1\r\n")
+      headers = socket.each_line.take_while { |line| line != "\r\n" }
+      expect(headers).to include("Range: bytes=#{offset}-\r\n")
     end
   end
 
@@ -189,7 +232,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'buffers output and skips empty response bodies' do
       watcher.instance_variable_set(:@current_step, current_step)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
       expect_output_chunk(0, 'step output')
       expect_output_chunk(11, '')
 

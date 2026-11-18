@@ -3,7 +3,7 @@
 module CircleCI
   module CLI
     module Command
-      class BuildWatcher
+      class BuildWatcher # rubocop:disable Metrics/ClassLength
         attr_reader :build
 
         def initialize(build, verbose: false)
@@ -12,6 +12,7 @@ module CircleCI
           @messages = Hash.new { |h, k| h[k] = [] }
 
           @build_thread = nil
+          @log_session = Networking::HTTPClient::Session.new
 
           @steps = build.steps
           @current_step = nil
@@ -24,23 +25,28 @@ module CircleCI
         end
 
         def stop(status)
+          close
           update_build
-          @build_thread&.kill
           notify_stopped(status)
+        end
+
+        def close
+          @build_thread&.kill&.join
+          @build_thread = nil
         end
 
         private
 
         def poll_build
           @build_thread = Thread.new do
-            count = 0
-            loop do
+            0.step do |count|
               update_build if (count % 5).zero?
               update_actions
 
-              count += 1
               sleep 1
             end
+          ensure
+            @log_session.close
           end
         end
 
@@ -95,7 +101,7 @@ module CircleCI
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          response = Networking::HTTPClient.get_raw(url, headers).body
+          response = @log_session.get_raw(url, headers).body
 
           return if response.empty?
 
