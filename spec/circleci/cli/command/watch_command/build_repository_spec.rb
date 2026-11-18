@@ -42,13 +42,9 @@ describe CircleCI::CLI::Command::BuildRepository do
     it { is_expected.to match_array [build] }
 
     it 'updates builds from the branch endpoint when a branch is specified' do
-      expect(CircleCI::CLI::Response::Build).to receive(:all)
-        .with(build.username, build.reponame)
-        .ordered
-        .and_return([build])
       expect(CircleCI::CLI::Response::Build).to receive(:branch)
         .with(build.username, build.reponame, 'master')
-        .ordered
+        .twice
         .and_return([build])
 
       repository = described_class.new(build.username, build.reponame, branch: 'master')

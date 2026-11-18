@@ -9,18 +9,12 @@ module CircleCI
           @user = user
           @reponame = reponame
           @branch = branch
-          @builds = Response::Build.all(@username, @reponame)
+          @builds = fetch_builds
           @build_numbers_shown = @builds.select(&:finished?).map(&:build_number)
         end
 
         def update
-          response = if @branch
-                       Response::Build.branch(@username, @reponame, @branch)
-                     else
-                       Response::Build.all(@username, @reponame)
-                     end
-
-          @builds = (response + @builds).uniq(&:build_number)
+          @builds = (fetch_builds + @builds).uniq(&:build_number)
         end
 
         def mark_as_shown(build_number)
@@ -37,6 +31,14 @@ module CircleCI
 
         def build_for(build_number)
           @builds.find { |build| build.build_number == build_number }
+        end
+
+        private
+
+        def fetch_builds
+          return Response::Build.branch(@username, @reponame, @branch) if @branch
+
+          Response::Build.all(@username, @reponame)
         end
       end
     end
