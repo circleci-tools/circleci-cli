@@ -17,8 +17,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           {
             'status' => 'success',
             'actions' => [
-              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 1200 },
-              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
+              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 1200 }
             ]
           }
         ),
@@ -28,6 +27,15 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
             'status' => 'success',
             'actions' => [
               { 'type' => 'test', 'name' => 'Test', 'status' => 'failed', 'run_time_millis' => 1_200 }
+            ]
+          }
+        ),
+        CircleCI::CLI::Response::Step.new(
+          'build',
+          {
+            'status' => 'success',
+            'actions' => [
+              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
             ]
           }
         ),
@@ -46,13 +54,14 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'with pretty option' do
       let(:pretty) { true }
 
-      it 'prints steps' do
+      it 'groups steps by type' do
         expected = <<~EXPECTED
           +--------------------+
           +--------------------+
           |       \e[0;32;49mbuild\e[0m        |
           +------------+-------+
           | Dependency | 00:01 |
+          +------------+-------+
           | \e[0;33;49mBuild\e[0m      | 00:25 |
           +------------+-------+
           |        \e[0;32;49mtest\e[0m        |
@@ -72,7 +81,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
-      it 'prints steps' do
+      it 'groups steps by type' do
         expected = <<~EXPECTED
           Dependency
           \e[0;33;49mBuild\e[0m

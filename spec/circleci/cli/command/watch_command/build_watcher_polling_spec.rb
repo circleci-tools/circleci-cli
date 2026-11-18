@@ -35,13 +35,15 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
 
   describe '#start' do
-    let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
+    let(:initial_steps) { [] }
     let(:watcher) { described_class.new(build, verbose: true) }
     let(:updated_build) do
       build_response.call(
         [
-          step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)
+          step_hash.call(name: 'Checkout', type: 'checkout', status: 'success'),
+          step_hash.call(name: 'Test', type: 'shell', status: 'success'),
+          step_hash.call(name: 'Upload', type: 'store_artifacts', status: 'running', index: 1, step: 2),
+          step_hash.call(name: 'Deploy', type: 'shell', status: 'running', index: 1, step: 3)
         ]
       )
     end
@@ -49,7 +51,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:response) { instance_double('response', body: 'step output') }
     let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
-    it 'prints new verbose steps and streams their output' do
+    it 'prints new steps in API order and streams output from the first running step' do
       allow(Thread).to receive(:new) do |&block|
         block.call
         thread
@@ -64,7 +66,9 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       watcher.start
 
-      expect(watcher).to have_received(:say).with(a_string_including('| Test'))
+      %w[Checkout Test Upload Deploy].each do |name|
+        expect(watcher).to have_received(:say).with(a_string_including("| #{name} ")).ordered
+      end
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
       expect(shell).to have_received(:say).with('step output', nil, false)
     end
