@@ -21,22 +21,39 @@ module CircleCI
             )
             @client = Networking::CircleCIPusherClient.new.tap(&:connect)
             @build_watcher = nil
+            @refresh_lock = Mutex.new
+            @refresh_pending = false
 
             bind_status_event
-
-            loop do
-              stop_existing_watcher_if_needed
-              start_watcher_if_needed
-              sleep 1
-            end
+            watch_builds
           rescue Interrupt
             say 'Exited'
           end
 
           private
 
+          def watch_builds
+            loop do
+              refresh_builds_if_needed
+              stop_existing_watcher_if_needed
+              start_watcher_if_needed
+              sleep 1
+            end
+          end
+
           def bind_status_event
-            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') { @repository.update }
+            @client.bind("private-#{Response::Account.me.pusher_id}", 'call') do
+              @refresh_lock.synchronize { @refresh_pending = true }
+            end
+          end
+
+          def refresh_builds_if_needed
+            pending = @refresh_lock.synchronize do
+              pending_refresh = @refresh_pending
+              @refresh_pending = false
+              pending_refresh
+            end
+            @repository.update if pending
           end
 
           def stop_existing_watcher_if_needed
