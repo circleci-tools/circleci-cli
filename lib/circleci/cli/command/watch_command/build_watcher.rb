@@ -95,8 +95,7 @@ module CircleCI
 
           identity = @current_step.action_identity
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{identity.join('/')}"
-          headers = { 'Range' => "bytes=#{@read_byte}-" }
-          response = HTTPClient.get(url, headers).body
+          response = Networking::HTTPClient.get_raw(url, 'Range' => "bytes=#{@read_byte}-").body
 
           return if response.empty?
 
@@ -117,11 +116,12 @@ module CircleCI
         end
 
         def notify_stopped(status)
+          build_name = "#{@build.project_name} ##{@build.build_number}"
           text = case status
-                 when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
-                 when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
+                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
+                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
+                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
           @verbose ? print_bordered(text) : say(text)
