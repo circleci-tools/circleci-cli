@@ -24,7 +24,8 @@ module CircleCI
             @steps.group_by(&:type).map do |_, steps|
               steps.flat_map do |step|
                 step.actions.map do |a|
-                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{a.log}\n" if a.failed? && a.log}"
+                  log = a.failed? && a.log
+                  "#{Printer.colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{log}\n" if log}"
                 end
               end.join
             end.join("\n")
@@ -32,16 +33,6 @@ module CircleCI
         end
 
         private
-
-        def colorize_by_status(string, status)
-          case status
-          when 'success', 'fixed' then Printer.colorize_green(string)
-          when 'canceled' then Printer.colorize_yellow(string)
-          when 'failed', 'timedout' then Printer.colorize_red(string)
-          when 'no_tests', 'not_run' then Printer.colorize_light_black(string)
-          else string
-          end
-        end
 
         def format_time(time)
           return '' unless time
@@ -55,10 +46,11 @@ module CircleCI
           table << :separator
           step.actions.each do |a|
             table << [
-              colorize_by_status(a.name.slice(0..120), a.status),
+              Printer.colorize_by_status(a.name.slice(0..120), a.status),
               format_time(a.run_time_millis)
             ]
-            table << [{ value: a.log, alignment: :left, colspan: 2 }] if a.failed? && a.log
+            log = a.failed? && a.log
+            table << [{ value: log, alignment: :left, colspan: 2 }] if log
           end
         end
       end

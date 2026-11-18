@@ -8,21 +8,20 @@ module CircleCI
           def run(options)
             setup_token
             username, reponame = project_name(options).split('/')
-            number = build_number(options, prompt: !options.last)
-            build =
-              if options.last
-                get_last_build(username, reponame)
-              else
-                Response::Build.get(username, reponame, number)
-              end
-            say Printer::StepPrinter.new(build.steps, pretty: options.pretty).to_s
+            number = build_number_for(username, reponame, options)
+            return say 'No failed build found.' if options.last && number.nil?
+
+            build = Response::Build.get(username, reponame, number)
+            puts Printer::StepPrinter.new(build.steps, pretty: options.pretty)
           end
 
           private
 
-          def get_last_build(username, reponame)
-            builds = Response::Build.failed(username, reponame)
-            Response::Build.get(username, reponame, builds.map(&:build_number).max)
+          def build_number_for(username, reponame, options)
+            number = build_number(options, prompt: !options.last)
+            return number unless options.last
+
+            Response::Build.failed(username, reponame).map(&:build_number).max
           end
         end
       end

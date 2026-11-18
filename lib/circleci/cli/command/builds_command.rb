@@ -16,7 +16,7 @@ module CircleCI
                        Response::Build.all(username, reponame)
                      end
 
-            say Printer::BuildPrinter.new(builds, project_name, pretty: options.pretty).to_s
+            puts Printer::BuildPrinter.new(builds, project_name, pretty: options.pretty)
           end
         end
       end
