@@ -61,4 +61,28 @@ describe CircleCI::CLI::Runner, 'run' do
       }
     end.to output("CircleCI API error (HTTP 404): Run not found\n").to_stderr
   end
+
+  it 'reports invalid JSON in a successful API response' do
+    response = Net::HTTPOK.new('1.1', '200', '')
+    allow(response).to receive(:body).and_return('<html>Invalid response</html>')
+    allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("CircleCI API returned invalid JSON.\n").to_stderr
+  end
+
+  it 'reports the HTTP status when an API failure has an invalid JSON body' do
+    response = Net::HTTPBadGateway.new('1.1', '502', '')
+    allow(response).to receive(:body).and_return('<html>Bad gateway</html>')
+    allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("CircleCI API error (HTTP 502)\n").to_stderr
+  end
 end
