@@ -20,6 +20,8 @@ jobs:
         run: bundle install --jobs 4
       - name: Run test
         run: bundle exec rubocop lib
+      - name: Build gem
+        run: bundle exec rake build
   test:
     runs-on: ubuntu-24.04
     strategy:
