@@ -108,12 +108,12 @@ module CircleCI
         # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
-          previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
+          previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
           steps = build.steps.each do |step|
-            statuses = previous_statuses[step.name]
-            next on_new_step(step) unless statuses
+            previous_status = previous_statuses[step_key(step)]
+            next on_new_step(step) unless previous_status
 
-            on_new_step_status(step) unless statuses == [step.status]
+            on_new_step_status(step) unless previous_status == step.status
           end
           @steps = steps
 

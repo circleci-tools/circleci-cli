@@ -145,7 +145,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
       let(:updated_build) { build_response.call(initial_steps) }
 
-      it 'reads previous names and materializes incoming steps once without printing transitions' do
+      it 'indexes previous step identities and materializes incoming steps once without printing transitions' do
         previous_steps = build.steps
         allow(build).to receive(:steps).and_return(previous_steps)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
@@ -154,33 +154,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         expect(watcher).not_to receive(:puts)
 
         watcher.send(:update_build)
-      end
-    end
-
-    context 'when previous steps with the same name have different statuses' do
-      let(:initial_steps) do
-        [
-          step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: 'Build', type: 'build', status: 'failed'),
-          step_hash.call(name: 'Test', type: 'test', status: 'success'),
-          step_hash.call(name: 'Test', type: 'test', status: 'success')
-        ]
-      end
-      let(:updated_build) { build_response.call(initial_steps) }
-
-      it 'prints a transition for each step with a same-name predecessor in a different status' do
-        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-        allow(watcher).to receive(:puts)
-
-        watcher.send(:update_build)
-
-        expect(watcher).to have_received(:puts).exactly(2).times
-        expect(watcher).to have_received(:puts).with(
-          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
-        ).once
-        expect(watcher).to have_received(:puts).with(
-          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
-        ).once
       end
     end
 
@@ -367,8 +340,30 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect(File.exist?(path)).to be(false)
     end
 
-    def finish_step(status)
-      finished = build_response.call([step_hash.call(name: 'Test', type: 'test', status: status)])
+    context 'when a successful step shares the running step name' do
+      let(:successful_step) { step_hash.call(name: 'Test', type: 'test', status: 'success', step: 1) }
+      let(:initial_steps) { super() + [successful_step] }
+
+      it 'only reports the failed step and replays its buffered output once' do
+        expect_output_response(0, last_chunk)
+        watcher.send(:update_actions)
+        finish_step('failed', other_steps: [successful_step])
+
+        expect do
+          watcher.send(:update_build)
+          watcher.send(:update_build)
+        end.to output(last_chunk).to_stdout
+        expect(watcher).to have_received(:puts).once.with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}"
+        )
+        expect(watcher).to have_received(:puts).once
+        expect(messages).to be_empty
+      end
+    end
+
+    def finish_step(status, other_steps: [])
+      finished_step = step_hash.call(name: 'Test', type: 'test', status: status)
+      finished = build_response.call([finished_step, *other_steps])
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished)
     end
   end
