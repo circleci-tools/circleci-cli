@@ -30,10 +30,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
   let(:build) { build_response.call(initial_steps) }
 
-  before do
-    stub_const('CircleCI::CLI::Command::BuildWatcher::HTTPClient', CircleCI::CLI::Networking::HTTPClient)
-  end
-
   describe '#start' do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: true) }
@@ -46,7 +42,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       )
     end
     let(:shell) { instance_double(Thor::Shell::Basic, say: nil) }
-    let(:response) { instance_double('response', body: 'step output') }
     let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
     it 'prints new verbose steps and streams their output' do
@@ -59,14 +54,76 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).and_return(response)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_return('step output')
       allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
 
       watcher.start
 
       expect(watcher).to have_received(:say).with(a_string_including('| Test'))
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=0-')
       expect(shell).to have_received(:say).with('step output', nil, false)
+    end
+  end
+
+  context 'when an action publishes a final chunk between polls' do
+    let(:initial_steps) { [step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)] }
+    let(:watcher) { described_class.new(build, verbose: verbose) }
+    let(:final_chunk) { "final output\n" }
+    let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
+    let(:finished_build) do
+      build_response.call([step_hash.call(name: 'Test', type: 'test', status: status, index: 1, step: 2)])
+    end
+
+    before do
+      allow(Thread).to receive(:new) do |&block|
+        catch(:end_polling) { block.call }
+        thread
+      end
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        throw :end_polling if polls == poll_count
+      end
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(url, { 'Range' => 'bytes=0-' })
+        .and_return("first output\n")
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(url, { 'Range' => 'bytes=13-' }) do
+        polls >= poll_count - 1 ? final_chunk : ''
+      end
+      allow(watcher).to receive(:notify_started)
+    end
+
+    context 'with verbose output' do
+      let(:verbose) { true }
+      let(:status) { 'success' }
+      let(:poll_count) { 6 }
+
+      it 'streams the final chunk on the regular refresh exactly once before completion' do
+        shell = instance_double(Thor::Shell::Basic)
+        allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
+        expect(shell).to receive(:say).with("first output\n", nil, false).once.ordered
+        expect(shell).to receive(:say).with(final_chunk, nil, false).once.ordered
+        expect(watcher).to receive(:say).with(a_string_including('has succeeded!')).ordered
+
+        watcher.start
+        watcher.stop(status)
+      end
+    end
+
+    context 'with default output' do
+      let(:verbose) { false }
+      let(:status) { 'failed' }
+      let(:poll_count) { 1 }
+
+      it 'includes the final chunk in the failed-step output when stopped' do
+        expect(watcher).to receive(:puts).with(a_string_including('Test')).ordered
+        expect(watcher).to receive(:say).with("first output\n").once.ordered
+        expect(watcher).to receive(:say).with(final_chunk).once.ordered
+        expect(watcher).to receive(:say).with(a_string_including('has failed')).ordered
+
+        watcher.start
+        watcher.stop(status)
+      end
     end
   end
 
@@ -183,14 +240,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'buffers output and skips empty response bodies' do
       watcher.instance_variable_set(:@current_step, current_step)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
-        .and_return(instance_double('response', body: 'step output'), instance_double('response', body: ''))
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_return('step output', '')
 
       watcher.send(:update_actions)
       watcher.send(:update_actions)
 
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=11-')
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=0-')
+      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get_raw).with(url, 'Range' => 'bytes=11-')
       expect(watcher.instance_variable_get(:@messages)['Test']).to eq(['step output'])
     end
   end
