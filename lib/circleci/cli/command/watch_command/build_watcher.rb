@@ -68,36 +68,35 @@ module CircleCI
             puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
           when 'failed'
             puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
-            @messages[step.name].each(&method(:say))
+            @messages[step.action_identity].each(&method(:say))
           end
         end
 
         # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
-          previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
+          previous_statuses = @steps.to_h { |step| [step.action_identity, step.status] }
           steps = build.steps.each do |step|
-            statuses = previous_statuses[step.name]
-            next on_new_step(step) unless statuses
+            status = previous_statuses[step.action_identity]
+            next on_new_step(step) unless status
 
-            on_new_step_status(step) unless statuses == [step.status]
+            on_new_step_status(step) unless status == step.status
           end
           @steps = steps
 
           next_step = steps.find { |step| step.status == 'running' }
-          @read_byte = 0 if @current_step&.name != next_step&.name
+          @read_byte = 0 if @current_step&.action_identity != next_step&.action_identity
           @current_step = next_step
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/MethodLength
+        # rubocop:disable-next Metrics/MethodLength
         def update_actions
           return unless @current_step
 
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
+          identity = @current_step.action_identity
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{identity.join('/')}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          res = HTTPClient.get(url, headers)
-
-          response = res.body
+          response = HTTPClient.get(url, headers).body
 
           return if response.empty?
 
@@ -106,7 +105,7 @@ module CircleCI
           if @verbose
             Thor::Shell::Basic.new.say(response, nil, false)
           else
-            @messages[@current_step.name] << response
+            @messages[identity] << response
           end
         end
 

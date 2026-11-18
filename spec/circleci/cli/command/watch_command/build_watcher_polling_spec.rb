@@ -73,19 +73,15 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   describe '#update_build' do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: false) }
-    let(:updated_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
 
     context 'with many unchanged steps' do
       let(:initial_steps) do
-        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success') }
+        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success', step: index) }
       end
       let(:updated_build) { build_response.call(initial_steps) }
 
-      it 'reads previous names and materializes incoming steps once without printing transitions' do
-        previous_steps = build.steps
-        allow(build).to receive(:steps).and_return(previous_steps)
+      it 'materializes incoming steps once without printing transitions' do
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-        previous_steps.each { |step| expect(step).to receive(:name).once.and_call_original }
         expect(updated_build).to receive(:steps).once.and_call_original
         expect(watcher).not_to receive(:puts)
         expect(watcher).not_to receive(:say)
@@ -94,43 +90,46 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
-    context 'when previous steps with the same name have different statuses' do
-      let(:initial_steps) do
-        [
-          step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: 'Build', type: 'build', status: 'failed'),
-          step_hash.call(name: 'Test', type: 'test', status: 'success'),
-          step_hash.call(name: 'Test', type: 'test', status: 'success')
-        ]
-      end
-      let(:updated_build) { build_response.call(initial_steps) }
+    context 'with successive actions named Test' do
+      let(:first_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2) }
+      let(:first_succeeded) { step_hash.call(name: 'Test', type: 'test', status: 'success', index: 1, step: 2) }
+      let(:second_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 2, step: 2) }
+      let(:second_failed) { step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 2, step: 2) }
 
-      it 'prints a transition for each step with a same-name predecessor in a different status' do
-        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      it 'starts the new action at byte zero and replays only its output on failure' do
+        first_build = build_response.call([first_running])
+        second_build = build_response.call([first_succeeded, second_running])
+        failed_build = build_response.call([first_succeeded, second_failed])
+        allow(CircleCI::CLI::Response::Build).to receive(:get)
+          .and_return(first_build, first_build, second_build, failed_build, failed_build)
         allow(watcher).to receive(:puts)
+        allow(watcher).to receive(:say)
 
-        watcher.send(:update_build)
+        http_client = CircleCI::CLI::Networking::HTTPClient
+        output_url = 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output'
+        expect(http_client).to receive(:get).with("#{output_url}/1/2", { 'Range' => 'bytes=0-' })
+          .and_return(instance_double('response', body: 'a' * 400))
+        expect(http_client).to receive(:get).with("#{output_url}/1/2", { 'Range' => 'bytes=400-' })
+          .and_return(instance_double('response', body: ''))
+        expect(http_client).to receive(:get).with("#{output_url}/2/2", { 'Range' => 'bytes=0-' })
+          .and_return(instance_double('response', body: 'second action output'))
 
-        expect(watcher).to have_received(:puts).exactly(2).times
+        3.times do
+          watcher.send(:update_build)
+          watcher.send(:update_actions)
+        end
+        2.times { watcher.send(:update_build) }
+
+        expect(watcher).to have_received(:puts).with('Test').twice
         expect(watcher).to have_received(:puts).with(
-          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Test')}"
         ).once
         expect(watcher).to have_received(:puts).with(
-          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}"
         ).once
+        expect(watcher).to have_received(:say).once
+        expect(watcher).to have_received(:say).with('second action output')
       end
-    end
-
-    it 'prints failed statuses and replays buffered output' do
-      watcher.instance_variable_get(:@messages)['Build'] << 'captured output'
-      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(watcher).to receive(:puts)
-      allow(watcher).to receive(:say)
-
-      watcher.send(:update_build)
-
-      expect(watcher).to have_received(:puts).with("\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}")
-      expect(watcher).to have_received(:say).with('captured output')
     end
 
     it 'prints new step statuses for success, failure, and in-progress steps' do
@@ -191,7 +190,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
       expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=11-')
-      expect(watcher.instance_variable_get(:@messages)['Test']).to eq(['step output'])
+      expect(watcher.instance_variable_get(:@messages)[[1, 2]]).to eq(['step output'])
     end
   end
 end
