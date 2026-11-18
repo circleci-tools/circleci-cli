@@ -11,10 +11,10 @@ describe CircleCI::CLI::Command::BaseCommand do
     it 'passes the token from the hidden prompt to the API configuration' do
       allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return(nil)
       question = HighLine::Question.new('Circle CI token ? :', String)
-      allow(described_class).to receive(:ask).and_yield(question).and_return('prompted-token')
+      allow(described_class).to receive(:ask).with('Circle CI token ? :').and_yield(question).and_return('prompted-token')
       expect(config).to receive(:token=).with('prompted-token')
 
-      described_class.setup_token
+      expect(described_class.setup_token).to eq('prompted-token')
 
       expect(question.echo).to be(false)
     end
@@ -24,7 +24,7 @@ describe CircleCI::CLI::Command::BaseCommand do
       expect(described_class).not_to receive(:ask)
       expect(config).to receive(:token=).with('environment-token')
 
-      described_class.setup_token
+      expect(described_class.setup_token).to eq('environment-token')
     end
   end
 

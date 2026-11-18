@@ -6,9 +6,9 @@ module CircleCI
       class BaseCommand
         class << self
           def setup_token
-            CircleCi.configure do |config|
-              config.token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :') { |q| q.echo = false }
-            end
+            token = ENV.fetch('CIRCLE_CI_TOKEN', nil) || ask('Circle CI token ? :') { |question| question.echo = false }
+            CircleCi.configure { |config| config.token = token }
+            token
           end
 
           def project_name(options)

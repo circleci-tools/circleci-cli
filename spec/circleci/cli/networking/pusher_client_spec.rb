@@ -6,7 +6,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   describe '#connect' do
     subject(:connect) { client.connect }
 
-    let(:client) { described_class.new }
+    let(:client) { described_class.new(token: 'token') }
     let(:mock_socket) { double('socket') }
     let(:mock_logger) { double('logger') }
     let(:socket_options) { {} }
@@ -33,46 +33,27 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       expect(mock_socket).to have_received(:connect).with(true)
     end
 
-    it 'uses the environment token in the auth callback' do
-      allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('token')
-      expect(client).not_to receive(:ask)
+    it 'reuses the supplied token for repeated auth callbacks' do
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
 
       connect
 
       channel = double('channel', name: 'private-builds')
-      result = socket_options.fetch(:auth_method).call('socket-id', channel)
+      auth = socket_options.fetch(:auth_method)
 
-      expect(result).to eq('signed')
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:post_form).with(
-        'https://circleci.com/auth/pusher?circle-token=token',
-        socket_id: 'socket-id',
-        channel_name: 'private-builds'
-      )
-    end
-
-    it 'passes the token from the hidden prompt to the auth callback' do
-      allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return(nil)
-      question = HighLine::Question.new('Circle CI token ? :', String)
-      allow(client).to receive(:ask).with('Circle CI token ? :').and_yield(question).and_return('prompted-token')
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
-
-      connect
-
-      channel = double('channel', name: 'private-builds')
-      socket_options.fetch(:auth_method).call('socket-id', channel)
-
-      expect(question.echo).to be(false)
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:post_form).with(
-        'https://circleci.com/auth/pusher?circle-token=prompted-token',
-        socket_id: 'socket-id',
-        channel_name: 'private-builds'
-      )
+      %w[first-socket second-socket].each do |socket_id|
+        expect(auth.call(socket_id, channel)).to eq('signed')
+        expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:post_form).with(
+          'https://circleci.com/auth/pusher?circle-token=token',
+          socket_id: socket_id,
+          channel_name: 'private-builds'
+        ).once
+      end
     end
   end
 
   describe '#bind' do
-    subject { described_class.new.bind(channel, event) }
+    subject { described_class.new(token: 'token').bind(channel, event) }
 
     let(:mock_socket) { double('socket') }
     let(:mock_channel) { double('channel') }
@@ -91,7 +72,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#bind_event_json' do
-    subject { described_class.new.bind_event_json(channel, event) }
+    subject { described_class.new(token: 'token').bind_event_json(channel, event) }
     let(:mock_socket) { double('socket') }
     let(:mock_channel) { double('channel') }
     let(:channel) { 'channel' }
@@ -109,7 +90,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#unsubscribe' do
-    subject { described_class.new.unsubscribe(channel) }
+    subject { described_class.new(token: 'token').unsubscribe(channel) }
 
     let(:mock_socket) { double('socket') }
     let(:channel) { 'channel' }
