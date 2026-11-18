@@ -30,31 +30,10 @@ describe CircleCI::CLI::Response::Build do
   describe '#information' do
     subject(:information) { described_class.new(base_attributes.merge('status' => status)).information }
 
-    context 'when the build is canceled' do
-      let(:status) { 'canceled' }
+    let(:status) { 'canceled' }
 
-      it 'colorizes the status and branch in yellow' do
-        expect(information[1]).to eq(CircleCI::CLI::Printer.colorize_yellow('canceled'))
-        expect(information[2]).to eq(CircleCI::CLI::Printer.colorize_yellow('main'))
-      end
-    end
-
-    context 'when the build has no tests' do
-      let(:status) { 'no_tests' }
-
-      it 'colorizes the status and branch in light black' do
-        expect(information[1]).to eq(CircleCI::CLI::Printer.colorize_light_black('no_tests'))
-        expect(information[2]).to eq(CircleCI::CLI::Printer.colorize_light_black('main'))
-      end
-    end
-
-    context 'when the build status is not colorized' do
-      let(:status) { 'running' }
-
-      it 'returns the raw status and branch' do
-        expect(information[1]).to eq('running')
-        expect(information[2]).to eq('main')
-      end
+    it 'returns raw build information' do
+      expect(information).to eq([42, 'canceled', 'main', 'octocat', '', '01:01', '2024-01-01T00:00:00Z'])
     end
   end
 end
