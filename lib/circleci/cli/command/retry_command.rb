@@ -8,7 +8,8 @@ module CircleCI
           def run(options)
             setup_token
             username, reponame = project_name(options).split('/')
-            number = build_number_for(username, reponame, options)
+            number = build_number(options, prompt: !options.last)
+            number = get_last_build_number(username, reponame) if options.last
 
             build = Response::Build.retry(username, reponame, number)
 
@@ -20,14 +21,6 @@ module CircleCI
           end
 
           private
-
-          def build_number_for(username, reponame, options)
-            if options.last
-              get_last_build_number(username, reponame)
-            else
-              build_number(options)
-            end
-          end
 
           def get_last_build_number(username, reponame)
             Response::Build.failed(username, reponame).map(&:build_number).max

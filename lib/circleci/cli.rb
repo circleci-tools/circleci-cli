@@ -23,6 +23,10 @@ module CircleCI
       package_name 'circleci-cli'
 
       class << self
+        def exit_on_failure?
+          true
+        end
+
         def project
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
@@ -78,7 +82,7 @@ module CircleCI
                     banner: 'user/project',
                     default: project,
                     desc: 'A project you want to get.'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number', desc: 'Build number you want to get.'
+      method_option :build, aliases: 'n', type: :string, banner: 'build-number', desc: 'Build number you want to get.'
       method_option :last, aliases: 'l', type: :boolean, default: false, desc: 'Get last failed build.'
       method_option :pretty, type: :boolean, banner: 'true/false', default: true, desc: 'Make output pretty.'
       def build
@@ -94,7 +98,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to browse.'
       def browse
@@ -110,7 +114,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to retry.'
       method_option :last, aliases: 'l', type: :boolean, desc: 'Retry last failed build.'
@@ -126,7 +130,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to cancel.'
       def cancel
