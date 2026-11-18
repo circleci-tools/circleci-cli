@@ -24,7 +24,8 @@ module CircleCI
             @steps.group_by(&:type).map do |_, steps|
               steps.flat_map do |step|
                 step.actions.map do |a|
-                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{a.log}\n" if a.failed? && a.log}"
+                  log = a.log&.delete_suffix("\n") if a.failed?
+                  "#{colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{log}\n" if log}"
                 end
               end.join
             end.join("\n")
@@ -58,8 +59,14 @@ module CircleCI
               colorize_by_status(a.name.slice(0..120), a.status),
               format_time(a.run_time_millis)
             ]
-            table << [{ value: a.log, alignment: :left, colspan: 2 }] if a.failed? && a.log
+            next unless a.failed? && (log = a.log)
+
+            table << [{ value: wrap_log(log), alignment: :left, colspan: 2 }]
           end
+        end
+
+        def wrap_log(log)
+          log.gsub(/[^\n]{120}(?=[^\n])/) { |chunk| "#{chunk}\n" }
         end
       end
     end

@@ -11,23 +11,22 @@ describe CircleCI::CLI::Response::Action do
         'output_url' => 'https://circleci.com/output/123'
       }
     end
-    let(:http_client) { class_double(CircleCI::CLI::Networking::HTTPClient) }
+    let(:http_client) { CircleCI::CLI::Networking::HTTPClient }
     let(:output) do
       [
-        { 'message' => "first\r\nline\e[A\r\e[2K" },
-        { 'message' => 'a' * 121 }
+        { 'message' => "first\r\n\r\nline\e[A\r\e[2K" },
+        { 'message' => "#{'a' * 121}\n" }
       ]
     end
 
     before do
-      stub_const('CircleCI::CLI::Response::Action::HTTPClient', http_client)
       allow(http_client).to receive(:get)
         .with('https://circleci.com/output/123')
         .and_return(output)
     end
 
     it 'normalizes and joins log messages' do
-      expect(log).to eq(["first\nline", 'a' * 120, 'a'].join("\n"))
+      expect(log).to eq("first\n\nline\n#{'a' * 121}\n")
       expect(http_client).to have_received(:get)
     end
   end
