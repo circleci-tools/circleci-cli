@@ -30,8 +30,8 @@ module CircleCI
 
         def print_compact
           build_rows = rows
-          widths = max_row_widths(build_rows)
-          build_rows.map { |row| pad_columns_by_space(row, widths) }.join("\n")
+          max_widths = max_row_widths(build_rows)
+          build_rows.map { |row| pad_columns_by_space(row, max_widths) }.join("\n")
         end
 
         def print_pretty

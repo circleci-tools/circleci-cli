@@ -30,8 +30,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
   let(:build) { build_response.call(initial_steps) }
 
-  before do
-    stub_const('CircleCI::CLI::Command::BuildWatcher::HTTPClient', CircleCI::CLI::Networking::HTTPClient)
+  let(:http) { instance_double(Net::HTTP) }
+  let(:output_path) { '/api/private/output/raw/github/user/repo/1234/output/1/2' }
+
+  def expect_output_chunk(offset, body)
+    expect(http).to receive(:request).ordered do |request|
+      expect(request).to be_a(Net::HTTP::Get)
+      expect(request.path).to eq(output_path)
+      expect(request['Range']).to eq("bytes=#{offset}-")
+      instance_double(Net::HTTPPartialContent, body: body)
+    end
   end
 
   describe '#start' do
@@ -45,9 +53,6 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         ]
       )
     end
-    let(:shell) { instance_double(Thor::Shell::Basic, say: nil) }
-    let(:response) { instance_double('response', body: 'step output') }
-    let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
     it 'prints new verbose steps and streams their output' do
       allow(Thread).to receive(:new) do |&block|
@@ -56,17 +61,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       rescue Interrupt
         thread
       end
-      allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        raise Interrupt if polls == 2
+      end
       allow(watcher).to receive(:say)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).and_return(response)
-      allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect_output_chunk(0, 'é')
+      expect_output_chunk(2, " done\n")
 
-      watcher.start
-
+      expect { watcher.start }.to output("é done\n").to_stdout
       expect(watcher).to have_received(:say).with(a_string_including('| Test'))
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(shell).to have_received(:say).with('step output', nil, false)
     end
   end
 
@@ -74,6 +81,52 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: false) }
     let(:updated_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
+
+    context 'with many unchanged steps' do
+      let(:initial_steps) do
+        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success') }
+      end
+      let(:updated_build) { build_response.call(initial_steps) }
+
+      it 'reads previous names and materializes incoming steps once without printing transitions' do
+        previous_steps = build.steps
+        allow(build).to receive(:steps).and_return(previous_steps)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        previous_steps.each { |step| expect(step).to receive(:name).once.and_call_original }
+        expect(updated_build).to receive(:steps).once.and_call_original
+        expect(watcher).not_to receive(:puts)
+        expect(watcher).not_to receive(:say)
+
+        watcher.send(:update_build)
+      end
+    end
+
+    context 'when previous steps with the same name have different statuses' do
+      let(:initial_steps) do
+        [
+          step_hash.call(name: 'Build', type: 'build', status: 'success'),
+          step_hash.call(name: 'Build', type: 'build', status: 'failed'),
+          step_hash.call(name: 'Test', type: 'test', status: 'success'),
+          step_hash.call(name: 'Test', type: 'test', status: 'success')
+        ]
+      end
+      let(:updated_build) { build_response.call(initial_steps) }
+
+      it 'prints a transition for each step with a same-name predecessor in a different status' do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        allow(watcher).to receive(:puts)
+
+        watcher.send(:update_build)
+
+        expect(watcher).to have_received(:puts).exactly(2).times
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"
+        ).once
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
+        ).once
+      end
+    end
 
     it 'prints failed statuses and replays buffered output' do
       watcher.instance_variable_get(:@messages)['Build'] << 'captured output'
@@ -133,18 +186,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         [step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2)]
       ).steps.first
     end
-    let(:url) { 'https://circleci.com/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
     it 'buffers output and skips empty response bodies' do
       watcher.instance_variable_set(:@current_step, current_step)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
-        .and_return(instance_double('response', body: 'step output'), instance_double('response', body: ''))
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect_output_chunk(0, 'step output')
+      expect_output_chunk(11, '')
 
       watcher.send(:update_actions)
       watcher.send(:update_actions)
 
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=0-')
-      expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:get).with(url, 'Range' => 'bytes=11-')
       expect(watcher.instance_variable_get(:@messages)['Test']).to eq(['step output'])
     end
   end

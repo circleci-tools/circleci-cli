@@ -7,7 +7,10 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     subject { described_class.new(steps, pretty: pretty).to_s }
 
     before do
-      allow_any_instance_of(CircleCI::CLI::Response::Action).to receive(:log) { 'action log' }
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(http).to receive(:request).with(have_attributes(path: '/output/123'))
+        .and_return(instance_double(Net::HTTPOK, body: '[{"message":"action log"}]'))
     end
 
     let(:steps) do
@@ -27,7 +30,10 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           {
             'status' => 'success',
             'actions' => [
-              { 'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200 }
+              {
+                'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200,
+                'output_url' => 'https://circleci.com/output/123'
+              }
             ]
           }
         ),

@@ -4,7 +4,7 @@ require 'spec_helper'
 
 describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
   describe '#to_s' do
-    subject { described_class.new(builds, builds.first.project_name, pretty: pretty).to_s }
+    subject { described_class.new(builds, 'unhappychoice/default_reponame_from_api', pretty: pretty).to_s }
 
     let(:builds) do
       [
@@ -90,12 +90,22 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
         end
       end
 
-      it 'prints builds with a red timed-out status and branch' do
+      it 'prints aligned builds with a red timed-out status and reads information once per build' do
+        builds.each { |build| expect(build).to receive(:information).once.and_call_original }
+
         expected = <<~EXPECTED
           1234  \e[0;32;49msuccess\e[0m   \e[0;32;49mmaster\e[0m  unhappychoice    00:23  100000
           1236  \e[0;31;49mtimedout\e[0m  \e[0;31;49mmaster\e[0m  unhappychoice    00:09  120000
         EXPECTED
         expect(subject).to eq expected.strip
+      end
+
+      context 'with no builds' do
+        let(:builds) { [] }
+
+        it 'prints an empty string' do
+          expect(subject).to eq('')
+        end
       end
     end
   end
