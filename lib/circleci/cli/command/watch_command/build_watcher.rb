@@ -72,20 +72,19 @@ module CircleCI
           end
         end
 
-        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        # rubocop:disable-next Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength, Metrics/PerceivedComplexity
         def update_build
           build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
+          steps = build.steps.each do |step|
+            statuses = previous_statuses[step.name]
+            next on_new_step(step) unless statuses
 
-          # Calc actions diff and dispatch event
-          build.steps
-               .each do |step|
-                 on_new_step(step) unless @steps.any? { |s| s.name == step.name }
-                 on_new_step_status(step) if @steps.any? { |s| s.name == step.name && s.status != step.status }
-               end
+            on_new_step_status(step) unless statuses == [step.status]
+          end
+          @steps = steps
 
-          @steps = build.steps
-
-          next_step = build.steps.find { |s| s.status == 'running' }
+          next_step = steps.find { |step| step.status == 'running' }
           @read_byte = 0 if @current_step&.name != next_step&.name
           @current_step = next_step
         end
@@ -96,9 +95,7 @@ module CircleCI
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{@current_step.actions.first.index}/#{@current_step.actions.first.step}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          res = HTTPClient.get(url, headers)
-
-          response = res.body
+          response = Networking::HTTPClient.get_raw(url, headers).body
 
           return if response.empty?
 
@@ -119,11 +116,12 @@ module CircleCI
         end
 
         def notify_stopped(status)
+          build_name = "#{@build.project_name} ##{@build.build_number}"
           text = case status
-                 when 'success'
-                   Printer.colorize_green("🎉 #{@build.project_name} ##{@build.build_number} has succeeded!")
-                 when 'failed'
-                   Printer.colorize_red("😥 #{@build.project_name} ##{@build.build_number} has failed...")
+                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
+                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
+                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
+                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
                  end
 
           @verbose ? print_bordered(text) : puts(text)

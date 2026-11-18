@@ -83,6 +83,7 @@ $ circleci-cli browse
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/circleci-tools/circleci-cli.
+See the [contributing guide](CONTRIBUTING.md) for development setup and checks.
 
 ## License
 
