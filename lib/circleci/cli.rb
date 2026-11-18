@@ -23,6 +23,10 @@ module CircleCI
       package_name 'circleci-cli'
 
       class << self
+        def exit_on_failure?
+          true
+        end
+
         def project
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
