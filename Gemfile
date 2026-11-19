@@ -7,6 +7,7 @@ gemspec
 gem 'abbrev'
 gem 'base64'
 gem 'bundler'
+gem 'gem-release', require: false
 gem 'github_changelog_generator'
 gem 'guard'
 gem 'guard-rspec'
