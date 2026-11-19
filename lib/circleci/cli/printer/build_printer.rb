@@ -48,10 +48,27 @@ module CircleCI
         end
 
         def rows
-          @builds_to_show.map do |build|
-            number, status, branch, *details = build.information.map { |value| Printer.escape_controls(value) }
-            [number, Printer.colorize_by_status(status, status), Printer.colorize_by_status(branch, status), *details]
-          end
+          @builds_to_show.map { |build| row_for(build) }
+        end
+
+        def row_for(build)
+          status = Printer.escape_controls(build.status)
+          branch = Printer.escape_controls(build.branch)
+          [
+            Printer.escape_controls(build.build_number),
+            Printer.colorize_by_status(status, status),
+            Printer.colorize_by_status(branch, status),
+            *build_details(build)
+          ]
+        end
+
+        def build_details(build)
+          [
+            build.author_name,
+            (build.subject || '').slice(0..60),
+            Printer.format_duration(build.build_time_millis),
+            build.start_time
+          ].map { |value| Printer.escape_controls(value) }
         end
 
         def max_row_widths(build_rows)
