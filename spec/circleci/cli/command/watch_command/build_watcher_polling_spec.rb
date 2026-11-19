@@ -61,12 +61,20 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:updated_build) do
       build_response.call(
         [
-          step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)
+          step_hash.call(name: 'Checkout', type: 'checkout', status: 'success', step: 1),
+          step_hash.call(name: step_name, type: 'shell', status: 'success', step: 2),
+          step_hash.call(name: 'Upload', type: 'store_artifacts', status: 'running', index: 1, step: 2),
+          step_hash.call(name: 'Deploy', type: 'shell', status: 'running', index: 1, step: 3)
         ]
       )
     end
     let(:step_name) { "Test <%= \"step\" %>\r\e[2K" }
     let(:escaped_step_name) { 'Test <%= "step" %>\x0D\x1B[2K' }
+
+    def expect_completed_outputs
+      expect_output_response(0, "checked out\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/1')
+      expect_output_response(0, "tested\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/2')
+    end
 
     before do
       allow(Thread).to receive(:new) do |&block|
@@ -77,7 +85,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
-    it 'prints new verbose steps and streams their output' do
+    it 'prints new steps in API order and streams output from the first running step' do
       polls = 0
       allow(watcher).to receive(:sleep).with(1) do
         polls += 1
@@ -86,11 +94,14 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       log_tail = " done <%= \"log\" %>\n"
+      expect_completed_outputs
       expect_output_response(0, log_output.byteslice(0, 1), log_output.byteslice(1, 9), log_output.byteslice(10..))
       expect_output_response(log_output.bytesize, log_tail)
 
-      expect { watcher.start }
-        .to output(a_string_including(escaped_step_name, "#{escaped_log_output}#{log_tail}", build.author_name)).to_stdout
+      expected = ['Checkout', "checked out\n", escaped_step_name, "tested\n", 'Upload', 'Deploy',
+                  "#{escaped_log_output}#{log_tail}", build.author_name]
+      pattern = Regexp.new(expected.map { |text| Regexp.escape(text) }.join('.*'), Regexp::MULTILINE)
+      expect { watcher.start }.to output(pattern).to_stdout
     end
 
     it 'continues polling from the last byte received after a connection reset' do
@@ -101,6 +112,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect_completed_outputs
       expect_output_response(0, 'é', error: Errno::ECONNRESET)
       expect_output_response(2, " done\n")
 
@@ -245,6 +257,35 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         watcher.start
         watcher.stop('failed')
       end.to output(expected_output).to_stdout
+    end
+
+    context 'during shutdown' do
+      let(:compile_path) { '/api/private/output/raw/github/user/repo/1234/output/0/1' }
+      let(:test_path) { '/api/private/output/raw/github/user/repo/1234/output/0/2' }
+
+      before do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished_build)
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      end
+
+      it 'retries each completed action from its own offset without repeating output' do
+        expect_output_response(0, "compiled \xC3".b, path: compile_path, error: EOFError)
+        expect_output_response(10, "\xA9\n".b, path: compile_path)
+        expect_output_response(0, 'failed ', path: test_path, error: Errno::ECONNRESET)
+        expect_output_response(7, "log\n", path: test_path)
+
+        expect { watcher.stop('failed') }
+          .to output(/Compile.*compiled é\n.*Test.*failed log\n.*has failed/m).to_stdout.and output('').to_stderr
+      end
+
+      it 'warns after an exhausted retry and continues with the next completed action' do
+        expect_output_response(0, 'partial ', path: compile_path, error: EOFError)
+        expect_output_response(8, "tail\r".b, path: compile_path, error: Net::ReadTimeout)
+        expect_output_response(0, "failed log\n", path: test_path)
+
+        expect { watcher.stop('failed') }.to output(a_string_including('partial tail\x0D', "failed log\n")).to_stdout
+           .and output("Warning: Step log output may be incomplete.\n").to_stderr
+      end
     end
 
     it 'resumes an interrupted completed log independently of the running action' do

@@ -10,6 +10,7 @@ module CircleCI
           EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
           Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
         ].freeze
+        INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
         OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
 
         Output = Struct.new(:offset, :suffix, :needs_newline)
@@ -117,24 +118,23 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          detail = fetch_build
-          steps = detail.steps
+          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          update_steps(detail.steps, stopping:)
+          @latest_detail = detail
+        end
+
+        def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
           action_changed = action_position(@current_step) != action_position(next_step)
           incomplete_output = action_changed && !finish_action_output?
 
-          notify_step_changes(steps)
-          warn 'Warning: Step log output may be incomplete.' if incomplete_output
+          notify_step_changes(steps, stopping:)
+          warn INCOMPLETE_OUTPUT_WARNING if incomplete_output
           @steps = steps
           @current_step = next_step
-          @latest_detail = detail
         end
 
-        def fetch_build
-          CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
-        end
-
-        def notify_step_changes(steps)
+        def notify_step_changes(steps, stopping:)
           previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
           steps.each do |step|
             previous_status = previous_statuses[step_key(step)]
@@ -143,7 +143,7 @@ module CircleCI
             else
               on_new_step(step)
             end
-            print_completed_outputs(step) if @verbose
+            print_completed_outputs(step, stopping:) if @verbose
           end
         end
 
@@ -152,7 +152,7 @@ module CircleCI
           [action.index, action.step] if action
         end
 
-        def print_completed_outputs(step)
+        def print_completed_outputs(step, stopping:)
           active_position = action_position(@current_step)
           step.actions.each do |action|
             next unless action.end_time
@@ -160,15 +160,25 @@ module CircleCI
             position = [action.index, action.step]
             next if position.include?(nil) || position == active_position || @finished_outputs.include?(position)
 
-            complete_output(position) if read_action_output(position)
+            read_completed_output(position, stopping:)
+          end
+        end
+
+        def read_completed_output(position, stopping:)
+          if stopping
+            warn INCOMPLETE_OUTPUT_WARNING unless finish_output?(position)
+          elsif read_action_output(position)
+            complete_output(position)
           end
         end
 
         def finish_action_output?
           position = action_position(@current_step)
-          return true unless position
+          position.nil? || finish_output?(position)
+        end
 
-          complete = 2.times.any? { update_actions }
+        def finish_output?(position)
+          complete = 2.times.any? { read_action_output(position) }
           flush_output(@outputs[position]) unless complete
           complete_output(position)
           complete
