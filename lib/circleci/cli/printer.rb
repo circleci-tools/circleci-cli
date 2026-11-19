@@ -37,7 +37,7 @@ module CircleCI
           case status
           when 'success', 'fixed' then colorize_green(string)
           when 'canceled' then colorize_yellow(string)
-          when 'failed', 'timedout' then colorize_red(string)
+          when 'failed', 'timedout', 'infrastructure_fail' then colorize_red(string)
           when 'no_tests', 'not_run' then colorize_light_black(string)
           else string
           end

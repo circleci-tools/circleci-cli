@@ -4,6 +4,16 @@ module CircleCI
   module CLI
     module Command
       class BuildWatcher # rubocop:disable Metrics/ClassLength
+        COMPLETION_MESSAGES = {
+          'success' => '🎉 %<build>s has succeeded!',
+          'fixed' => '🎉 %<build>s has been fixed!',
+          'failed' => '😥 %<build>s has failed...',
+          'timedout' => '%<build>s timed out.',
+          'infrastructure_fail' => '%<build>s failed due to an infrastructure error.',
+          'canceled' => '%<build>s was canceled.',
+          'no_tests' => '%<build>s ran no tests.'
+        }.freeze
+
         attr_reader :build
 
         def initialize(build, verbose: false)
@@ -131,14 +141,15 @@ module CircleCI
 
         def notify_stopped(status)
           build_name = Printer.escape_controls("#{@build.project_name} ##{@build.build_number}")
-          text = case status
-                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
-                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
-                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
-                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
-                 end
-
+          text = completion_message(status, build_name)
           @verbose ? print_bordered(text) : puts(text)
+        end
+
+        def completion_message(status, build_name)
+          template = COMPLETION_MESSAGES.fetch(status) do
+            return "#{build_name} finished (status: #{Printer.escape_controls(status || 'unknown')})."
+          end
+          Printer.colorize_by_status(format(template, build: build_name), status)
         end
 
         def print_bordered(text)

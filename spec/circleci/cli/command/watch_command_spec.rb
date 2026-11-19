@@ -71,13 +71,16 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:finished_build) { double('finished build', build_number: 42, finished?: true, status: 'success') }
     let(:watcher) { double('watcher', build: running_build) }
 
-    it 'coalesces a burst and refreshes again for a notification received during the request' do
+    before do
       allow(described_class).to receive(:setup_token)
       allow(described_class).to receive(:say)
       allow(client).to receive(:connect)
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
       allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(account)
       allow(CircleCI::CLI::Response::Build).to receive(:all).with('user', 'repo').and_return([])
+    end
+
+    it 'coalesces a burst and refreshes again for a notification received during the request' do
       allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(running_build, verbose: true).and_return(watcher)
 
       notify = nil
@@ -96,6 +99,37 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(described_class).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
 
       described_class.run(options)
+    end
+
+    {
+      'timedout' => 'timed out.',
+      'infrastructure_fail' => 'failed due to an infrastructure error.',
+      'fixed' => 'has been fixed!'
+    }.each do |status, message|
+      it "reports #{status} and starts watching the next running build" do
+        build_response = CircleCI::CLI::Response::Build
+        attributes = {
+          'username' => 'user', 'reponame' => 'repo', 'branch' => 'main', 'user' => { 'login' => 'octocat' }
+        }
+        first_build = build_response.new(attributes.merge('build_num' => 42, 'status' => 'running'))
+        next_build = build_response.new(attributes.merge('build_num' => 43, 'status' => 'running'))
+        completed_build = build_response.new(attributes.merge(
+                                               'build_num' => 42, 'status' => status, 'lifecycle' => 'finished'
+                                             ))
+        allow(build_response).to receive(:branch).with('user', 'repo', 'main')
+          .and_return([first_build], [completed_build, next_build])
+        expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(completed_build)
+        allow_any_instance_of(CircleCI::CLI::Command::BuildWatcher).to receive(:poll_build)
+
+        notify = nil
+        expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+        expect(described_class).to receive(:sleep).with(1).twice.ordered { notify.call }
+        expect(described_class).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+
+        expect { described_class.run(options) }.to output(
+          /Start watching user\/repo #42.*user\/repo #42 #{Regexp.escape(message)}.*Start watching user\/repo #43/m
+        ).to_stdout
+      end
     end
   end
 

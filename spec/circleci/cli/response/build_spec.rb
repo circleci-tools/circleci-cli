@@ -29,6 +29,23 @@ describe CircleCI::CLI::Response::Build do
     end
   end
 
+  describe '#finished?' do
+    it 'recognizes a finished lifecycle with an unfamiliar status' do
+      build = described_class.new(base_attributes.merge('lifecycle' => 'finished', 'status' => 'retried'))
+      expect(build).to be_finished
+    end
+
+    it 'uses the lifecycle when it disagrees with the status' do
+      build = described_class.new(base_attributes.merge('lifecycle' => 'running', 'status' => 'canceled'))
+      expect(build).not_to be_finished
+    end
+
+    it 'recognizes a legacy terminal status when lifecycle is missing' do
+      build = described_class.new(base_attributes.merge('status' => 'success'))
+      expect(build).to be_finished
+    end
+  end
+
   describe '#channel_name' do
     subject(:channel_name) { described_class.new(base_attributes).channel_name }
 
