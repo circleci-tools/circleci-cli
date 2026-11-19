@@ -116,7 +116,7 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          detail = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
           @latest_detail = detail
         end
