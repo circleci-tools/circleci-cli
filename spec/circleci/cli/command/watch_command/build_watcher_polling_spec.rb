@@ -213,7 +213,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         expect do
           watcher.start
           watcher.stop(status)
-        end.to output(/\Afirst output\nfinal output\n.*has succeeded!/m).to_stdout
+        end.to output(/\Afirst output\nfinal output\n(?!.*final output\n).*has succeeded!/m).to_stdout
       end
     end
 
@@ -225,12 +225,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       it 'includes the final chunk in the failed-step output when stopped' do
         expect_output_response(13, "final ".b + log_output.byteslice(0, 1), error: Errno::ECONNRESET)
         expect_output_response(20, log_output.byteslice(1..))
+        replayed_output = Regexp.escape("first output\nfinal #{escaped_log_output}\n")
 
         expect do
           watcher.start
           watcher.stop(status)
-        end.to output(a_string_including(escaped_step_name, "first output\nfinal #{escaped_log_output}\n",
-                                         'has failed')).to_stdout.and output('').to_stderr
+        end.to output(/#{Regexp.escape(escaped_step_name)}.*#{replayed_output}.*has failed/m)
+          .to_stdout.and output('').to_stderr
       end
 
       it 'reports incomplete output after the final retry fails and replays the bytes received' do
