@@ -11,8 +11,20 @@ module CircleCI
         end
 
         def connect
+          return @connection_thread if @connection_thread&.alive?
+
           PusherClient.logger.level = Logger::ERROR
-          socket.connect(true)
+          connection = socket
+          # The socket's async mode cannot disconnect before the handshake finishes.
+          Thread.handle_interrupt(Interrupt => :never) do
+            @connection_thread = Thread.new { connect_socket(connection) }
+          end
+        end
+
+        def disconnect
+          @connection_thread&.kill&.join
+          @connection_thread = nil
+          @socket&.disconnect
         end
 
         def bind(channel, event, &)
@@ -29,6 +41,12 @@ module CircleCI
         end
 
         private
+
+        def connect_socket(connection)
+          connection.connect
+        rescue StandardError => e
+          connection.global_channel.dispatch_with_all('pusher:error', e)
+        end
 
         def socket
           @socket ||= PusherClient::Socket.new(

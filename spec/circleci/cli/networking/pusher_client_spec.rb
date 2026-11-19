@@ -23,20 +23,20 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
     end
 
     it 'builds a secure socket and connects to it' do
-      connect
+      connect.join
 
       expect(mock_logger).to have_received(:level=).with(Logger::ERROR)
       expect(socket_options[:key]).to eq('1cf6e0e755e419d2ac9a')
       expect(socket_options[:secure]).to be(true)
       expect(socket_options[:auth_method]).to be_a(Proc)
       expect(socket_options[:logger]).to be_a(Logger)
-      expect(mock_socket).to have_received(:connect).with(true)
+      expect(mock_socket).to have_received(:connect).with(no_args)
     end
 
     it 'reuses the supplied token for repeated auth callbacks' do
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
 
-      connect
+      connect.join
 
       channel = double('channel', name: 'private-builds')
       auth = socket_options.fetch(:auth_method)
@@ -49,6 +49,26 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
           channel_name: 'private-builds'
         ).once
       end
+    end
+  end
+
+  describe '#disconnect' do
+    it 'stops the connection thread even when the socket is still connecting' do
+      client = described_class.new(token: 'token')
+      started = Queue.new
+      pending = Queue.new
+      socket = double('socket')
+      allow(PusherClient::Socket).to receive(:new).and_return(socket)
+      allow(socket).to receive(:connect) do
+        started << Thread.current
+        pending.pop
+      end
+
+      client.connect
+      worker = started.pop
+      expect(socket).to receive(:disconnect) { expect(worker).not_to be_alive }
+
+      client.disconnect
     end
   end
 
