@@ -41,10 +41,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
   before { allow(http).to receive(:max_retries=).with(0) }
 
-  def expect_output_response(offset, *chunks, error: nil)
+  def expect_output_response(offset, *chunks, error: nil, path: output_path)
     expect(http).to receive(:request).ordered do |request, &read_response|
       expect(request).to be_a(Net::HTTP::Get)
-      expect(request.path).to eq(output_path)
+      expect(request.path).to eq(path)
       expect(request['Range']).to eq("bytes=#{offset}-")
       response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
       allow(response).to receive(:read_body) do |&read_chunk|
@@ -221,7 +221,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     context 'with many unchanged steps' do
       let(:initial_steps) do
-        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success') }
+        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success', step: index) }
       end
       let(:updated_build) { build_response.call(initial_steps) }
 
@@ -229,7 +229,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         previous_steps = build.steps
         allow(build).to receive(:steps).and_return(previous_steps)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-        previous_steps.each { |step| expect(step).to receive(:name).once.and_call_original }
+        previous_steps.each { |step| expect(step).to receive(:action_identity).once.and_call_original }
         expect(updated_build).to receive(:steps).once.and_call_original
         expect(watcher).not_to receive(:puts)
 
@@ -237,11 +237,53 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
+    context 'with successive actions named Test' do
+      let(:initial_steps) { [] }
+      let(:first_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2) }
+      let(:first_succeeded) { step_hash.call(name: 'Test', type: 'test', status: 'success', index: 1, step: 2) }
+      let(:second_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 2, step: 2) }
+      let(:second_failed) { step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 2, step: 2) }
+
+      it 'starts the new action at byte zero and replays only its output on failure' do
+        first_build = build_response.call([first_running])
+        second_build = build_response.call([first_succeeded, second_running])
+        failed_build = build_response.call([first_succeeded, second_failed])
+        allow(CircleCI::CLI::Response::Build).to receive(:get)
+          .and_return(first_build, second_build, failed_build, failed_build)
+        allow(watcher).to receive(:puts)
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, 'a' * 400)
+        expect_output_response(400)
+        expect_output_response(0, "second action output\n", path: second_path)
+        expect_output_response(21, "second action tail\n", path: second_path)
+
+        expect do
+          2.times do
+            watcher.send(:update_build)
+            watcher.send(:update_actions)
+          end
+          2.times { watcher.send(:update_build) }
+        end.to output("second action output\nsecond action tail\n").to_stdout
+
+        expect(watcher).to have_received(:puts).with('Test').twice
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Test')}"
+        ).once
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}"
+        ).once
+      ensure
+        watcher.close
+      end
+    end
+
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
       log = CircleCI::CLI::Command::StepLog.new
       log.append(log_text)
-      watcher.instance_variable_get(:@messages)[[0, 0, 'Build']] = log
+      watcher.instance_variable_get(:@messages)[[0, 0]] = log
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
@@ -305,7 +347,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
 
       messages = watcher.instance_variable_get(:@messages)
-      expect(messages.keys).to eq([[1, 2, step_name]])
+      expect(messages.keys).to eq([[1, 2]])
       expect { messages.values.first.write_to($stdout) }.to output("#{escaped_log_output}\n").to_stdout
     ensure
       watcher.close

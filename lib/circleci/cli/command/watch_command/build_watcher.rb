@@ -121,8 +121,7 @@ module CircleCI
         end
 
         def step_key(step)
-          action = step.actions.first
-          [action&.index, action&.step, step.name]
+          step.action_identity || step.name
         end
 
         def update_build(stopping: false)
@@ -133,7 +132,7 @@ module CircleCI
 
         def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
-          action_changed = action_position(@current_step) != action_position(next_step)
+          action_changed = action_changed?(next_step)
           incomplete_output = action_changed && !finish_action_output?
 
           notify_step_changes(steps)
@@ -141,6 +140,10 @@ module CircleCI
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
+        end
+
+        def action_changed?(next_step)
+          @current_step&.action_identity != next_step&.action_identity
         end
 
         def notify_step_changes(steps)
@@ -153,11 +156,6 @@ module CircleCI
           end
         end
 
-        def action_position(step)
-          action = step&.actions&.first
-          [action.index, action.step] if action
-        end
-
         def finish_action_output?
           return true if 2.times.any? { update_actions }
 
@@ -166,7 +164,7 @@ module CircleCI
         end
 
         def update_actions
-          position = action_position(@current_step)
+          position = @current_step&.action_identity
           return true unless position
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
