@@ -30,10 +30,37 @@ describe CircleCI::CLI::Runner do
       end
     end
 
-    context 'when git repository has a non-github remote' do
-      let(:rugged_response_remote_url) { 'git@bitbucket.org:user/repository.git' }
-      it 'returns nil' do
-        expect(subject).to be_nil
+    {
+      'https://GITHUB.COM/user/repository' => 'user/repository',
+      'ssh://git@github.com:22/user/example.com.git' => 'user/example.com',
+      'https://github.com/user/repository.git.git' => 'user/repository.git'
+    }.each do |remote, slug|
+      context "with #{remote} as origin" do
+        let(:rugged_response_remote_url) { remote }
+
+        it { is_expected.to eq(slug) }
+      end
+    end
+
+    [
+      'git@bitbucket.org:user/repository.git',
+      'git@githubXcom:user/repository.git',
+      'https://github.com.example.org/user/repository.git',
+      'https://github.com@example.org/user/repository.git',
+      'https://example.org/https://github.com/user/repository.git',
+      'https://github.com:invalid/user/repository.git',
+      'https://github.com/user/nested/repository.git',
+      'https://github.com/user/repository.git/',
+      'https://github.com/user/repository.git?query',
+      'ssh://git@github.com/user/repository.git#fragment',
+      'ssh://git@github.com/user/..',
+      'git@github.com:user/repository%2Fother.git',
+      "git@github.com:user/repository.git\nignored"
+    ].each do |remote|
+      context "with #{remote.inspect} as origin" do
+        let(:rugged_response_remote_url) { remote }
+
+        it { is_expected.to be_nil }
       end
     end
   end
@@ -83,6 +110,32 @@ describe CircleCI::CLI::Runner do
   end
 
   describe '.start' do
+    {
+      cancel: CircleCI::CLI::Command::CancelCommand,
+      retry: CircleCI::CLI::Command::RetryCommand
+    }.each do |operation, command|
+      [
+        'https://githubXcom/decoy/repository.git',
+        'https://example.org/https://github.com/decoy/repository.git'
+      ].each do |remote|
+        context "when running #{operation} with #{remote} as origin" do
+          let(:rugged_response_remote_url) { remote }
+
+          it 'uses the project entered at the prompt for the build operation' do
+            allow(ENV).to receive(:fetch).and_call_original
+            allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
+            allow(CircleCI::CLI::Response::Project).to receive(:all).and_return([])
+            allow(command).to receive(:puts)
+            expect(command).to receive(:ask).with('Input user-name/project-name :').and_return('selected/project')
+            expect(CircleCI::CLI::Response::Build).to receive(operation).with('selected', 'project', 42)
+                                                                       .and_return(double(username: nil))
+
+            described_class.start([operation.to_s, '--build', '42'])
+          end
+        end
+      end
+    end
+
     [
       ['projects', [], CircleCI::CLI::Command::ProjectsCommand, { 'pretty' => true }],
       ['builds', %w[--project octocat/hello-world --branch main], CircleCI::CLI::Command::BuildsCommand,
