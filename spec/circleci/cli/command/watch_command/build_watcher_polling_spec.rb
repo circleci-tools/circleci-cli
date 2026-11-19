@@ -78,20 +78,22 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   end
 
   describe '#start' do
-    let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
+    let(:initial_steps) { [] }
     let(:watcher) { described_class.new(build, verbose: true) }
     let(:updated_build) do
       build_response.call(
         [
-          step_hash.call(name: 'Build', type: 'build', status: 'success'),
-          step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)
+          step_hash.call(name: 'Checkout', type: 'checkout', status: 'success'),
+          step_hash.call(name: step_name, type: 'shell', status: 'success'),
+          step_hash.call(name: 'Upload', type: 'store_artifacts', status: 'running', index: 1, step: 2),
+          step_hash.call(name: 'Deploy', type: 'shell', status: 'running', index: 1, step: 3)
         ]
       )
     end
     let(:step_name) { "Test <%= \"step\" %>\r\e[2K" }
     let(:escaped_step_name) { 'Test <%= "step" %>\x0D\x1B[2K' }
 
-    it 'prints new verbose steps and streams their output' do
+    it 'prints new steps in API order and streams output from the first running step' do
       streamed = pause_after_polls(2)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
@@ -101,9 +103,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect_output_response(log_output.bytesize + log_tail.bytesize)
 
-      expect { watch_until(streamed, 'success') }
-        .to output(a_string_including(escaped_step_name, "#{escaped_log_output}#{log_tail}", build.author_name))
-        .to_stdout
+      expected = [build.author_name, 'Checkout', escaped_step_name, 'Upload', 'Deploy',
+                  "#{escaped_log_output}#{log_tail}", 'has succeeded!']
+      pattern = Regexp.new(expected.map { |text| Regexp.escape(text) }.join('.*'), Regexp::MULTILINE)
+      expect { watch_until(streamed, 'success') }.to output(pattern).to_stdout
     end
 
     it 'continues polling from the last byte received after a connection reset' do

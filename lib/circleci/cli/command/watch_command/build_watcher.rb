@@ -117,7 +117,7 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          detail = fetch_build
+          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
           @detail_lock.synchronize { @latest_detail = detail }
         end
@@ -132,10 +132,6 @@ module CircleCI
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
-        end
-
-        def fetch_build
-          CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
         end
 
         def notify_step_changes(steps)
