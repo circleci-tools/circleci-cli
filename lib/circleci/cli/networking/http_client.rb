@@ -8,10 +8,10 @@ module CircleCI
     module Networking
       module HTTPClient
         class Session
-          def get_raw(url, headers = {})
+          def get_raw(url, headers = {}, &)
             uri = URI(url)
             request = HTTPClient.get_request(uri, headers)
-            connection_for(uri).request(request)
+            connection_for(uri).request(request, &)
           end
 
           def close
@@ -28,6 +28,8 @@ module CircleCI
             close
             @origin = uri.origin
             @http = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https')
+            @http.max_retries = 0
+            @http
           end
         end
 
@@ -35,11 +37,12 @@ module CircleCI
           JSON.parse(get_raw(url, headers).body)
         end
 
-        def self.get_raw(url, headers = {})
+        def self.get_raw(url, headers = {}, &read_response)
           uri = URI(url)
           req = get_request(uri, headers)
           Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
-            http.request(req)
+            http.max_retries = 0 if read_response
+            http.request(req, &read_response)
           end
         end
 
