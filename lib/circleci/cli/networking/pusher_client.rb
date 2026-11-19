@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'pusher-client'
+require 'circleci/cli/networking/verified_pusher_socket'
 
 module CircleCI
   module CLI
@@ -31,7 +31,7 @@ module CircleCI
         private
 
         def socket
-          @socket ||= PusherClient::Socket.new(
+          @socket ||= VerifiedPusherSocket.new(
             '1cf6e0e755e419d2ac9a',
             secure: true,
             auth_method: proc { |a, b| auth(a, b) },
