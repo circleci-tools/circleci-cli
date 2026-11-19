@@ -34,6 +34,10 @@ module CircleCI
           notify_started
         end
 
+        def latest_detail
+          @poll_lock.synchronize { @latest_detail }
+        end
+
         def stop(status)
           @poll_lock.synchronize { stop_polling }
           update_build(stopping: true)
@@ -122,6 +126,7 @@ module CircleCI
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
+          @latest_detail = build
         end
 
         def fetch_steps
