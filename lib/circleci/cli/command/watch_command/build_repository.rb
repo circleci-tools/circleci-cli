@@ -10,17 +10,13 @@ module CircleCI
           @reponame = reponame
           @branch = branch
           @mutex = Mutex.new
-          @builds = Response::Build.all(@username, @reponame)
+          @builds = fetch_builds
           @recent_build_numbers = @builds.to_set(&:build_number)
           @build_numbers_shown = @builds.select(&:finished?).to_set(&:build_number)
         end
 
         def update
-          response = if @branch
-                       Response::Build.branch(@username, @reponame, @branch)
-                     else
-                       Response::Build.all(@username, @reponame)
-                     end
+          response = fetch_builds
 
           @mutex.synchronize { retain_builds(response) }
         end
@@ -79,6 +75,12 @@ module CircleCI
 
         def find_build(build_number)
           @builds.find { |build| build.build_number == build_number }
+        end
+
+        def fetch_builds
+          return Response::Build.branch(@username, @reponame, @branch) if @branch
+
+          Response::Build.all(@username, @reponame)
         end
       end
     end

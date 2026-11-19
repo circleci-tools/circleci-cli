@@ -43,20 +43,12 @@ module CircleCI
           Printer.escape_controls(action.log, multiline: true) if action.failed?
         end
 
-        def format_time(time)
-          return '' unless time
-
-          minute = format('%<time>02d', time: time / 1000 / 60)
-          second = format('%<time>02d', time: (time / 1000) % 60)
-          "#{minute}:#{second}"
-        end
-
         def print_actions(table, step)
           table << :separator
           step.actions.each do |a|
             table << [
               action_name(a),
-              format_time(a.run_time_millis)
+              Printer.format_duration(a.run_time_millis)
             ]
             log = escaped_log(a)
             table << [{ value: wrap_log(log), alignment: :left, colspan: 2 }] if log
