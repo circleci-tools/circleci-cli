@@ -61,6 +61,9 @@ module CircleCI
         end
 
         def finished?
+          lifecycle = @hash['lifecycle']
+          return lifecycle == 'finished' unless lifecycle.nil?
+
           %w[success canceled failed no_tests].include?(status)
         end
 
