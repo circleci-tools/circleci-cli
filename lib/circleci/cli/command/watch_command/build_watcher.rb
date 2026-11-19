@@ -16,7 +16,7 @@ module CircleCI
 
           @steps = build.steps
           @current_step = nil
-          @read_byte = 0
+          @read_bytes = Hash.new(0)
         end
 
         def start
@@ -80,7 +80,6 @@ module CircleCI
 
           notify_step_changes(steps)
           @steps = steps
-          @read_byte = 0 if action_changed
           @current_step = next_step
         end
 
@@ -88,9 +87,13 @@ module CircleCI
           previous_statuses = @steps.group_by(&:name).transform_values { |steps| steps.map(&:status).uniq }
           steps.each do |step|
             statuses = previous_statuses[step.name]
-            next on_new_step(step) unless statuses
+            if statuses
+              on_new_step_status(step) unless statuses == [step.status]
+            else
+              on_new_step(step)
+            end
 
-            on_new_step_status(step) unless statuses == [step.status]
+            print_unstreamed_actions(step)
           end
         end
 
@@ -99,26 +102,41 @@ module CircleCI
           [action.index, action.step] if action
         end
 
-        def update_actions
-          return unless @current_step
+        def print_unstreamed_actions(step)
+          return unless @verbose
 
-          response = read_action_output
+          step.actions.each do |action|
+            next if action.end_time.nil? || action.index.nil? || action.step.nil?
+
+            position = [action.index, action.step]
+            stream_action(position, step.name) if @read_bytes[position].zero?
+          end
+        end
+
+        def update_actions
+          position = action_position(@current_step)
+          return unless position
+
+          stream_action(position, @current_step.name)
+        end
+
+        def stream_action(position, step_name)
+          response = read_action_output(position)
           return if response.nil? || response.empty?
 
-          @read_byte += response.bytesize
+          @read_bytes[position] += response.bytesize
 
           response = Printer.escape_controls(response, multiline: true)
           if @verbose
             Thor::Shell::Basic.new.say(response, nil, false)
           else
-            @messages[@current_step.name] << response
+            @messages[step_name] << response
           end
         end
 
-        def read_action_output
-          position = action_position(@current_step).join('/')
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position}"
-          response = Networking::HTTPClient.get_raw(url, 'Range' => "bytes=#{@read_byte}-")
+        def read_action_output(position)
+          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
+          response = Networking::HTTPClient.get_raw(url, 'Range' => "bytes=#{@read_bytes[position]}-")
           response.body if response.is_a?(Net::HTTPSuccess)
         end
 

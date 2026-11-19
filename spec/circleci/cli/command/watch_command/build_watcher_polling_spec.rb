@@ -81,6 +81,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect(http).to receive(:request).ordered do |request|
+        expect(request.path).to eq('/api/private/output/raw/github/user/repo/1234/output/0/0')
+        Net::HTTPNotFound.new('1.1', '404', 'Not Found')
+      end
       log_tail = " done <%= \"log\" %>\n"
       expect_output_chunk(0, log_output)
       expect_output_chunk(log_output.bytesize, log_tail.b)
@@ -169,6 +173,46 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         watcher.start
         watcher.stop(status)
       end
+    end
+  end
+
+  context 'when steps finish between build polls' do
+    let(:initial_steps) { [] }
+    let(:watcher) { described_class.new(build, verbose: true) }
+    let(:finished_build) do
+      build_response.call(
+        [
+          step_hash.call(name: 'Compile', type: 'build', status: 'success', index: 0, step: 1),
+          step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 0, step: 2)
+        ]
+      )
+    end
+
+    it 'prints both completed logs once across later refreshes and shutdown' do
+      allow(Thread).to receive(:new) do |&block|
+        catch(:end_polling) { block.call }
+        thread
+      end
+      polls = 0
+      allow(watcher).to receive(:sleep).with(1) do
+        polls += 1
+        throw :end_polling if polls == 11
+      end
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
+      %w[compiled failed].each_with_index do |message, index|
+        url = "https://circleci.com/api/private/output/raw/github/user/repo/1234/output/0/#{index + 1}"
+        expect(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(url, { 'Range' => 'bytes=0-' })
+          .once.and_return(output_response("#{message} log\n"))
+      end
+
+      expected_output = satisfy do |output|
+        output.match?(/Compile.*compiled log\n.*Test.*failed log\n/m) &&
+          output.scan("compiled log\n").size == 1 && output.scan("failed log\n").size == 1
+      end
+      expect do
+        watcher.start
+        watcher.stop('failed')
+      end.to output(expected_output).to_stdout
     end
   end
 
