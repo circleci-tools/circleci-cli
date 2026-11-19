@@ -67,7 +67,9 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:step_name) { "Test <%= \"step\" %>\r\e[2K" }
     let(:escaped_step_name) { 'Test <%= "step" %>\x0D\x1B[2K' }
 
-    it 'prints new verbose steps and streams their output' do
+    let(:poll_count) { 2 }
+
+    before do
       allow(Thread).to receive(:new) do |&block|
         block.call
         thread
@@ -77,16 +79,51 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       polls = 0
       allow(watcher).to receive(:sleep).with(1) do
         polls += 1
-        raise Interrupt if polls == 2
+        raise Interrupt if polls == poll_count
       end
-      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+    end
+
+    it 'prints new verbose steps and streams their output' do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       log_tail = " done <%= \"log\" %>\n"
       expect_output_chunk(0, log_output)
       expect_output_chunk(log_output.bytesize, log_tail.b)
 
       expect { watcher.start }
         .to output(a_string_including(escaped_step_name, "#{escaped_log_output}#{log_tail}", build.author_name)).to_stdout
+    end
+
+    it 'retries a timed-out build detail request on the next poll' do
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(Net::ReadTimeout)
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+      expect_output_chunk(0, "recovered output\n")
+
+      expect { watcher.start }.to output(a_string_including("recovered output\n")).to_stdout
+    end
+
+    context 'when a ranged log request times out' do
+      let(:poll_count) { 3 }
+
+      it 'retries from the last consumed byte and prints each chunk once' do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        first_chunk = "é first\n"
+        final_chunk = "last output\n"
+        shell = instance_double(Thor::Shell::Basic)
+        allow(Thor::Shell::Basic).to receive(:new).and_return(shell)
+
+        expect_output_chunk(0, first_chunk.b)
+        expect(shell).to receive(:say).with(first_chunk, nil, false).once.ordered
+        expect(http).to receive(:request).ordered do |request|
+          expect(request.path).to eq(output_path)
+          expect(request['Range']).to eq("bytes=#{first_chunk.bytesize}-")
+          raise Net::ReadTimeout
+        end
+        expect_output_chunk(first_chunk.bytesize, final_chunk.b)
+        expect(shell).to receive(:say).with(final_chunk, nil, false).once.ordered
+
+        expect { watcher.start }.to output(a_string_including(escaped_step_name)).to_stdout
+      end
     end
   end
 
