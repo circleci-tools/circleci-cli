@@ -80,6 +80,7 @@ GEM
     fiber-storage (1.0.1)
     formatador (1.2.3)
       reline
+    gem-release (2.2.4)
     github_changelog_generator (1.18.0)
       activesupport
       async (>= 1.25.0)
@@ -235,6 +236,7 @@ DEPENDENCIES
   base64
   bundler
   circleci-cli!
+  gem-release
   github_changelog_generator
   guard
   guard-rspec
@@ -276,6 +278,7 @@ CHECKSUMS
   fiber-local (1.1.0) sha256=c885f94f210fb9b05737de65d511136ea602e00c5105953748aa0f8793489f06
   fiber-storage (1.0.1) sha256=f48e5b6d8b0be96dac486332b55cee82240057065dc761c1ea692b2e719240e1
   formatador (1.2.3) sha256=19fa898133c2c26cdbb5d09f6998c1e137ad9427a046663e55adfe18b950d894
+  gem-release (2.2.4) sha256=2f11124c1580c811507c3b47e875e420cf3ed792a98105b49df11971e6e94db3
   github_changelog_generator (1.18.0) sha256=f6ad4c53a14e8d1e440492f5a7b3d0a4c76e072add568e78b437510b2f02d000
   guard (2.20.2) sha256=2d0574d35619669f2f71739a0313290810b9cf66b2263f5d97e815fcce598d4d
   guard-compat (1.2.1) sha256=3ad21ab0070107f92edfd82610b5cdc2fb8e368851e72362ada9703443d646fe
