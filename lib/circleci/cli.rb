@@ -30,7 +30,10 @@ module CircleCI
         def project
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
-          regexp = %r{(?:git@|https://)github.com(?::|/)([\w_-]+/[.\w_-]+?)(?:\.git)*$}
+          regexp = %r{
+            (?:(?:git@|https://)github.com(?::|/)|\Assh://git@ssh\.github\.com:443/)
+            ([\w_-]+/[.\w_-]+?)(?:\.git)*$
+          }x
           return Regexp.last_match(1) if origin&.url =~ regexp
 
           nil

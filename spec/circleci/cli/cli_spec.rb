@@ -138,6 +138,20 @@ describe CircleCI::CLI::Runner do
       described_class.start(%w[builds])
     end
 
+    context 'with a GitHub SSH-over-HTTPS origin' do
+      let(:rugged_response_remote_url) { 'ssh://git@ssh.github.com:443/owner/repo.git' }
+
+      it 'requests builds for the inferred project without prompting' do
+        allow(CircleCI::CLI::Command::BuildsCommand).to receive(:setup_token)
+        expect(CircleCI::CLI::Command::BuildsCommand).not_to receive(:ask)
+        expect(CircleCI::CLI::Response::Project).not_to receive(:all)
+        expect(CircleCI::CLI::Response::Build).to receive(:branch)
+          .with('owner', 'repo', rugged_response_branch_name).and_return([])
+
+        expect { described_class.start(%w[builds]) }.to output.to_stdout
+      end
+    end
+
     it 'skips branch inference with --all' do
       expect(Rugged::Repository).not_to receive(:new)
       expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(hash_including('all' => true))
