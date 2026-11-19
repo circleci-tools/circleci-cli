@@ -63,16 +63,30 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#disconnect' do
+    let(:client) { described_class.new(token: 'token') }
+    let(:socket_pair) { Socket.pair(:UNIX, :STREAM) }
+    let(:tcp_socket) { socket_pair.first }
+    let(:peer) { socket_pair.last }
+
+    before do
+      allow(TCPSocket).to receive(:new).and_return(tcp_socket)
+      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(tcp_socket)
+      allow(tcp_socket).to receive(:sync_close=).with(true)
+      allow(tcp_socket).to receive(:connect).with(no_args)
+    end
+
+    after do
+      client.disconnect
+      socket_pair.each { |socket| socket.close unless socket.closed? }
+    end
+
     it 'stops the connection thread and closes the TCP socket during the TLS handshake' do
-      client = described_class.new(token: 'token')
       started = Queue.new
       pending = Queue.new
-      tcp_socket, peer = Socket.pair(:UNIX, :STREAM)
-      tls_socket = instance_double(OpenSSL::SSL::SSLSocket)
-      allow(tls_socket).to receive(:sync_close=).with(true)
-      allow(TCPSocket).to receive(:new).and_return(tcp_socket)
-      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(tls_socket)
-      allow(tls_socket).to receive(:connect) do
+      ssl = instance_double(OpenSSL::SSL::SSLSocket)
+      allow(ssl).to receive(:sync_close=).with(true)
+      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(ssl)
+      allow(ssl).to receive(:connect) do
         started << true
         pending.pop
       end
@@ -84,20 +98,20 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
 
       expect(worker).not_to be_alive
       expect(tcp_socket).to be_closed
-    ensure
+    end
+
+    it 'closes the socket when interrupted while waiting for the WebSocket upgrade' do
+      worker = client.connect
+      expect(Timeout.timeout(5) { peer.gets("\r\n\r\n") }).to start_with('GET ')
+
       client.disconnect
-      tcp_socket&.close unless tcp_socket&.closed?
-      peer&.close
+
+      expect(worker).not_to be_alive
+      expect(tcp_socket).to be_closed
     end
 
     it 'dispatches events after the WebSocket handshake and closes the connection on disconnect' do
-      client = described_class.new(token: 'token')
       events = Queue.new
-      tcp_socket, peer = Socket.pair(:UNIX, :STREAM)
-      allow(TCPSocket).to receive(:new).and_return(tcp_socket)
-      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(tcp_socket)
-      allow(tcp_socket).to receive(:sync_close=).with(true)
-      allow(tcp_socket).to receive(:connect).with(no_args)
 
       client.bind('builds', 'updated') { |data| events << data }
       client.connect
@@ -111,10 +125,6 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       expect(events.pop(timeout: 5)).to eq('passed')
       client.disconnect
       expect(tcp_socket).to be_closed
-    ensure
-      client.disconnect
-      tcp_socket&.close unless tcp_socket&.closed?
-      peer&.close
     end
   end
 

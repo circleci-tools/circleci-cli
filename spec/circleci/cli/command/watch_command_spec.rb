@@ -70,6 +70,50 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
   end
 
+  describe 'the first watch iteration' do
+    let(:client) { double('client', connect: nil, bind: nil, unsubscribe: nil, disconnect: nil) }
+    let(:account) { double('account', pusher_id: 'pusher-id') }
+    let(:watcher) { double('watcher', close: nil) }
+    let(:build_response) { CircleCI::CLI::Response::Build }
+    let(:branch_build) do
+      build_response.new('build_num' => 41, 'branch' => 'main', 'status' => 'running', 'user' => { 'login' => 'octocat' })
+    end
+    let(:other_build) do
+      build_response.new('build_num' => 42, 'branch' => 'other', 'status' => 'running', 'user' => { 'login' => 'octocat' })
+    end
+
+    before do
+      allow(described_class).to receive(:setup_token)
+      allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(account)
+      allow_any_instance_of(described_class).to receive(:sleep).with(1).and_raise(Interrupt)
+      allow(described_class).to receive(:say)
+      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
+    end
+
+    it 'starts watching a running build returned by the selected branch endpoint' do
+      finished_build = build_response.new(
+        'build_num' => 40, 'branch' => 'main', 'status' => 'success', 'user' => { 'login' => 'octocat' }
+      )
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').and_return([branch_build, finished_build])
+      expect(build_response).not_to receive(:all)
+      expect(build_response).not_to receive(:get)
+      expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(branch_build, verbose: true).and_return(watcher)
+      expect(watcher).to receive(:start)
+
+      described_class.run(options)
+    end
+
+    it 'fetches project-wide builds at startup with --all' do
+      options.all = true
+      expect(build_response).to receive(:all).with('user', 'repo').and_return([other_build])
+      expect(build_response).not_to receive(:branch)
+      expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(other_build, verbose: true).and_return(watcher)
+      expect(watcher).to receive(:start)
+
+      described_class.run(options)
+    end
+  end
+
   describe 'account notifications' do
     let(:repository) { CircleCI::CLI::Command::BuildRepository.new('user', 'repo', branch: 'main', user: 'octocat') }
     let(:client) { double('client', connect: nil, unsubscribe: nil, disconnect: nil) }
@@ -89,8 +133,8 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
     it 'ignores a retained callback from a previous watch invocation' do
       builds = CircleCI::CLI::Response::Build
-      allow(builds).to receive(:all).with('user', 'repo').and_return([])
-      allow(builds).to receive(:all).with('user', 'other').and_return([])
+      expect(builds).to receive(:branch).with('user', 'repo', 'main').once.and_return([])
+      expect(builds).to receive(:branch).with('user', 'other', 'main').once.and_return([])
       other_options = options.dup
       other_options.project = 'user/other'
       other_client = double('other client', connect: nil, unsubscribe: nil, disconnect: nil)
@@ -108,7 +152,6 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
         previous_callback.call
       end
-      expect(builds).not_to receive(:branch)
 
       described_class.run(options)
       described_class.run(other_options)
@@ -117,7 +160,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     it 'coalesces a burst and refreshes again for a notification received during the request' do
-      allow(CircleCI::CLI::Response::Build).to receive(:all).with('user', 'repo').and_return([])
+      expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
       allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(running_build, verbose: true).and_return(watcher)

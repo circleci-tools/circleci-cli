@@ -22,9 +22,11 @@ module CircleCI
         end
 
         def disconnect
-          @connection_thread&.kill&.join
-          @connection_thread = nil
-          @socket&.disconnect
+          Thread.handle_interrupt(Interrupt => :never) do
+            @connection_thread&.kill&.join
+            @connection_thread = nil
+            @socket&.disconnect
+          end
         end
 
         def bind(channel, event, &)
@@ -74,12 +76,12 @@ module CircleCI
           end
 
           def open_connection
-            # Keep the WebSocket reachable while its initializer runs both handshakes.
+            # The initializer opens the TCP socket before completing either handshake.
             websocket = PusherClient::PusherWebSocket.allocate
             websocket.__send__(:initialize, @url, ssl: @encrypted, cert_file: @cert_file, ssl_verify: @ssl_verify)
             @connection = websocket
           ensure
-            websocket.socket&.close unless @connection
+            websocket&.socket&.close unless @connection.equal?(websocket)
           end
 
           def dispatch_message(message)
