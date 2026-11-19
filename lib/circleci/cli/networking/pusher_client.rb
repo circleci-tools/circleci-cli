@@ -49,7 +49,7 @@ module CircleCI
         end
 
         def socket
-          @socket ||= PusherClient::Socket.new(
+          @socket ||= Socket.new(
             '1cf6e0e755e419d2ac9a',
             secure: true,
             auth_method: proc { |a, b| auth(a, b) },
@@ -62,6 +62,34 @@ module CircleCI
                                      { socket_id: socket_id, channel_name: channel.name })
           res['auth']
         end
+
+        class Socket < PusherClient::Socket
+          private
+
+          def connect_internal
+            open_connection
+            logger.debug('Websocket connected')
+
+            loop { @connection.receive.each { |message| dispatch_message(message) } }
+          end
+
+          def open_connection
+            # Keep the WebSocket reachable while its initializer runs both handshakes.
+            websocket = PusherClient::PusherWebSocket.allocate
+            websocket.__send__(:initialize, @url, ssl: @encrypted, cert_file: @cert_file, ssl_verify: @ssl_verify)
+            @connection = websocket
+          ensure
+            websocket.socket&.close unless @connection
+          end
+
+          def dispatch_message(message)
+            params = parser(message)
+            return if params['socket_id'] && params['socket_id'] == socket_id
+
+            send_local_event(params['event'], params['data'], params['channel'])
+          end
+        end
+        private_constant :Socket
       end
     end
   end

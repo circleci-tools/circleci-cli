@@ -15,7 +15,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       allow(PusherClient).to receive(:logger).and_return(mock_logger)
       allow(mock_logger).to receive(:level=)
       allow(mock_socket).to receive(:connect)
-      allow(PusherClient::Socket).to receive(:new) do |key, options|
+      allow(described_class.const_get(:Socket)).to receive(:new) do |key, options|
         socket_options[:key] = key
         socket_options.merge!(options)
         mock_socket
@@ -63,22 +63,58 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#disconnect' do
-    it 'stops the connection thread even when the socket is still connecting' do
+    it 'stops the connection thread and closes the TCP socket during the TLS handshake' do
       client = described_class.new(token: 'token')
       started = Queue.new
       pending = Queue.new
-      socket = double('socket')
-      allow(PusherClient::Socket).to receive(:new).and_return(socket)
-      allow(socket).to receive(:connect) do
-        started << Thread.current
+      tcp_socket, peer = Socket.pair(:UNIX, :STREAM)
+      tls_socket = instance_double(OpenSSL::SSL::SSLSocket)
+      allow(tls_socket).to receive(:sync_close=).with(true)
+      allow(TCPSocket).to receive(:new).and_return(tcp_socket)
+      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(tls_socket)
+      allow(tls_socket).to receive(:connect) do
+        started << true
         pending.pop
       end
 
-      client.connect
-      worker = started.pop
-      expect(socket).to receive(:disconnect) { expect(worker).not_to be_alive }
-
+      worker = client.connect
+      expect(started.pop(timeout: 5)).to be(true)
+      expect(client.connect).to equal(worker)
       client.disconnect
+
+      expect(worker).not_to be_alive
+      expect(tcp_socket).to be_closed
+    ensure
+      client.disconnect
+      tcp_socket&.close unless tcp_socket&.closed?
+      peer&.close
+    end
+
+    it 'dispatches events after the WebSocket handshake and closes the connection on disconnect' do
+      client = described_class.new(token: 'token')
+      events = Queue.new
+      tcp_socket, peer = Socket.pair(:UNIX, :STREAM)
+      allow(TCPSocket).to receive(:new).and_return(tcp_socket)
+      allow(OpenSSL::SSL::SSLSocket).to receive(:new).with(tcp_socket, anything).and_return(tcp_socket)
+      allow(tcp_socket).to receive(:sync_close=).with(true)
+      allow(tcp_socket).to receive(:connect).with(no_args)
+
+      client.bind('builds', 'updated') { |data| events << data }
+      client.connect
+      handshake = WebSocket::Handshake::Server.new
+      handshake << Timeout.timeout(5) { peer.gets("\r\n\r\n") }
+      peer.write(handshake.to_s)
+      payload = { event: 'updated', channel: 'builds', data: 'passed' }.to_json
+      frame = WebSocket::Frame::Outgoing::Server.new(version: handshake.version, data: payload, type: :text)
+      peer.write(frame.to_s)
+
+      expect(events.pop(timeout: 5)).to eq('passed')
+      client.disconnect
+      expect(tcp_socket).to be_closed
+    ensure
+      client.disconnect
+      tcp_socket&.close unless tcp_socket&.closed?
+      peer&.close
     end
   end
 
