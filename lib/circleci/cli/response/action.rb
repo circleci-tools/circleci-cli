@@ -20,20 +20,13 @@ module CircleCI
           output_url = @hash['output_url']
           return if output_url.nil? || output_url.empty?
 
-          Networking::HTTPClient.get(output_url).map { |entry| format_message(entry['message']) }.join("\n")
+          Networking::HTTPClient.get(output_url).map do |result|
+            result['message'].gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')
+          end.join("\n")
         end
 
         def failed?
           @status == 'timedout' || @status == 'failed'
-        end
-
-        private
-
-        def format_message(message)
-          message.gsub("\r\n", "\n")
-                 .gsub("\e[A\r\e[2K", '')
-                 .scan(/.{1,120}/)
-                 .join("\n")
         end
       end
     end

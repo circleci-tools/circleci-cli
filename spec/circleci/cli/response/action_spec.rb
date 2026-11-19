@@ -14,8 +14,8 @@ describe CircleCI::CLI::Response::Action do
     let(:http) { instance_double(Net::HTTP) }
     let(:output) do
       [
-        { 'message' => "first\r\nline\e[A\r\e[2K" },
-        { 'message' => 'a' * 121 }
+        { 'message' => "first\r\n\r\nline\e[A\r\e[2K" },
+        { 'message' => "#{'a' * 121}\n" }
       ]
     end
 
@@ -26,11 +26,20 @@ describe CircleCI::CLI::Response::Action do
     end
 
     it 'normalizes and joins log messages' do
-      expect(log).to eq(["first\nline", 'a' * 120, 'a'].join("\n"))
+      expect(log).to eq("first\n\nline\n#{'a' * 121}\n")
     end
 
     context 'without an output URL' do
       let(:attributes) { {} }
+
+      it 'returns no log without making a request' do
+        expect(log).to be_nil
+        expect(Net::HTTP).not_to have_received(:start)
+      end
+    end
+
+    context 'with an empty output URL' do
+      let(:attributes) { { 'output_url' => '' } }
 
       it 'returns no log without making a request' do
         expect(log).to be_nil
