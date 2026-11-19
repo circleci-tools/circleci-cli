@@ -69,6 +69,27 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
       ]
     end
 
+    context 'with control characters in step output' do
+      let(:pretty) { false }
+      let(:steps) do
+        [
+          CircleCI::CLI::Response::Step.new(
+            'test',
+            'actions' => [
+              { 'name' => "Test\r\e[2K", 'status' => 'failed', 'output_url' => 'https://circleci.com/output/123' }
+            ]
+          )
+        ]
+      end
+
+      it 'escapes the action name and log while preserving colors and log line breaks' do
+        allow(http).to receive(:request).with(have_attributes(path: '/output/123'))
+          .and_return(instance_double(Net::HTTPOK, body: JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
+
+        expect(subject).to eq("\e[0;31;49mTest\\x0D\\x1B[2K\e[0m\nfirst\nsecond\\x1B[2K\n")
+      end
+    end
+
     context 'with pretty option' do
       let(:pretty) { true }
 
