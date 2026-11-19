@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        ruby: ['3.4.4', '3.3.13']
+        ruby: ['3.4.13', '3.3.14']
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Set up Ruby
@@ -40,7 +40,7 @@ jobs:
           COVERAGE: true
         run: bundle exec rspec
       - name: Upload coverage to Codecov
-        if: matrix.ruby == '3.4.4' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: matrix.ruby == '3.4.13' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: codecov/codecov-action@v5
         with:
           token: efe02ed0-e754-42a6-bb90-bbf345747bdc
