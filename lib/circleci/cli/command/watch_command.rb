@@ -51,6 +51,9 @@ module CircleCI
             start_watcher_if_needed
             sleep 1
           end
+        ensure
+          @build_watcher&.close
+          @build_watcher = nil
         end
 
         def refresh_builds_if_needed
@@ -65,7 +68,8 @@ module CircleCI
         def stop_existing_watcher_if_needed
           return if @build_watcher.nil?
 
-          build = @repository.build_for(@build_watcher.build.build_number)
+          build = @repository.build_for(@build_watcher.build.build_number, recent_only: true) ||
+                  @build_watcher.latest_detail
           return if build.nil? || !build.finished?
 
           @build_watcher.stop(build.status)

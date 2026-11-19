@@ -33,6 +33,16 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       expect(mock_socket).to have_received(:connect).with(no_args)
     end
 
+    it 'dispatches connection failures to the global error channel' do
+      error = IOError.new('connection failed')
+      channel = double('global channel')
+      allow(mock_socket).to receive(:global_channel).and_return(channel)
+      allow(mock_socket).to receive(:connect).and_raise(error)
+      expect(channel).to receive(:dispatch_with_all).with('pusher:error', error)
+
+      connect.join
+    end
+
     it 'reuses the supplied token for repeated auth callbacks' do
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
 
