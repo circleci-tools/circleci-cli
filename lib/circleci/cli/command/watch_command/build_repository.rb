@@ -51,8 +51,10 @@ module CircleCI
           @mutex.synchronize { @builds.select { |build| pending?(build) }.sort_by(&:build_number) }
         end
 
-        def build_for(build_number)
-          @mutex.synchronize { find_build(build_number) }
+        def build_for(build_number, recent_only: false)
+          @mutex.synchronize do
+            find_build(build_number) if !recent_only || @recent_build_numbers.include?(build_number)
+          end
         end
 
         private

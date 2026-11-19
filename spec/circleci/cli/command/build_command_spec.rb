@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 describe CircleCI::CLI::Command::BuildCommand, type: :command do
+  let(:build_response) { CircleCI::CLI::Response::Build }
+
   shared_examples_for 'a command show build information' do
     let(:expected_output) do
       <<~EXPECTED
@@ -57,6 +59,13 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
     let(:options) { OpenStruct.new(project: project_name, build: nil, pretty: true) }
 
     it_behaves_like 'a command show build information'
+
+    it 'fetches the prompted build number' do
+      expect(described_class).to receive(:ask).with('Input build number').and_return(98)
+      expect(build_response).to receive(:get).with('unhappychoice', 'Circler', 98).and_call_original
+
+      described_class.run(options)
+    end
   end
 
   context 'with build input' do
@@ -64,16 +73,24 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
 
     it_behaves_like 'a command asks project name'
     it_behaves_like 'a command show build information'
+
+    it 'fetches the explicit build number without prompting for one' do
+      expect(described_class).not_to receive(:ask).with('Input build number')
+      expect(build_response).to receive(:get).with('user', 'project_name_from_io', 5).and_call_original
+
+      described_class.run(options)
+    end
   end
 
   context 'with last option' do
-    let(:build_response) { CircleCI::CLI::Response::Build }
     let(:project_name) { 'unhappychoice/Circler' }
     let(:options) { OpenStruct.new(project: project_name, build: nil, last: true, pretty: true) }
 
     it_behaves_like 'a command show build information'
 
-    it 'selects the highest failed build number' do
+    it 'selects the highest failed build number even when a build number is given' do
+      options.build = 42
+      expect(described_class).not_to receive(:ask).with('Input build number')
       failed_builds = [1232, 1234, 1233].map { |number| build_response.new('build_num' => number) }
       allow(build_response).to receive(:failed).with('unhappychoice', 'Circler').and_return(failed_builds)
       expect(build_response).to receive(:get).with('unhappychoice', 'Circler', 1234).and_call_original
@@ -87,6 +104,38 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       expect(described_class).to receive(:say).with('No failed build found.')
 
       described_class.run(options)
+    end
+  end
+
+  context 'with a failed action log' do
+    let(:options) { OpenStruct.new(project: 'unhappychoice/Circler', build: 5, pretty: pretty) }
+    let(:output_url) { 'https://circleci.com/output/123' }
+    let(:long_line) { "#{'a' * 120}tail" }
+
+    before do
+      build_hash['steps'].last['actions'].first.merge!('status' => 'failed', 'output_url' => output_url)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).with(output_url)
+        .and_return([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }])
+    end
+
+    context 'with table output' do
+      let(:pretty) { true }
+
+      it 'preserves blank rows and wraps long lines' do
+        expected_rows = satisfy do |output|
+          rows = output.lines.map { |line| line.split('|')[1]&.strip }
+          rows.drop_while { |row| row != 'before' }.take(5) == ['before', '', 'after\x1B[2K', 'a' * 120, 'tail']
+        end
+        expect { described_class.run(options) }.to output(expected_rows).to_stdout
+      end
+    end
+
+    context 'with compact output' do
+      let(:pretty) { false }
+
+      it 'preserves blank lines and leaves long lines intact' do
+        expect { described_class.run(options) }.to output(end_with("before\n\nafter\\x1B[2K\n#{long_line}\n")).to_stdout
+      end
     end
   end
 end
