@@ -32,8 +32,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
               {
                 'type' => 'build', 'name' => 'Checkout', 'status' => 'success', 'run_time_millis' => 1200,
                 'output_url' => 'https://circleci.com/output/456'
-              },
-              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
+              }
             ]
           }
         ),
@@ -46,6 +45,15 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
                 'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200,
                 'output_url' => 'https://circleci.com/output/123'
               }
+            ]
+          }
+        ),
+        CircleCI::CLI::Response::Step.new(
+          'build',
+          {
+            'status' => 'success',
+            'actions' => [
+              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
             ]
           }
         ),
@@ -85,7 +93,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'with pretty option' do
       let(:pretty) { true }
 
-      it 'prints steps with a red timed-out action' do
+      it 'groups steps by type and prints timed-out actions in red' do
         expected = <<~EXPECTED
           +--------------------+
           +--------------------+
@@ -93,6 +101,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           +------------+-------+
           | Dependency | 00:01 |
           | \e[0;32;49mCheckout\e[0m   | 00:01 |
+          +------------+-------+
           | \e[0;33;49mBuild\e[0m      | 00:25 |
           +------------+-------+
           |        \e[0;32;49mtest\e[0m        |
@@ -112,7 +121,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
-      it 'prints steps with a red timed-out action' do
+      it 'groups steps by type and prints timed-out actions in red' do
         expected = <<~EXPECTED
           Dependency
           \e[0;32;49mCheckout\e[0m
