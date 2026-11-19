@@ -20,12 +20,16 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:client) { double('client', connect: nil) }
     let(:config) { Struct.new(:token).new }
 
+    let(:watcher) { instance_double(CircleCI::CLI::Command::BuildWatcher, close: nil) }
+
     before do
       allow(CircleCi).to receive(:configure).and_yield(config)
       allow(ENV).to receive(:fetch).and_call_original
       allow(described_class).to receive(:bind_status_event)
       allow(described_class).to receive(:stop_existing_watcher_if_needed)
-      allow(described_class).to receive(:start_watcher_if_needed)
+      allow(described_class).to receive(:start_watcher_if_needed) do
+        described_class.instance_variable_set(:@build_watcher, watcher)
+      end
       allow(described_class).to receive(:sleep).with(1).and_raise(Interrupt)
       allow(described_class).to receive(:say)
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
@@ -44,6 +48,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(described_class).to receive(:stop_existing_watcher_if_needed)
       expect(described_class).to receive(:start_watcher_if_needed)
       expect(described_class).to receive(:say).with('Exited')
+      expect(watcher).to receive(:close)
 
       described_class.run(options)
 
@@ -99,6 +104,47 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
   end
 
+  describe 'a watched build outside the recent-build window' do
+    it 'keeps watching while running, reports completion once, and starts the next build' do
+      response = CircleCI::CLI::Response::Build
+      first = response.new('username' => 'user', 'reponame' => 'repo', 'build_num' => 1, 'status' => 'running')
+      second = response.new('username' => 'user', 'reponame' => 'repo', 'build_num' => 2, 'status' => 'running')
+      finished = response.new('username' => 'user', 'reponame' => 'repo', 'build_num' => 1, 'status' => 'success')
+      allow(response).to receive(:all).with('user', 'repo').and_return([first], [second])
+      allow(response).to receive(:get).with('user', 'repo', 1).and_return(first, finished)
+      repository = CircleCI::CLI::Command::BuildRepository.new('user', 'repo')
+      watcher_class = CircleCI::CLI::Command::BuildWatcher
+      first_watcher = watcher_class.new(first)
+      second_watcher = watcher_class.new(second)
+      allow(first_watcher).to receive(:poll_build)
+      allow(second_watcher).to receive(:poll_build)
+      allow(watcher_class).to receive(:new).with(first, verbose: true).and_return(first_watcher)
+      allow(watcher_class).to receive(:new).with(second, verbose: true).and_return(second_watcher)
+      described_class.instance_variable_set(:@repository, repository)
+      described_class.instance_variable_set(:@options, options)
+      described_class.instance_variable_set(:@build_watcher, nil)
+
+      expect(first_watcher).to receive(:puts).with(a_string_including('Start watching user/repo #1')).ordered
+      expect(first_watcher).to receive(:puts).with(a_string_including('user/repo #1 has succeeded!')).once.ordered
+      expect(second_watcher).to receive(:puts).with(a_string_including('Start watching user/repo #2')).ordered
+      expect(described_class).not_to receive(:puts)
+
+      described_class.send(:start_watcher_if_needed)
+      repository.update
+      first_watcher.send(:update_build)
+      described_class.send(:stop_existing_watcher_if_needed)
+      described_class.send(:start_watcher_if_needed)
+      expect(described_class.instance_variable_get(:@build_watcher)).to eq(first_watcher)
+
+      first_watcher.send(:update_build)
+      2.times do
+        described_class.send(:stop_existing_watcher_if_needed)
+        described_class.send(:start_watcher_if_needed)
+      end
+      expect(described_class.instance_variable_get(:@build_watcher)).to eq(second_watcher)
+    end
+  end
+
   describe '.stop_existing_watcher_if_needed' do
     let(:build) { double('build', build_number: 42) }
     let(:watcher) { double('watcher', build:) }
@@ -109,7 +155,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.instance_variable_set(:@repository, repository)
       described_class.instance_variable_set(:@build_watcher, watcher)
 
-      expect(repository).to receive(:build_for).with(42).and_return(finished_build)
+      expect(repository).to receive(:build_for).with(42, recent_only: true).and_return(finished_build)
       expect(watcher).to receive(:stop).with('success')
       expect(repository).to receive(:mark_as_shown).with(42)
 
@@ -155,13 +201,14 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.instance_variable_set(:@options, options)
       described_class.instance_variable_set(:@repository, real_repository)
       described_class.instance_variable_set(:@build_watcher, nil)
-
       expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(finished_build)
       expect(CircleCI::CLI::Command::BuildWatcher).not_to receive(:new)
 
-      expect { described_class.send(:start_watcher_if_needed) }
-        .to output(a_string_including('Result of user/repo #42 completed in background')).to_stdout
-      expect { described_class.send(:start_watcher_if_needed) }.not_to output.to_stdout
+      result = 'Result of user/repo #42 completed in background'
+      expected_output = satisfy('print the completed build once') { |output| output.scan(result).size == 1 }
+      expect do
+        2.times { described_class.send(:start_watcher_if_needed) }
+      end.to output(expected_output).to_stdout
     end
 
     it 'processes pending completions when there is no running build' do

@@ -7,6 +7,7 @@ gemspec
 gem 'abbrev'
 gem 'base64'
 gem 'bundler'
+gem 'gem-release', require: false
 gem 'github_changelog_generator'
 gem 'guard'
 gem 'guard-rspec'
@@ -14,7 +15,7 @@ gem 'guard-rubocop'
 # Keep in sync with the openssl default gem of the Ruby in .ruby-version:
 # rubygems/release-gem activates it via RUBYOPT before Bundler.setup, and a
 # version mismatch aborts the release with Gem::LoadError.
-gem 'openssl', '3.3.0'
+gem 'openssl', '3.3.3'
 gem 'rake'
 gem 'rspec'
 gem 'rubocop'
