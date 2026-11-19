@@ -130,7 +130,12 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          steps = fetch_detail.steps
+          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          update_steps(detail.steps, stopping:)
+          @latest_detail = detail
+        end
+
+        def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
           action_changed = action_position(@current_step) != action_position(next_step)
           incomplete_output = action_changed && !finish_action_output?
@@ -140,10 +145,6 @@ module CircleCI
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
-        end
-
-        def fetch_detail
-          @latest_detail = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
         end
 
         def notify_step_changes(steps)
