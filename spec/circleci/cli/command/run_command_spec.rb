@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 
 describe CircleCI::CLI::Runner, 'run' do
   let(:client) { CircleCI::CLI::Networking::HTTPClient }
@@ -49,6 +50,66 @@ describe CircleCI::CLI::Runner, 'run' do
     stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
 
     expect { described_class.start(['run', run_id]) }.to output(/No workflows found/).to_stdout
+  end
+
+  it 'overlaps jobs requests up to four at a time and renders workflows in API order' do
+    workflows = (1..8).map { |id| { 'id' => id, 'attributes' => { 'name' => "workflow-#{id}" } } }
+    stub_get("runs/#{run_id}", fixtures.fetch('run'))
+    stub_get(workflows_path, { 'data' => workflows, 'page' => { 'next' => nil } })
+
+    started = Queue.new
+    finished = Queue.new
+    first_request = Queue.new
+    other_requests = Queue.new
+    mutex = Mutex.new
+    active = peak = 0
+    response = Net::HTTPOK.new('1.1', '200', '')
+    allow(response).to receive(:body).and_return(JSON.generate(fixtures.fetch('checks_jobs')))
+    allow(client).to receive(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=\d+\z}, headers) do |url, _headers|
+      mutex.synchronize do
+        active += 1
+        peak = [peak, active].max
+      end
+      started << url
+      (url.end_with?('=1') ? first_request : other_requests).pop
+      mutex.synchronize { active -= 1 }
+      finished << url
+      response
+    end
+
+    command = CircleCI::CLI::Command::RunCommand.new('test-token')
+    summary = Thread.new { command.summary(run_id) }
+    Timeout.timeout(5) do
+      4.times { started.pop }
+      7.times { other_requests << true }
+      7.times { finished.pop }
+    end
+    first_request << true
+
+    expect(summary.value.scan(/(workflow-\d+)\s+\| (test|lint)/)).to eq(
+      (1..8).flat_map { |id| %w[test lint].map { |job| ["workflow-#{id}", job] } }
+    )
+    expect(peak).to eq(4)
+  ensure
+    first_request&.close
+    other_requests&.close
+    summary&.join
+  end
+
+  it 'reports a jobs API failure on stderr and exits unsuccessfully' do
+    stub_get("runs/#{run_id}", fixtures.fetch('run'))
+    workflows = %w[first last].flat_map { |page| fixtures.fetch("workflows_#{page}_page").fetch('data') }
+    stub_get(workflows_path, { 'data' => workflows, 'page' => { 'next' => nil } })
+    first_workflow, last_workflow = workflows
+    stub_get("jobs?filter%5Bworkflow_id%5D=#{first_workflow.fetch('id')}", fixtures.fetch('checks_jobs'))
+    stub_get("jobs?filter%5Bworkflow_id%5D=#{last_workflow.fetch('id')}", { 'error' => { 'detail' => 'Jobs unavailable' } },
+             response_class: Net::HTTPServiceUnavailable, code: '503')
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("CircleCI API error (HTTP 503): Jobs unavailable\n").to_stderr
   end
 
   it 'reports API failures on stderr and exits unsuccessfully' do

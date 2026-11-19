@@ -6,6 +6,7 @@ module CircleCI
       class RunCommand < BaseCommand
         API_URL = 'https://circleci.com/api/v3'
         UUID = /\A[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/i
+        JOB_FETCH_LIMIT = 4
 
         def self.run(run_id)
           raise Thor::Error, 'Run ID must be a UUID.' unless UUID.match?(run_id)
@@ -21,13 +22,38 @@ module CircleCI
         def summary(run_id)
           run = get("runs/#{run_id}").fetch('data').fetch('attributes')
           status = run['current_outcome'] || run.fetch('phase')
-          rows = workflows(run_id).flat_map { |workflow| workflow_rows(workflow) }
+          rows = fetch_workflow_rows(workflows(run_id))
           rows << ['No workflows found', '-', '-', '-'] if rows.empty?
           Terminal::Table.new(title: "Run ##{run.fetch('number')} (#{status})",
                               headings: ['Workflow', 'Job', 'Status', 'Job Number'], rows:).to_s
         end
 
         private
+
+        def fetch_workflow_rows(workflows)
+          pending = Queue.new
+          workflows.each_with_index { |workflow, index| pending << [workflow, index] }
+          pending.close
+          results = Array.new(workflows.size)
+          workers = Array.new([workflows.size, JOB_FETCH_LIMIT].min) do
+            Thread.new { fetch_pending_rows(pending, results) }
+          end
+          workers.each(&:join)
+          results.flat_map { |result| result.is_a?(StandardError) ? raise(result) : result }
+        end
+
+        def fetch_pending_rows(pending, results)
+          while (entry = pending.pop)
+            workflow, index = entry
+            results[index] = workflow_rows_or_error(workflow)
+          end
+        end
+
+        def workflow_rows_or_error(workflow)
+          workflow_rows(workflow)
+        rescue StandardError => e
+          e
+        end
 
         def workflows(run_id)
           query = { 'filter[run_id]' => run_id }
