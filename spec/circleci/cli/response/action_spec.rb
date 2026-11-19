@@ -14,8 +14,8 @@ describe CircleCI::CLI::Response::Action do
     let(:http) { instance_double(Net::HTTP) }
     let(:output) do
       [
-        { 'message' => "first\r\nline\e[A\r\e[2K" },
-        { 'message' => 'a' * 121 }
+        { 'message' => "first\r\n\r\nline\e[A\r\e[2K" },
+        { 'message' => "#{'a' * 121}\n" }
       ]
     end
 
@@ -28,7 +28,7 @@ describe CircleCI::CLI::Response::Action do
     end
 
     it 'normalizes and joins log messages' do
-      expect(log).to eq(["first\nline", 'a' * 120, 'a'].join("\n"))
+      expect(log).to eq("first\n\nline\n#{'a' * 121}\n")
     end
   end
 end

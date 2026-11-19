@@ -17,14 +17,9 @@ module CircleCI
         end
 
         def log
-          log_records.map do |r|
-            r['message']
-              .gsub("\r\n", "\n")
-              .gsub("\e[A\r\e[2K", '')
-              .scan(/.{1,120}/)
-              .join("\n")
-          end
-            .join("\n")
+          log_records.map do |result|
+            result['message'].gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')
+          end.join("\n")
         end
 
         def failed?
