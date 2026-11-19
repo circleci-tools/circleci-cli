@@ -155,7 +155,6 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.instance_variable_set(:@options, options)
       described_class.instance_variable_set(:@repository, real_repository)
       described_class.instance_variable_set(:@build_watcher, nil)
-
       allow(described_class).to receive(:puts)
 
       expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(finished_build)
