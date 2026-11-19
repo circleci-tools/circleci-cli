@@ -74,16 +74,30 @@ module CircleCI
         end
 
         def poll_build
-          @build_thread = Thread.new do
-            0.step do |count|
-              @poll_lock.synchronize do
-                update_build if (count % 5).zero?
-                update_actions
-              end
+          @build_thread = Thread.new { poll_live }
+        end
 
-              sleep 1
+        def poll_live
+          next_build_poll = 0
+          0.step do |count|
+            poll_safely do
+              next_build_poll = refresh_live_build(count) if count >= next_build_poll
+              update_actions
             end
+            sleep 1
           end
+        end
+
+        def refresh_live_build(count)
+          update_build
+          count + 5
+        end
+
+        def poll_safely(&)
+          @poll_lock.synchronize(&)
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+          # Resume on the next poll with the last consumed byte offset.
         end
 
         def on_new_step(step)

@@ -71,6 +71,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:step_name) { "Test <%= \"step\" %>\r\e[2K" }
     let(:escaped_step_name) { 'Test <%= "step" %>\x0D\x1B[2K' }
 
+    let(:poll_count) { 2 }
+
     before do
       allow(Thread).to receive(:new) do |&block|
         block.call
@@ -78,16 +80,21 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       rescue Interrupt
         thread
       end
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
     end
 
-    it 'prints new steps in API order and streams output from the first running step' do
+    def stop_after_polls
       polls = 0
       allow(watcher).to receive(:sleep).with(1) do
         polls += 1
-        raise Interrupt if polls == 2
+        raise Interrupt if polls == poll_count
       end
+      -> { polls }
+    end
+
+    it 'prints new steps in API order and streams output from the first running step' do
+      stop_after_polls
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       log_tail = " done <%= \"log\" %>\n"
       expect_output_response(0, log_output.byteslice(0, 1), log_output.byteslice(1, 9), log_output.byteslice(10..))
       expect_output_response(log_output.bytesize, log_tail)
@@ -97,34 +104,59 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect { watcher.start }.to output(pattern).to_stdout
     end
 
+    it 'retries a timed-out build detail request on the next poll' do
+      stop_after_polls
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(Net::ReadTimeout)
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+      expect_output_response(0, "recovered output\n")
+
+      expect { watcher.start }.to output(a_string_including("recovered output\n")).to_stdout
+    end
+
     it 'continues polling from the last byte received after a connection reset' do
-      polls = 0
-      allow(watcher).to receive(:sleep).with(1) do
-        polls += 1
-        raise Interrupt if polls == 2
-      end
+      stop_after_polls
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       expect_output_response(0, 'é', error: Errno::ECONNRESET)
       expect_output_response(2, " done\n")
 
       expect { watcher.start }.to output(a_string_matching(/\A[^é]*é done\n[^é]*\z/)).to_stdout
     end
 
-    it 'fetches build details immediately and every five polling iterations' do
-      polls = 0
-      refreshes = []
-      allow(watcher).to receive(:sleep).with(1) do
-        polls += 1
-        raise Interrupt if polls == 11
-      end
-      allow(CircleCI::CLI::Response::Build).to receive(:get).with('user', 'repo', 1234) do
-        refreshes << polls
-        build
-      end
+    context 'when a ranged log request times out' do
+      let(:poll_count) { 3 }
 
-      expect { watcher.start }.to output(a_string_including('Start watching')).to_stdout
-      expect(refreshes).to eq([0, 5, 10])
+      it 'retries from the last consumed byte and prints each chunk once' do
+        stop_after_polls
+        allow(watcher).to receive(:puts)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+        first_chunk = "é first\n"
+        final_chunk = "last output\n"
+        expect_output_response(0, first_chunk.b)
+        expect(http).to receive(:request).ordered do |request|
+          expect(request.path).to eq(output_path)
+          expect(request['Range']).to eq("bytes=#{first_chunk.bytesize}-")
+          raise Net::ReadTimeout
+        end
+        expect_output_response(first_chunk.bytesize, final_chunk.b)
+
+        expect { watcher.start }.to output(first_chunk + final_chunk).to_stdout
+      end
+    end
+
+    context 'during steady polling' do
+      let(:poll_count) { 11 }
+
+      it 'fetches build details immediately and every five polling iterations' do
+        polls = stop_after_polls
+        refreshes = []
+        allow(CircleCI::CLI::Response::Build).to receive(:get).with('user', 'repo', 1234) do
+          refreshes << polls.call
+          build
+        end
+
+        expect { watcher.start }.to output(a_string_including('Start watching')).to_stdout
+        expect(refreshes).to eq([0, 5, 10])
+      end
     end
   end
 
