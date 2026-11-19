@@ -98,7 +98,7 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
     before do
       build_hash['steps'].last['actions'].first.merge!('status' => 'failed', 'output_url' => output_url)
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).with(output_url)
-        .and_return([{ 'message' => "before\n\nafter\n#{long_line}\n" }])
+        .and_return([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }])
     end
 
     context 'with table output' do
@@ -107,7 +107,7 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       it 'preserves blank rows and wraps long lines' do
         expected_rows = satisfy do |output|
           rows = output.lines.map { |line| line.split('|')[1]&.strip }
-          rows.drop_while { |row| row != 'before' }.take(5) == ['before', '', 'after', 'a' * 120, 'tail']
+          rows.drop_while { |row| row != 'before' }.take(5) == ['before', '', 'after\x1B[2K', 'a' * 120, 'tail']
         end
         expect { described_class.run(options) }.to output(expected_rows).to_stdout
       end
@@ -117,7 +117,7 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       let(:pretty) { false }
 
       it 'preserves blank lines and leaves long lines intact' do
-        expect { described_class.run(options) }.to output(end_with("before\n\nafter\n#{long_line}\n")).to_stdout
+        expect { described_class.run(options) }.to output(end_with("before\n\nafter\\x1B[2K\n#{long_line}\n")).to_stdout
       end
     end
   end
