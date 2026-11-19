@@ -67,6 +67,50 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
   end
 
+  describe 'the first watch iteration' do
+    let(:client) { double('client', connect: nil) }
+    let(:watcher) { double('watcher', close: nil) }
+    let(:build_response) { CircleCI::CLI::Response::Build }
+    let(:branch_build) do
+      build_response.new('build_num' => 41, 'branch' => 'main', 'status' => 'running', 'user' => { 'login' => 'octocat' })
+    end
+    let(:other_build) do
+      build_response.new('build_num' => 42, 'branch' => 'other', 'status' => 'running', 'user' => { 'login' => 'octocat' })
+    end
+
+    before do
+      allow(described_class).to receive(:setup_token)
+      allow(described_class).to receive(:bind_status_event)
+      allow(described_class).to receive(:sleep).with(1).and_raise(Interrupt)
+      allow(described_class).to receive(:say)
+      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
+      allow(build_response).to receive(:all).with('user', 'repo').and_return([other_build])
+    end
+
+    it 'starts watching a running build returned by the selected branch endpoint' do
+      finished_build = build_response.new(
+        'build_num' => 40, 'branch' => 'main', 'status' => 'success', 'user' => { 'login' => 'octocat' }
+      )
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').and_return([branch_build, finished_build])
+      expect(build_response).not_to receive(:all)
+      expect(build_response).not_to receive(:get)
+      expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(branch_build, verbose: true).and_return(watcher)
+      expect(watcher).to receive(:start)
+
+      described_class.run(options)
+    end
+
+    it 'fetches project-wide builds at startup with --all' do
+      options.all = true
+      expect(build_response).to receive(:all).with('user', 'repo').and_return([other_build])
+      expect(build_response).not_to receive(:branch)
+      expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(other_build, verbose: true).and_return(watcher)
+      expect(watcher).to receive(:start)
+
+      described_class.run(options)
+    end
+  end
+
   describe 'account notifications' do
     let(:client) { double('client') }
     let(:account) { double('account', pusher_id: 'pusher-id') }
@@ -82,7 +126,6 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(client).to receive(:connect)
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
       allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(account)
-      allow(CircleCI::CLI::Response::Build).to receive(:all).with('user', 'repo').and_return([])
     end
 
     it 'coalesces a burst and refreshes again for a notification received during the request' do
@@ -90,6 +133,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       notify = nil
       expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
       expect(described_class).to receive(:sleep).with(1).ordered { 100.times { notify.call } }
       expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').ordered do
         notify.call

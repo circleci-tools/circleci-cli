@@ -43,6 +43,13 @@ module CircleCI
           end
         end
 
+        def format_duration(milliseconds)
+          return '' unless milliseconds
+
+          seconds = milliseconds / 1000
+          format('%<minutes>02d:%<seconds>02d', minutes: seconds / 60, seconds: seconds % 60)
+        end
+
         private
 
         def decode_binary_text(value)
