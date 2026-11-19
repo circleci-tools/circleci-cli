@@ -38,6 +38,18 @@ module CircleCI
 
             raise Thor::Error, 'Build number must be a positive integer.'
           end
+
+          private
+
+          def with_build_number(username, reponame, options)
+            number = build_number(options, prompt: !options.last)
+            return yield number unless options.last
+
+            number = Response::Build.failed(username, reponame).map(&:build_number).max
+            return say 'No failed build found.' if number.nil?
+
+            yield number
+          end
         end
       end
     end

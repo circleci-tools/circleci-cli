@@ -65,6 +65,15 @@ describe CircleCI::CLI::Runner, type: :command do
   end
 
   %w[build retry].each do |command|
+    it "uses the last failed build when a valid build option is also supplied for #{command}" do
+      build = build_response.new(build_hash.merge('build_num' => 99))
+      operation = command == 'build' ? :get : :retry
+      expect(build_response).to receive(:failed).with('octocat', 'hello-world').and_return([build])
+      expect(build_response).to receive(operation).with('octocat', 'hello-world', 99).and_return(build)
+
+      described_class.start([command, *project_args, '--last', '--build=42'])
+    end
+
     it "rejects an invalid build option before looking up the last failed build for #{command}" do
       expect(build_response).not_to receive(:failed)
       expect do
