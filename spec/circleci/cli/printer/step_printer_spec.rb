@@ -3,6 +3,12 @@
 require 'spec_helper'
 
 describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
+  def successful_log_response(body)
+    response = Net::HTTPOK.new('1.1', '200', 'OK')
+    allow(response).to receive(:body).and_return(body)
+    response
+  end
+
   describe '#to_s' do
     subject { described_class.new(steps, pretty: pretty).to_s }
 
@@ -11,9 +17,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     before do
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path: '/output/123')))
-        .and_return(instance_double(Net::HTTPOK, body: '[{"message":"action log"}]'))
-      allow(http).to receive(:request).with(have_attributes(path: '/output/456'))
-        .and_return(instance_double(Net::HTTPOK, body: '[{"message":"successful action log"}]'))
+        .and_return(successful_log_response('[{"message":"action log"}]'))
     end
 
     after do
@@ -76,7 +80,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
 
       it 'escapes the action name and log while preserving colors and log line breaks' do
         allow(http).to receive(:request).with(have_attributes(path: '/output/123'))
-          .and_return(instance_double(Net::HTTPOK, body: JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
+          .and_return(successful_log_response(JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
 
         expect(subject).to eq("\e[0;31;49mTest\\x0D\\x1B[2K\e[0m\nfirst\nsecond\\x1B[2K\n")
       end
