@@ -17,7 +17,7 @@ module CircleCI
                 .group_by(&:type)
                 .each do |key, steps|
                 t << :separator
-                t << [{ value: Printer.colorize_green(key), alignment: :center, colspan: 2 }]
+                t << [{ value: Printer.colorize_green(Printer.escape_controls(key)), alignment: :center, colspan: 2 }]
                 steps.each { |s| print_actions(t, s) }
               end
             end.to_s
@@ -25,8 +25,8 @@ module CircleCI
             @steps.group_by(&:type).map do |_, steps|
               steps.flat_map do |step|
                 step.actions.map do |a|
-                  log = log_for(a)
-                  "#{Printer.colorize_by_status(a.name.slice(0..120), a.status)}\n#{"#{log}\n" if log}"
+                  log = escaped_log(a)
+                  "#{action_name(a)}\n#{"#{log}\n" if log}"
                 end
               end.join
             end.join("\n")
@@ -35,8 +35,13 @@ module CircleCI
 
         private
 
-        def log_for(action)
-          action.log if @verbose || action.failed?
+        def action_name(action)
+          name = Printer.escape_controls(action.name.slice(0..120))
+          Printer.colorize_by_status(name, action.status)
+        end
+
+        def escaped_log(action)
+          Printer.escape_controls(action.log, multiline: true) if @verbose || action.failed?
         end
 
         def format_time(time)
@@ -51,10 +56,10 @@ module CircleCI
           table << :separator
           step.actions.each do |a|
             table << [
-              Printer.colorize_by_status(a.name.slice(0..120), a.status),
+              action_name(a),
               format_time(a.run_time_millis)
             ]
-            log = log_for(a)
+            log = escaped_log(a)
             table << [{ value: log, alignment: :left, colspan: 2 }] if log
           end
         end

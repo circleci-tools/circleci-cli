@@ -209,7 +209,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.instance_variable_set(:@repository, repository)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(response_build)
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
-        .with('https://circleci.com/output/setup').and_return([{ 'message' => 'setup log' }])
+        .with('https://circleci.com/output/setup').and_return([{ 'message' => "setup log\e[2K" }])
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get)
         .with('https://circleci.com/output/test').and_return([{ 'message' => 'test log <%= "log" %>' }])
 
@@ -231,9 +231,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     context 'with verbose enabled' do
       let(:verbose) { true }
 
-      it 'prints both successful and failed action logs' do
+      it 'prints both successful and failed action logs with control characters escaped' do
         expect { described_class.send(:show_interrupted_build_results) }
-          .to output(include('setup log', 'test log <%= "log" %>')).to_stdout
+          .to output(include('setup log\x1B[2K', 'test log <%= "log" %>')).to_stdout
       end
     end
   end
