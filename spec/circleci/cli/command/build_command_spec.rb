@@ -89,4 +89,36 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       described_class.run(options)
     end
   end
+
+  context 'with a failed action log' do
+    let(:options) { OpenStruct.new(project: 'unhappychoice/Circler', build: 5, pretty: pretty) }
+    let(:output_url) { 'https://circleci.com/output/123' }
+    let(:long_line) { "#{'a' * 120}tail" }
+
+    before do
+      build_hash['steps'].last['actions'].first.merge!('status' => 'failed', 'output_url' => output_url)
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).with(output_url)
+        .and_return([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }])
+    end
+
+    context 'with table output' do
+      let(:pretty) { true }
+
+      it 'preserves blank rows and wraps long lines' do
+        expected_rows = satisfy do |output|
+          rows = output.lines.map { |line| line.split('|')[1]&.strip }
+          rows.drop_while { |row| row != 'before' }.take(5) == ['before', '', 'after\x1B[2K', 'a' * 120, 'tail']
+        end
+        expect { described_class.run(options) }.to output(expected_rows).to_stdout
+      end
+    end
+
+    context 'with compact output' do
+      let(:pretty) { false }
+
+      it 'preserves blank lines and leaves long lines intact' do
+        expect { described_class.run(options) }.to output(end_with("before\n\nafter\\x1B[2K\n#{long_line}\n")).to_stdout
+      end
+    end
+  end
 end

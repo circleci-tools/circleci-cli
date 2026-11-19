@@ -57,6 +57,29 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
       ]
     end
 
+    [true, false].each do |pretty_output|
+      context "with pretty set to #{pretty_output}" do
+        let(:pretty) { pretty_output }
+        let(:builds) do
+          [
+            CircleCI::CLI::Response::Build.new(
+              'build_num' => 1234,
+              'status' => 'success',
+              'branch' => "main\e[0m",
+              'subject' => "Fix café\r\e[2K\n\u009B"
+            )
+          ]
+        end
+
+        it 'escapes build metadata while keeping CLI status and branch colors' do
+          expect(subject).to include(
+            "\e[0;32;49msuccess\e[0m", "\e[0;32;49mmain\\x1B[0m\e[0m",
+            'Fix café\x0D\x1B[2K\x0A\x9B'
+          )
+        end
+      end
+    end
+
     context 'with pretty option' do
       let(:pretty) { true }
 
