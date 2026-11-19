@@ -6,6 +6,12 @@ module CircleCI
   module CLI
     module Command
       class BuildWatcher # rubocop:disable Metrics/ClassLength
+        OUTPUT_READ_ERRORS = [
+          EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
+          Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
+        ].freeze
+        OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
+
         attr_reader :build
 
         def initialize(build, verbose: false)
@@ -19,6 +25,8 @@ module CircleCI
           @steps = build.steps
           @current_step = nil
           @read_byte = 0
+          @output_suffix = ''.b
+          @needs_newline = false
         end
 
         def start
@@ -64,31 +72,27 @@ module CircleCI
           end
         end
 
-        # rubocop:disable-next Metrics/MethodLength
         def on_new_step(step)
-          if @verbose
-            print_bordered step.name
-          else
-            case step.status
-            when 'success'
-              puts "\e[2K\r#{Printer.colorize_green(step.name)}"
-            when 'failed'
-              puts "\e[2K\r#{Printer.colorize_red(step.name)}"
-            else
-              puts step.name
-            end
+          name = Printer.escape_controls(step.name)
+          return print_bordered(name) if @verbose
+
+          case step.status
+          when 'success' then puts "\e[2K\r#{Printer.colorize_green(name)}"
+          when 'failed' then puts "\e[2K\r#{Printer.colorize_red(name)}"
+          else puts name
           end
         end
 
         def on_new_step_status(step)
           return if @verbose
 
+          name = Printer.escape_controls(step.name)
           status = step.status
           case status
           when 'success'
-            puts "\e[1A\e[2K\r#{Printer.colorize_green(step.name)}"
+            puts "\e[1A\e[2K\r#{Printer.colorize_green(name)}"
           when 'failed'
-            puts "\e[1A\e[2K\r#{Printer.colorize_red(step.name)}"
+            puts "\e[1A\e[2K\r#{Printer.colorize_red(name)}"
           end
           finish_step_log(step, status) unless status == 'running'
         end
@@ -108,16 +112,20 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          build = CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number)
-          steps = build.steps
+          steps = fetch_steps
           next_step = steps.find { |step| step.status == 'running' } unless stopping
           action_changed = action_position(@current_step) != action_position(next_step)
-          update_actions if action_changed
+          incomplete_output = action_changed && !finish_action_output?
 
           notify_step_changes(steps)
+          warn 'Warning: Step log output may be incomplete.' if incomplete_output
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
+        end
+
+        def fetch_steps
+          CircleCI::CLI::Response::Build.get(@build.username, @build.reponame, @build.build_number).steps
         end
 
         def notify_step_changes(steps)
@@ -135,29 +143,60 @@ module CircleCI
           [action.index, action.step] if action
         end
 
+        def finish_action_output?
+          return true if 2.times.any? { update_actions }
+
+          flush_output
+          false
+        end
+
         def update_actions
           position = action_position(@current_step)
-          return unless position
+          return true unless position
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
-          Networking::HTTPClient.get_raw(url, headers) { |response| read_output(response) }
-        rescue EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-               Errno::ECONNRESET, Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
-          # The next poll requests the remaining bytes.
+          complete = false
+          Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response) }
+          flush_output if complete
+          complete
+        rescue *OUTPUT_READ_ERRORS
+          false
+        end
+
+        def output_response?(response)
+          response.is_a?(Net::HTTPPartialContent) || (@read_byte.zero? && response.is_a?(Net::HTTPSuccess))
         end
 
         def read_output(response)
-          successful = response.is_a?(Net::HTTPSuccess)
-          needs_newline = false
+          successful = output_response?(response)
+          response.ignore_eof = false
           response.read_body do |chunk|
             next if !successful || chunk.empty?
 
-            write_output(chunk)
+            stream_output(chunk.b)
             @read_byte += chunk.bytesize
-            needs_newline = !chunk.end_with?("\n")
+            @needs_newline = !chunk.end_with?("\n")
           end
-          write_output("\n") if needs_newline && !@verbose
+          successful || response.is_a?(Net::HTTPRangeNotSatisfiable)
+        end
+
+        def stream_output(chunk)
+          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          text = @output_suffix + chunk
+          @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
+          write_escaped_output(text)
+        end
+
+        def flush_output
+          write_escaped_output(@output_suffix)
+          write_output("\n") if @needs_newline && !@verbose
+          @output_suffix = ''.b
+          @needs_newline = false
+        end
+
+        def write_escaped_output(text)
+          write_output(Printer.escape_controls(text, multiline: true)) unless text.empty?
         end
 
         def write_output(chunk)
@@ -180,7 +219,7 @@ module CircleCI
         end
 
         def notify_stopped(status)
-          build_name = "#{@build.project_name} ##{@build.build_number}"
+          build_name = Printer.escape_controls("#{@build.project_name} ##{@build.build_number}")
           text = case status
                  when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
                  when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
