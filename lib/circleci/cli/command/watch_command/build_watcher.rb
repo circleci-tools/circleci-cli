@@ -24,6 +24,10 @@ module CircleCI
           notify_started
         end
 
+        def latest_detail
+          @poll_lock.synchronize { @latest_detail }
+        end
+
         def stop(status)
           @poll_lock.synchronize do
             @build_thread&.kill
@@ -82,6 +86,7 @@ module CircleCI
           @steps = steps
           @read_byte = 0 if action_changed
           @current_step = next_step
+          @latest_detail = build
         end
 
         def notify_step_changes(steps)
