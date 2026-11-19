@@ -58,6 +58,35 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect { described_class.run(options) }.to raise_error('bind failed')
     end
 
+    context 'when the Pusher connection drops before teardown' do
+      let(:client_class) { CircleCI::CLI::Networking::CircleCIPusherClient }
+      let(:socket) { instance_double(PusherClient::Socket, connect: nil, disconnect: nil) }
+      let(:channel) { instance_double(PusherClient::Channel, bind: nil) }
+
+      before do
+        allow(described_class).to receive(:setup_token).and_return('token')
+        allow(client_class.const_get(:Socket)).to receive(:new).and_return(socket)
+        allow(socket).to receive(:subscribe).with('private-pusher-id')
+        allow(socket).to receive(:[]).with('private-pusher-id').and_return(channel)
+        allow(socket).to receive(:unsubscribe).with('private-pusher-id').and_raise(Errno::EPIPE)
+      end
+
+      it 'disconnects the client and exits normally on interrupt' do
+        expect(socket).to receive(:disconnect)
+        expect(described_class).to receive(:say).with('Exited')
+
+        described_class.run(options)
+      end
+
+      it 'preserves the original watch failure' do
+        error = RuntimeError.new('watch failed')
+        allow(session).to receive(:sleep).with(1).and_raise(error)
+        expect(socket).to receive(:disconnect)
+
+        expect { described_class.run(options) }.to raise_error { |raised| expect(raised).to equal(error) }
+      end
+    end
+
     it 'prompts once and passes the same token to CircleCI and Pusher' do
       expect(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).once.and_return(nil)
       expect(described_class).to receive(:ask).with('Circle CI token ? :').once.and_return('prompted-token')

@@ -40,6 +40,9 @@ module CircleCI
 
         def unsubscribe(channel)
           socket.unsubscribe(channel)
+        rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
+          # Pusher removes the local subscription before sending the unsubscribe event.
+          nil
         end
 
         private
