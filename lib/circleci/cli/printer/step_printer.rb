@@ -24,7 +24,7 @@ module CircleCI
             @steps.group_by(&:type).map do |_, steps|
               steps.flat_map do |step|
                 step.actions.map do |a|
-                  log = escaped_log(a)
+                  log = escaped_log(a)&.delete_suffix("\n")
                   "#{action_name(a)}\n#{"#{log}\n" if log}"
                 end
               end.join
@@ -59,8 +59,12 @@ module CircleCI
               format_time(a.run_time_millis)
             ]
             log = escaped_log(a)
-            table << [{ value: log, alignment: :left, colspan: 2 }] if log
+            table << [{ value: wrap_log(log), alignment: :left, colspan: 2 }] if log
           end
+        end
+
+        def wrap_log(log)
+          log.gsub(/[^\n]{120}(?=[^\n])/) { |chunk| "#{chunk}\n" }
         end
       end
     end
