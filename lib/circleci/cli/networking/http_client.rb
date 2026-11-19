@@ -11,12 +11,13 @@ module CircleCI
           JSON.parse(get_raw(url, headers).body)
         end
 
-        def self.get_raw(url, headers = {})
+        def self.get_raw(url, headers = {}, &read_response)
           uri = URI(url)
           req = Net::HTTP::Get.new(uri)
           headers.each { |key, value| req[key] = value }
           Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
-            http.request(req)
+            http.max_retries = 0 if read_response
+            http.request(req, &read_response)
           end
         end
 
