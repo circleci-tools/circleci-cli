@@ -18,12 +18,21 @@ module CircleCI
           @run_time_millis = hash['run_time_millis']
         end
 
+        def log_available?
+          output_url = @hash['output_url']
+          !output_url.nil? && !output_url.empty?
+        end
+
         def log
+          return unless log_available?
+
           each_log_chunk.with_object(+'') { |chunk, log| log << chunk }
         end
 
         def each_log_chunk
           return enum_for(__method__) unless block_given?
+
+          return unless log_available?
 
           first = true
           read_log_records do |record|

@@ -8,9 +8,10 @@ module CircleCI
   module CLI
     module Printer
       class StepPrinter
-        def initialize(steps, pretty: true)
+        def initialize(steps, pretty: true, verbose: false)
           @groups = steps.group_by(&:type)
           @pretty = pretty
+          @verbose = verbose
         end
 
         def write_to(output)
@@ -53,7 +54,7 @@ module CircleCI
         def write_action(output, action)
           output.puts(action_name(action))
           output.flush
-          return unless action.failed?
+          return unless show_log?(action)
 
           ends_with_newline = false
           each_escaped_chunk(action) do |chunk|
@@ -77,7 +78,11 @@ module CircleCI
 
         def add_action(table, action)
           table.add_action(action_name(action), Printer.format_duration(action.run_time_millis))
-          table.add_log(enum_for(:each_wrapped_line, action)) if action.failed?
+          table.add_log(enum_for(:each_wrapped_line, action)) if show_log?(action)
+        end
+
+        def show_log?(action)
+          (@verbose || action.failed?) && action.log_available?
         end
 
         def each_wrapped_line(action, &write_line)
