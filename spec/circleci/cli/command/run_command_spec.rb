@@ -74,6 +74,28 @@ describe CircleCI::CLI::Runner, 'run' do
     end.to output("CircleCI API returned invalid JSON.\n").to_stderr
   end
 
+  context 'when a request times out' do
+    let(:run_path) { "runs/#{run_id}" }
+
+    {
+      Net::OpenTimeout => ['connection timed out', :run_path],
+      Net::ReadTimeout => ['read timed out', :workflows_path]
+    }.each do |exception, (message, path)|
+      it "reports #{exception} on stderr and exits unsuccessfully" do
+        stub_get(run_path, fixtures.fetch('run')) if path == :workflows_path
+        url = "https://circleci.com/api/v3/#{public_send(path)}"
+        timeout = exception.new(message)
+        allow(client).to receive(:get_raw).with(url, headers).and_raise(timeout)
+
+        expect do
+          expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+            expect(error.status).not_to be_zero
+          }
+        end.to output("CircleCI API request failed (GET #{url}): #{timeout.message}\n").to_stderr
+      end
+    end
+  end
+
   it 'reports the HTTP status when an API failure has an invalid JSON body' do
     response = Net::HTTPBadGateway.new('1.1', '502', '')
     allow(response).to receive(:body).and_return('<html>Bad gateway</html>')
