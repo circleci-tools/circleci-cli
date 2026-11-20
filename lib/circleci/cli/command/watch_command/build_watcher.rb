@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/watch_command/action_output'
 require 'circleci/cli/command/watch_command/step_log'
 
 module CircleCI
@@ -16,14 +17,7 @@ module CircleCI
           'no_tests' => '%<build>s ran no tests.'
         }.freeze
 
-        OUTPUT_READ_ERRORS = [
-          EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
-          Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
-        ].freeze
         INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
-        OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
-
-        Output = Struct.new(:offset, :suffix, :needs_newline)
 
         attr_reader :build
 
@@ -34,12 +28,12 @@ module CircleCI
           @retained_log_bytes = 0
 
           @poll_lock = Mutex.new
-          @detail_lock = Mutex.new
+          @state_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
-          @outputs = Hash.new { |outputs, position| outputs[position] = Output.new(0, ''.b, false) }
-          @finished_outputs = Set.new
+          @action_outputs = {}
+          @completed_outputs = {}
         end
 
         def start
@@ -48,11 +42,20 @@ module CircleCI
         end
 
         def latest_detail
-          @detail_lock.synchronize { @latest_detail }
+          @state_lock.synchronize { @latest_detail }
+        end
+
+        def poll_error
+          @state_lock.synchronize { @poll_error }
         end
 
         def stop(status)
-          @poll_lock.synchronize { stop_polling }
+          @poll_lock.synchronize do
+            error = poll_error
+            raise error if error
+
+            stop_polling
+          end
           update_build(stopping: true)
           notify_stopped(status)
         ensure
@@ -88,6 +91,8 @@ module CircleCI
               next_build_poll = refresh_live_build(count) if count >= next_build_poll
               update_actions
             end
+            break if poll_error
+
             sleep 1
           end
         end
@@ -97,11 +102,15 @@ module CircleCI
           count + 5
         end
 
-        def poll_safely(&)
-          @poll_lock.synchronize(&)
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
-          # Resume on the next poll with the last consumed byte offset.
+        def poll_safely
+          @poll_lock.synchronize do
+            yield
+          rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+                 Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+            # Resume on the next poll with the last consumed byte offset.
+          rescue StandardError => e
+            @state_lock.synchronize { @poll_error = e }
+          end
         end
 
         def on_new_step(step)
@@ -148,139 +157,115 @@ module CircleCI
         def update_build(stopping: false)
           detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
-          @detail_lock.synchronize { @latest_detail = detail }
+          @state_lock.synchronize { @latest_detail = detail }
         end
 
         def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
-          action_changed = action_changed?(next_step)
-          incomplete_output = action_changed && !finish_action_output?
+          continuing = refresh_current_step(steps, next_step) if @current_step
 
-          notify_step_changes(steps, stopping:)
-          warn INCOMPLETE_OUTPUT_WARNING if incomplete_output
+          notify_step_changes(steps, next_step:, stopping:)
           @steps = steps
           @current_step = next_step
+          return unless next_step && !continuing
+
+          refresh_action_outputs(next_step.actions, key: step_key(next_step), continuing: true)
         end
 
-        def action_changed?(next_step)
-          @current_step&.action_identity != next_step&.action_identity
+        def refresh_current_step(steps, next_step)
+          key = step_key(@current_step)
+          continuing = next_step && step_key(next_step) == key
+          updated_step = continuing ? next_step : steps.find { |step| step_key(step) == key }
+          refresh_action_outputs(updated_step&.actions || [], key:, continuing:)
+          @action_outputs.clear unless continuing
+          continuing
         end
 
-        def notify_step_changes(steps, stopping:)
+        def refresh_action_outputs(actions, key:, continuing:)
+          track_actions(actions)
+          running = continuing ? actions.select { |action| action.end_time.nil? }.map(&:identity) : []
+          finish_outputs(running, key)
+        end
+
+        def track_actions(actions)
+          actions.each do |action|
+            @action_outputs.fetch(action.identity) do |identity|
+              @action_outputs[identity] = @completed_outputs.fetch(identity) { new_output(identity) }
+            end
+          end
+        end
+
+        def new_output(identity)
+          project = [@build.username, @build.reponame, @build.build_number].join('/')
+          ActionOutput.new("https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}")
+        end
+
+        def notify_step_changes(steps, next_step:, stopping:)
           previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
           steps.each do |step|
-            previous_status = previous_statuses[step_key(step)]
-            if previous_status
-              on_new_step_status(step) unless previous_status == step.status
-            else
-              on_new_step(step)
-            end
-            print_completed_outputs(step, stopping:) if @verbose
+            key = step_key(step)
+            notify_step_change(step, previous_statuses[key])
+            print_completed_outputs(step, key, stopping:) if @verbose && step != next_step
           end
         end
 
-        def print_completed_outputs(step, stopping:)
-          active_position = @current_step&.action_identity
+        def notify_step_change(step, previous_status)
+          return on_new_step(step) unless previous_status
+
+          on_new_step_status(step) unless previous_status == step.status
+        end
+
+        def print_completed_outputs(step, key, stopping:)
           step.actions.each do |action|
-            next unless action.end_time
+            identity = action.identity
+            next if action.end_time.nil? || identity.include?(nil) || @action_outputs.key?(identity)
 
-            position = [action.index, action.step]
-            next if position.include?(nil) || position == active_position || @finished_outputs.include?(position)
+            output = @completed_outputs.fetch(identity) { @completed_outputs[identity] = new_output(identity) }
+            next unless output
 
-            read_completed_output(position, stopping:)
+            read_completed_output(output, identity, key, stopping:)
           end
         end
 
-        def read_completed_output(position, stopping:)
-          if stopping
-            warn INCOMPLETE_OUTPUT_WARNING unless finish_output?(position)
-          elsif read_action_output(position)
-            complete_output(position)
+        def read_completed_output(output, identity, key, stopping:)
+          complete = output.finish_output?(final: stopping) { |chunk| write_output(key, chunk) }
+          @completed_outputs[identity] = nil if complete || stopping
+          warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
+        end
+
+        def finish_outputs(running, key)
+          failed = @action_outputs.except(*running).filter_map do |identity, output|
+            next unless output
+
+            complete = output.finish_output? { |chunk| write_output(key, chunk) }
+            @action_outputs[identity] = nil
+            @completed_outputs[identity] = nil if @verbose
+            identity unless complete
           end
-        end
-
-        def finish_action_output?
-          position = @current_step&.action_identity
-          position.nil? || finish_output?(position)
-        end
-
-        def finish_output?(position)
-          complete = 2.times.any? { read_action_output(position) }
-          complete_output(position)
-          complete
-        end
-
-        def complete_output(position)
-          output = @outputs.delete(position)
-          flush_output(output)
-          @finished_outputs.add(position) if @verbose && output.offset.positive?
+          warn INCOMPLETE_OUTPUT_WARNING if failed.any?
         end
 
         def update_actions
-          position = @current_step&.action_identity
-          return true unless position
+          return unless @current_step
 
-          read_action_output(position)
+          key = step_key(@current_step)
+          @action_outputs.each_value { |output| output&.read { |chunk| write_output(key, chunk) } }
         end
 
-        def read_action_output(position)
-          output = @outputs[position]
-          url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
-          headers = { 'Range' => "bytes=#{output.offset}-" }
-          complete = false
-          Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response, output) }
-          complete
-        rescue *OUTPUT_READ_ERRORS
-          false
-        end
-
-        def output_response?(response, output)
-          response.is_a?(Net::HTTPPartialContent) || (output.offset.zero? && response.is_a?(Net::HTTPSuccess))
-        end
-
-        def read_output(response, output)
-          successful = output_response?(response, output)
-          response.ignore_eof = false
-          response.read_body do |chunk|
-            next if !successful || chunk.empty?
-
-            stream_output(chunk.b, output)
-            output.offset += chunk.bytesize
-            output.needs_newline = !chunk.end_with?("\n")
-          end
-          successful || response.is_a?(Net::HTTPRangeNotSatisfiable)
-        end
-
-        def stream_output(chunk, output)
-          # Retain a partial UTF-8 character or CRLF across chunks and polls.
-          text = output.suffix + chunk
-          output.suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
-          write_escaped_output(text)
-        end
-
-        def flush_output(output)
-          write_escaped_output(output.suffix)
-          write_output("\n") if output.needs_newline
-        end
-
-        def write_escaped_output(text)
-          write_output(Printer.escape_controls(text, multiline: true)) unless text.empty?
-        end
-
-        def write_output(chunk)
+        def write_output(key, chunk)
           if @verbose
             $stdout.write(chunk)
             $stdout.flush
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              retain_output(chunk)
+              retain_output(key, chunk)
             end
           end
         end
 
-        def retain_output(chunk)
-          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+        def retain_output(key, chunk)
+          log = (@messages[key] ||= StepLog.new)
           remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
           @retained_log_bytes += log.append(chunk, remaining:)
         end
