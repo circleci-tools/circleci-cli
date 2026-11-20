@@ -91,7 +91,7 @@ module CircleCI
               b = Response::Build.get(build.username, build.reponame, build.build_number)
               title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
               puts Printer::BuildPrinter.header_for(build, title)
-              puts Printer::StepPrinter.new(b.steps, pretty: @options.verbose)
+              Printer::StepPrinter.new(b.steps, pretty: @options.verbose).write_to($stdout)
               @repository.mark_as_shown(b.build_number)
             end
           end

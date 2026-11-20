@@ -10,7 +10,7 @@ module CircleCI
             username, reponame = project_name(options).split('/')
             with_build_number(username, reponame, options) do |number|
               build = Response::Build.get(username, reponame, number)
-              puts Printer::StepPrinter.new(build.steps, pretty: options.pretty)
+              Printer::StepPrinter.new(build.steps, pretty: options.pretty).write_to($stdout)
             end
           end
         end

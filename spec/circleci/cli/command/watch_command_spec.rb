@@ -319,7 +319,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
     let(:repository) { double('repository') }
     let(:response_build) { double('response_build', steps: %w[step], build_number: 42) }
-    let(:step_printer) { double('step_printer', to_s: 'step output <%= "log" %>') }
+    let(:step_printer) { double('step_printer') }
 
     it 'prints finished background builds and marks them as shown' do
       described_class.instance_variable_set(:@options, options)
@@ -333,6 +333,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         .with(finished_build, a_string_including('Result of user/repo #42 completed in background'))
         .and_return('header output <%= "metadata" %>')
       expect(CircleCI::CLI::Printer::StepPrinter).to receive(:new).with(%w[step], pretty: false)
+      expect(step_printer).to receive(:write_to) { |output| output.puts('step output <%= "log" %>') }
       expect(repository).to receive(:mark_as_shown).with(42)
 
       expect { described_class.send(:show_interrupted_build_results) }

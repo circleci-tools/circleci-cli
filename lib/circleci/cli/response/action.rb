@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/response/log_records'
+
 module CircleCI
   module CLI
     module Response
@@ -17,9 +19,18 @@ module CircleCI
         end
 
         def log
-          log_records.map do |result|
-            result['message'].gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')
-          end.join("\n")
+          each_log_chunk.with_object(+'') { |chunk, log| log << chunk }
+        end
+
+        def each_log_chunk
+          return enum_for(__method__) unless block_given?
+
+          first = true
+          read_log_records do |record|
+            yield "\n" unless first
+            yield record.fetch('message').gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')
+            first = false
+          end
         end
 
         def failed?
@@ -28,11 +39,17 @@ module CircleCI
 
         private
 
-        def log_records
-          response = Networking::HTTPClient.get_raw(@hash['output_url'])
-          return JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
+        def read_log_records(&read_record)
+          records = LogRecords.new
+          Networking::HTTPClient.get_raw(@hash['output_url']) do |response|
+            unless response.is_a?(Net::HTTPSuccess)
+              raise Thor::Error, "Action log download failed (HTTP #{response.code})"
+            end
 
-          raise Thor::Error, "Action log download failed (HTTP #{response.code})"
+            response.ignore_eof = false
+            response.read_body { |chunk| records.read(chunk, &read_record) }
+          end
+          records.finish
         end
       end
     end
