@@ -10,12 +10,20 @@ module CircleCI
         protected
 
         def connect_internal
-          @connection = VerifiedPusherWebSocket.new(@url, cert_file: @cert_file, logger: logger)
+          open_connection
           logger.debug('Websocket connected')
           loop { @connection.receive.each { |message| dispatch_message(message) } }
         end
 
         private
+
+        def open_connection
+          websocket = VerifiedPusherWebSocket.new(@url, cert_file: @cert_file, logger: logger)
+          websocket.connect
+          @connection = websocket
+        ensure
+          websocket.close if websocket&.socket && !@connection.equal?(websocket)
+        end
 
         def dispatch_message(message)
           params = parser(message)
