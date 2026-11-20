@@ -39,7 +39,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:http) { instance_double(Net::HTTP) }
   let(:output_path) { '/api/private/output/raw/github/user/repo/1234/output/1/2' }
 
-  before { allow(http).to receive(:max_retries=).with(0) }
+  before do
+    allow(http).to receive(:max_retries=).with(0)
+    allow(http).to receive(:finish)
+  end
 
   def expect_output_response(offset, *chunks, error: nil, path: output_path)
     expect(http).to receive(:request).ordered do |request, &read_response|
@@ -85,7 +88,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       rescue Interrupt
         thread
       end
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
     end
 
     def stop_after_polls
@@ -100,6 +103,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     it 'prints new steps in API order and streams output from the first running step' do
       stop_after_polls
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
+      expect(http).to receive(:finish).once
       log_tail = " done <%= \"log\" %>\n"
       expect_completed_outputs
       expect_output_response(0, log_output.byteslice(0, 1), log_output.byteslice(1, 9), log_output.byteslice(10..))
@@ -180,6 +185,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
         allow(watcher).to receive(:puts)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(multi_action_build('success', 'running'))
+        expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
 
         expect_output_response(0, "completed output\n")
         expect_output_response(0, "live output\n", path: output_path.sub(%r{/1/2$}, '/2/2'))
@@ -251,6 +257,51 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         expect(refreshes).to eq([0, 5, 10])
       end
     end
+
+    it 'reuses a TCP connection, reconnects after a server close, and closes when interrupted' do
+      allow(Thread).to receive(:new).and_call_original
+      server = TCPServer.new('127.0.0.1', 0)
+      first = second = nil
+      allow(watcher).to receive(:notify_started)
+      allow(watcher).to receive(:print_bordered)
+      allow(watcher).to receive(:sleep).with(1)
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true) do
+        Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+      end
+      allow(watcher).to receive(:write_output)
+
+      Timeout.timeout(5) do
+        watcher.start
+        first = server.accept
+        serve_poll(first, 0, "checked out\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/1')
+        serve_poll(first, 0, "tested\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/2')
+        serve_poll(first, 0, 'é')
+        serve_poll(first, 2, '')
+        first.close
+
+        second = server.accept
+        expect_poll(second, 2)
+        watcher.close
+        expect(second.read).to eq('')
+      end
+    ensure
+      watcher.close
+      first&.close unless first&.closed?
+      second&.close
+      server&.close
+    end
+
+    def serve_poll(socket, offset, body, path: output_path)
+      expect_poll(socket, offset, path:)
+      socket.write("HTTP/1.1 206 Partial Content\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+    end
+
+    def expect_poll(socket, offset, path: output_path)
+      expect(socket.gets).to eq("GET #{path} HTTP/1.1\r\n")
+      headers = socket.each_line.take_while { |line| line != "\r\n" }
+      expect(headers).to include("Range: bytes=#{offset}-\r\n")
+    end
   end
 
   describe '#stop' do
@@ -284,7 +335,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         throw :end_polling if polls == poll_count
       end
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       expect_output_response(0, "first output\n")
       allow(watcher).to receive(:notify_started)
     end
@@ -325,6 +376,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           watcher.stop(status)
         end.to output(/#{Regexp.escape(escaped_step_name)}.*#{replayed_output}.*has failed/m)
           .to_stdout.and output('').to_stderr
+        expect(http).to have_received(:finish).twice
       end
 
       it 'reports incomplete output after the final retry fails and replays the bytes received' do
@@ -363,7 +415,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         throw :end_polling if polls == 11
       end
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build, finished_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
+      expect(http).to receive(:finish).once
       expect_output_response(0, "compiled log\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/1')
       expect_output_response(0, "failed log\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/2')
 
@@ -380,7 +433,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     it 'does not request a completed action again after an empty successful response' do
       detail = build_response.call([step_hash.call(name: 'Cleanup', type: 'shell', status: 'success', step: 1)])
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(detail)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       expect_output_response(0, path: '/api/private/output/raw/github/user/repo/1234/output/0/1')
 
       expect do
@@ -395,7 +448,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       before do
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished_build)
-        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       end
 
       it 'retries each completed action from its own offset without repeating output' do
@@ -423,7 +476,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       completed_step = step_hash.call(name: 'Compile', type: 'build', status: 'success', index: 0, step: 1)
       detail = build_response.call([completed_step, running_step])
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(detail)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       completed_path = '/api/private/output/raw/github/user/repo/1234/output/0/1'
       expect_output_response(0, "\xC3".b, path: completed_path, error: EOFError)
       expect_output_response(0, "deploying\n")
@@ -437,6 +490,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         end
       end.to output(a_string_including("deploying\né\ndone\n")).to_stdout
       expect(watcher.latest_detail).to equal(detail)
+    ensure
+      watcher.close
     end
   end
 
@@ -477,7 +532,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         allow(CircleCI::CLI::Response::Build).to receive(:get)
           .and_return(first_build, second_build, failed_build, failed_build)
         allow(watcher).to receive(:puts)
-        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
 
         second_path = output_path.sub(%r{/1/2$}, '/2/2')
         expect_output_response(0, 'a' * 400)
@@ -565,7 +620,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       allow(watcher).to receive(:puts)
       watcher.send(:update_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       expect_output_response(0, log_output)
       expect_output_response(log_output.bytesize)
 
@@ -592,7 +647,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     before do
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
       allow(watcher).to receive(:puts)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
       watcher.send(:update_build)
     end
 

@@ -27,9 +27,7 @@ module CircleCI
           @messages = {}
           @retained_log_bytes = 0
 
-          @poll_lock = Mutex.new
-          @state_lock = Mutex.new
-
+          initialize_polling
           @steps = build.steps
           @current_step = nil
           @action_outputs = {}
@@ -68,9 +66,16 @@ module CircleCI
           @messages.each_value(&:close)
           @messages.clear
           @retained_log_bytes = 0
+          @log_session.close
         end
 
         private
+
+        def initialize_polling
+          @poll_lock = Mutex.new
+          @state_lock = Mutex.new
+          @log_session = Networking::HTTPClient::Session.new
+        end
 
         def stop_polling
           Thread.handle_interrupt(Interrupt => :never) do
@@ -81,7 +86,11 @@ module CircleCI
         end
 
         def poll_build
-          @build_thread = Thread.new { poll_live }
+          @build_thread = Thread.new do
+            poll_live
+          ensure
+            @log_session.close
+          end
         end
 
         def poll_live
@@ -197,7 +206,8 @@ module CircleCI
 
         def new_output(identity)
           project = [@build.username, @build.reponame, @build.build_number].join('/')
-          ActionOutput.new("https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}")
+          url = "https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}"
+          ActionOutput.new(url, @log_session)
         end
 
         def notify_step_changes(steps, next_step:, stopping:)

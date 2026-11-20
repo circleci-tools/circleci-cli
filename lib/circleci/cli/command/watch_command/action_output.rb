@@ -10,8 +10,9 @@ module CircleCI
         ].freeze
         OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
 
-        def initialize(url)
+        def initialize(url, session)
           @url = url
+          @session = session
           @read_byte = 0
           reset_output_tail
         end
@@ -19,7 +20,7 @@ module CircleCI
         def read(&write)
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
-          Networking::HTTPClient.get_raw(@url, headers) { |response| complete = read_output(response, &write) }
+          @session.get_raw(@url, headers) { |response| complete = read_output(response, &write) }
           complete
         rescue *OUTPUT_READ_ERRORS
           false

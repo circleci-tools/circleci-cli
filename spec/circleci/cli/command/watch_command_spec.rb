@@ -238,7 +238,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       reading = Queue.new
       release = Queue.new
       response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_yield(response)
+      session_class = CircleCI::CLI::Networking::HTTPClient::Session
+      log_session = instance_double(session_class, close: nil)
+      allow(session_class).to receive(:new).and_return(log_session)
+      allow(log_session).to receive(:get_raw).and_yield(response)
       allow(response).to receive(:read_body) do
         reading << true
         release.pop
