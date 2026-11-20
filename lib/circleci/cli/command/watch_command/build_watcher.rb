@@ -261,8 +261,6 @@ module CircleCI
         def flush_output(output)
           write_escaped_output(output.suffix)
           write_output("\n") if output.needs_newline
-          output.suffix = ''.b
-          output.needs_newline = false
         end
 
         def write_escaped_output(text)
