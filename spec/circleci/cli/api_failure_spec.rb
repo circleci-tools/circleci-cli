@@ -60,14 +60,14 @@ describe CircleCI::CLI::Runner do
 
   describe 'watch account lookup' do
     let(:arguments) { %w[watch -p user/repo -b main] }
-    let(:client) { double('Pusher client', connect: nil) }
+    let(:client) { double('Pusher client', connect: nil, unsubscribe: nil, disconnect: nil) }
     let(:builds_body) { [] }
 
     before do
       allow(ENV).to receive(:fetch).and_call_original
       allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
-      allow(CircleCI::CLI::Command::WatchCommand).to receive(:sleep).with(1).and_raise(Interrupt)
+      allow_any_instance_of(CircleCI::CLI::Command::WatchCommand).to receive(:sleep).with(1).and_raise(Interrupt)
     end
 
     it 'reports a failed account lookup on stderr and exits before subscribing' do
