@@ -42,12 +42,13 @@ describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
 
   describe '.post_form' do
     let(:url) { 'https://example.com/auth' }
-    let(:uri) { URI(url) }
+    let(:http) { instance_double(Net::HTTP) }
     let(:response) { instance_double(Net::HTTPOK, body: '{"auth":"signed"}') }
 
     it 'posts params and parses the JSON response body' do
-      expect(Net::HTTP).to receive(:post_form)
-        .with(uri, { socket_id: 'id', channel_name: 'channel' })
+      expect(Net::HTTP).to receive(:start).with('example.com', 443, use_ssl: true).and_yield(http)
+      expect(http).to receive(:request)
+        .with(an_instance_of(Net::HTTP::Post).and(have_attributes(body: 'socket_id=id&channel_name=channel')))
         .and_return(response)
 
       result = described_class.post_form(url, socket_id: 'id', channel_name: 'channel')

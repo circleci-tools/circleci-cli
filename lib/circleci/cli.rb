@@ -9,6 +9,7 @@ require 'rugged'
 require 'terminal-notifier'
 require 'terminal-table'
 require 'thor'
+require 'uri'
 
 require 'circleci/cli/version'
 require 'circleci/cli/command'
@@ -30,13 +31,7 @@ module CircleCI
         def project
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
-          regexp = %r{
-            (?:(?:git@|https://)github.com(?::|/)|\Assh://git@ssh\.github\.com:443/)
-            ([\w_-]+/[.\w_-]+?)(?:\.git)*$
-          }x
-          return Regexp.last_match(1) if origin&.url =~ regexp
-
-          nil
+          github_project(origin.url) if origin&.url
         rescue Rugged::RepositoryError
           nil
         end
@@ -50,6 +45,40 @@ module CircleCI
           head.name.sub(%r{\Arefs/heads/}, '')
         rescue Rugged::RepositoryError, Rugged::ReferenceError
           nil
+        end
+
+        private
+
+        def github_project(remote)
+          path = github_remote_path(remote)&.delete_suffix('.git')
+          return unless path&.match?(%r{\A/[\w-]+/[.\w-]+\z})
+          return if %w[. ..].include?(File.basename(path))
+
+          path.delete_prefix('/')
+        end
+
+        def github_remote_path(remote)
+          scp = /\Agit@github\.com:(.+)\z/i.match(remote)
+          return "/#{scp[1]}" if scp
+
+          uri = URI.parse(remote)
+          return if uri.query || uri.fragment
+
+          uri.path if github_uri?(uri)
+        rescue URI::InvalidURIError
+          nil
+        end
+
+        def github_uri?(uri)
+          case uri.host&.downcase
+          when 'github.com' then uri.scheme == 'https' || github_ssh_uri?(uri)
+          when 'ssh.github.com' then uri.port == 443 && github_ssh_uri?(uri)
+          else false
+          end
+        end
+
+        def github_ssh_uri?(uri)
+          uri.scheme == 'ssh' && uri.userinfo == 'git'
         end
       end
 
@@ -92,7 +121,7 @@ module CircleCI
                     type: :string,
                     banner: 'user/project',
                     desc: 'A project you want to get.'
-      method_option :build, aliases: 'n', type: :numeric, banner: 'build-number', desc: 'Build number you want to get.'
+      method_option :build, aliases: 'n', type: :string, banner: 'build-number', desc: 'Build number you want to get.'
       method_option :last, aliases: 'l', type: :boolean, default: false, desc: 'Get last failed build.'
       method_option :pretty, type: :boolean, banner: 'true/false', default: true, desc: 'Make output pretty.'
       def build
@@ -107,7 +136,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to browse.'
       def browse
@@ -122,7 +151,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to retry.'
       method_option :last, aliases: 'l', type: :boolean, desc: 'Retry last failed build.'
@@ -137,7 +166,7 @@ module CircleCI
                     desc: 'A project you want to get.'
       method_option :build,
                     aliases: 'n',
-                    type: :numeric,
+                    type: :string,
                     banner: 'build-number',
                     desc: 'Build number you want to cancel.'
       def cancel

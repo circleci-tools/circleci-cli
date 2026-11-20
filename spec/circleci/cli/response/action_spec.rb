@@ -14,19 +14,21 @@ describe CircleCI::CLI::Response::Action do
     let(:http) { instance_double(Net::HTTP) }
     let(:output) do
       [
-        { 'message' => "first\r\nline\e[A\r\e[2K" },
-        { 'message' => 'a' * 121 }
+        { 'message' => "first\r\n\r\nline\e[A\r\e[2K" },
+        { 'message' => "#{'a' * 121}\n" }
       ]
     end
 
     before do
+      response = Net::HTTPOK.new('1.1', '200', 'OK')
+      allow(response).to receive(:body).and_return(JSON.generate(output))
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path: '/output/123')))
-        .and_return(instance_double(Net::HTTPOK, body: JSON.generate(output)))
+        .and_return(response)
     end
 
     it 'normalizes and joins log messages' do
-      expect(log).to eq(["first\nline", 'a' * 120, 'a'].join("\n"))
+      expect(log).to eq("first\n\nline\n#{'a' * 121}\n")
     end
   end
 end
