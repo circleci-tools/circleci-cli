@@ -57,4 +57,38 @@ describe CircleCI::CLI::Runner do
       end
     end
   end
+
+  describe 'watch account lookup' do
+    let(:arguments) { %w[watch -p user/repo -b main] }
+    let(:client) { double('Pusher client', connect: nil) }
+    let(:builds_body) { [] }
+
+    before do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
+      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
+      allow(CircleCI::CLI::Command::WatchCommand).to receive(:sleep).with(1).and_raise(Interrupt)
+    end
+
+    it 'reports a failed account lookup on stderr and exits before subscribing' do
+      response = CircleCi::Response.new(double(code: '401', body: '{"message":"Unauthorized"}'))
+      allow(CircleCi::User).to receive(:new).and_return(double(me: response))
+      expect(client).not_to receive(:bind)
+
+      expect do
+        expect { described_class.start(arguments) }.to raise_error(SystemExit) { |error|
+          expect(error.status).not_to be_zero
+        }
+      end.to output("CircleCI API error (HTTP 401): Unauthorized\n").to_stderr
+    end
+
+    it 'subscribes to the account channel after a successful lookup' do
+      response = circleci_response('pusher_id' => 'pusher-123')
+      allow(CircleCi::User).to receive(:new).and_return(double(me: response))
+      expect(client).to receive(:bind).with('private-pusher-123', 'call')
+      expect(CircleCI::CLI::Command::WatchCommand).to receive(:say).with('Exited')
+
+      described_class.start(arguments)
+    end
+  end
 end

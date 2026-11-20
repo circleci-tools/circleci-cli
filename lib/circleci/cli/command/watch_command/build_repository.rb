@@ -47,6 +47,17 @@ module CircleCI
           @mutex.synchronize { @builds.select { |build| pending?(build) }.sort_by(&:build_number) }
         end
 
+        def refresh_evicted_builds
+          @mutex.synchronize do
+            details = @builds.select { |build| evicted_pending?(build) }.to_h do |build|
+              number = build.build_number
+              [number, Response::Build.get(@username, @reponame, number)]
+            end
+            @builds.map! { |build| details.fetch(build.build_number, build) }
+            details
+          end
+        end
+
         def build_for(build_number, recent_only: false)
           @mutex.synchronize do
             find_build(build_number) if !recent_only || @recent_build_numbers.include?(build_number)
@@ -71,6 +82,10 @@ module CircleCI
             !@build_numbers_shown.include?(build.build_number) &&
             (@branch.nil? || build.branch == @branch) &&
             (@user.nil? || build.user == @user)
+        end
+
+        def evicted_pending?(build)
+          !@recent_build_numbers.include?(build.build_number) && pending?(build)
         end
 
         def find_build(build_number)

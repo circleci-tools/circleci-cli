@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'pusher-client'
+require 'circleci/cli/networking/verified_pusher_socket'
 
 module CircleCI
   module CLI
@@ -31,7 +31,7 @@ module CircleCI
         private
 
         def socket
-          @socket ||= PusherClient::Socket.new(
+          @socket ||= VerifiedPusherSocket.new(
             '1cf6e0e755e419d2ac9a',
             secure: true,
             auth_method: proc { |a, b| auth(a, b) },
@@ -40,8 +40,9 @@ module CircleCI
         end
 
         def auth(socket_id, channel)
-          res = HTTPClient.post_form("https://circleci.com/auth/pusher?circle-token=#{@token}",
-                                     { socket_id: socket_id, channel_name: channel.name })
+          res = HTTPClient.post_form('https://circleci.com/auth/pusher',
+                                     { socket_id: socket_id, channel_name: channel.name },
+                                     { 'Circle-Token' => @token })
           res['auth']
         end
       end
