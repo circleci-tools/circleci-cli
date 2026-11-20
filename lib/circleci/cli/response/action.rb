@@ -16,6 +16,10 @@ module CircleCI
           @run_time_millis = hash['run_time_millis']
         end
 
+        def identity
+          [index, step]
+        end
+
         def log
           log_records.map do |result|
             result['message'].gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')

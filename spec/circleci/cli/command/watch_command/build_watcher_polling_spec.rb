@@ -143,6 +143,54 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
+    context 'when actions in the same step finish on different refreshes' do
+      let(:poll_count) { 6 }
+
+      def multi_action_build(first_status, second_status)
+        step = step_hash.call(name: 'Test', type: 'test', status: first_status, index: 1, step: 2)
+        second = step_hash.call(name: 'Test', type: 'test', status: second_status, index: 2, step: 2)
+        step['actions'].concat(second['actions'])
+        build_response.call([step])
+      end
+
+      it 'reads an already completed action when it first observes the running step' do
+        allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
+        allow(watcher).to receive(:puts)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(multi_action_build('success', 'running'))
+
+        expect_output_response(0, "completed output\n")
+        expect_output_response(0, "live output\n", path: output_path.sub(%r{/1/2$}, '/2/2'))
+
+        expect { watcher.start }.to output("completed output\nlive output\n").to_stdout
+      end
+
+      it 'streams each action from byte zero and reads each final chunk exactly once' do
+        stop_after_polls
+        allow(watcher).to receive(:puts)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+          multi_action_build('running', 'running'),
+          multi_action_build('success', 'running'),
+          multi_action_build('success', 'success')
+        )
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, "first\n")
+        expect_output_response(0, "second\n", path: second_path)
+        4.times do
+          expect_output_response(6)
+          expect_output_response(7, path: second_path)
+        end
+        expect_output_response(6, "first tail\n")
+        expect_output_response(7, "second live\n", path: second_path)
+        expect_output_response(19, "second tail\n", path: second_path)
+
+        expect do
+          watcher.start
+          watcher.stop('success')
+        end.to output("first\nsecond\nfirst tail\nsecond live\nsecond tail\n").to_stdout
+      end
+    end
+
     context 'during steady polling' do
       let(:poll_count) { 11 }
 
@@ -364,14 +412,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   describe '#update_actions' do
     let(:initial_steps) { [] }
     let(:watcher) { described_class.new(build, verbose: false) }
-    let(:current_step) do
+    let(:updated_build) do
       build_response.call(
         [step_hash.call(name: step_name, type: 'test', status: 'running', index: 1, step: 2)]
-      ).steps.first
+      )
     end
 
     it 'buffers output and skips empty response bodies' do
-      watcher.instance_variable_set(:@current_step, current_step)
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(watcher).to receive(:puts)
+      watcher.send(:update_build)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       expect_output_response(0, log_output)
       expect_output_response(log_output.bytesize)

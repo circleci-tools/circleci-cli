@@ -17,8 +17,7 @@ module CircleCI
         end
 
         def action_identity
-          action = actions.first
-          [action.index, action.step] if action
+          actions.first&.identity
         end
 
         def status
