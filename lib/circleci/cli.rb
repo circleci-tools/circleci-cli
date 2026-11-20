@@ -78,9 +78,10 @@ module CircleCI
       end
 
       desc 'run RUN_ID', 'Show all workflows and jobs in a run'
+      method_option :failed_tests, type: :boolean, desc: 'Show failed tests grouped by workflow and job'
       map 'run' => :show_run
       def show_run(run_id)
-        say Command::RunCommand.run(run_id)
+        say Command::RunCommand.run(run_id, failed_tests: options[:failed_tests])
       end
 
       desc 'build', 'Show the build result'

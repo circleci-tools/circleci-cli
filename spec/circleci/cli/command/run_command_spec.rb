@@ -14,9 +14,9 @@ describe CircleCI::CLI::Runner, 'run' do
     allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
   end
 
-  def stub_get(path, body, response_class: Net::HTTPOK, code: '200')
+  def stub_get(path, body, response_class: Net::HTTPOK, code: '200', raw: false)
     response = response_class.new('1.1', code, '')
-    allow(response).to receive(:body).and_return(JSON.generate(body))
+    allow(response).to receive(:body).and_return(raw ? body : JSON.generate(body))
     allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
   end
 
@@ -78,6 +78,100 @@ describe CircleCI::CLI::Runner, 'run' do
     stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
 
     expect { described_class.start(['run', run_id]) }.to output(/No workflows found/).to_stdout
+  end
+
+  context 'with --failed-tests' do
+    let(:args) { ['run', run_id, '--failed-tests'] }
+    let(:unit_id) { '123e4567-e89b-12d3-a456-426614174010' }
+    let(:integration_id) { '123e4567-e89b-12d3-a456-426614174011' }
+    let(:system_id) { '123e4567-e89b-12d3-a456-426614174012' }
+    let(:smoke_id) { '123e4567-e89b-12d3-a456-426614174013' }
+
+    before do
+      stub_get("runs/#{run_id}", fixtures.fetch('run'))
+    end
+
+    def stub_workflow_page(page, jobs, cursor: '')
+      response = fixtures.fetch("workflows_#{page}_page")
+      stub_get("#{workflows_path}#{cursor}", response)
+      workflow_id = response.fetch('data').first.fetch('id')
+      stub_get("jobs?filter%5Bworkflow_id%5D=#{workflow_id}", { 'data' => jobs })
+    end
+
+    def failed_job(id, name)
+      { 'id' => id, 'attributes' => { 'name' => name, 'outcome' => 'failed' } }
+    end
+
+    it 'groups failures across workflow pages and distinguishes empty and passing results' do
+      lint = fixtures.fetch('checks_jobs').fetch('data').last
+      stub_workflow_page('first', [failed_job(unit_id, 'unit'), failed_job(integration_id, 'integration'), lint])
+      deploy_jobs = [failed_job(system_id, 'system'), failed_job(smoke_id, 'smoke')]
+      stub_workflow_page('last', deploy_jobs, cursor: '&page%5Bcursor%5D=cursor%2B%2F%3D')
+      failure = { 'name' => 'rejects an expired token', 'result' => 'failure',
+                  'file' => 'spec/token_spec.rb', 'message' => "Expected rejection\nReceived \e success" }
+      fileless_failure = { 'name' => 'rejects empty input', 'result' => 'failure', 'message' => 'Expected an error' }
+      passing = { 'name' => 'accepts an active token', 'result' => 'success' }
+      records = [failure, passing, failure].map { |record| JSON.generate(record) }.join("\n")
+      stub_get("jobs/#{unit_id}/tests", records, raw: true)
+      stub_get("jobs/#{integration_id}/tests", nil, response_class: Net::HTTPNoContent, code: '204', raw: true)
+      stub_get("jobs/#{system_id}/tests", JSON.generate(fileless_failure), raw: true)
+      stub_get("jobs/#{smoke_id}/tests", JSON.generate(passing), raw: true)
+
+      expected = <<~'SUMMARY'
+        Failed tests
+
+        checks
+          unit
+            - rejects an expired token (spec/token_spec.rb)
+              Expected rejection
+              Received \x1B success
+            - rejects an expired token (spec/token_spec.rb)
+              Expected rejection
+              Received \x1B success
+          integration
+            No uploaded test results.
+
+        deploy
+          system
+            - rejects empty input
+              Expected an error
+          smoke
+            No failures in uploaded test results.
+      SUMMARY
+      expect { described_class.start(args) }.to output(/#{Regexp.escape(expected)}\z/).to_stdout
+    end
+
+    it 'reports when no jobs failed' do
+      stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
+
+      expect { described_class.start(args) }.to output(/No failed jobs found\./).to_stdout
+    end
+
+    context 'when results cannot be loaded' do
+      before do
+        fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+        stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      end
+
+      it 'reports the failed request and job on stderr and exits unsuccessfully' do
+        stub_get("jobs/#{unit_id}/tests", { 'error' => { 'detail' => 'Access denied' } },
+                 response_class: Net::HTTPForbidden, code: '403')
+
+        expect do
+          expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+        end.to output("Unable to load test results for job unit (#{unit_id}): " \
+                      "CircleCI API error (HTTP 403): Access denied\n").to_stderr
+      end
+
+      it 'reports an invalid JSON Lines response' do
+        stub_get("jobs/#{unit_id}/tests", "[]\n", raw: true)
+
+        expect do
+          expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+        end.to output("Unable to load test results for job unit (#{unit_id}): " \
+                      "CircleCI API returned invalid JSON Lines.\n").to_stderr
+      end
+    end
   end
 
   it 'rejects an invalid run ID without prompting for a token or requesting the API' do
