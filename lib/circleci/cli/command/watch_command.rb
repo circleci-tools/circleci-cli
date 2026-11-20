@@ -98,7 +98,7 @@ module CircleCI
             end
             title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
             puts Printer::BuildPrinter.header_for(build, title)
-            puts Printer::StepPrinter.new(detail.steps, pretty: @options.verbose)
+            puts Printer::StepPrinter.new(detail.steps, pretty: @options.verbose, verbose: @options.verbose)
             @repository.mark_as_shown(build.build_number)
           end
         end

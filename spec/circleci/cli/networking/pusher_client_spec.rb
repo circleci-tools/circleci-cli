@@ -173,16 +173,26 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#unsubscribe' do
-    subject { described_class.new(token: 'token').unsubscribe(channel) }
+    subject(:unsubscribe) { client.unsubscribe(channel) }
 
+    let(:client) { described_class.new(token: 'token') }
     let(:mock_socket) { double('socket') }
     let(:channel) { 'channel' }
 
+    before do
+      allow(client).to receive(:socket).and_return(mock_socket)
+    end
+
     it 'unsubscribes channel' do
-      allow_any_instance_of(described_class).to receive(:socket) { mock_socket }
       expect(mock_socket).to receive(:unsubscribe).with(channel)
 
-      subject
+      unsubscribe
+    end
+
+    it 'handles a socket closing during unsubscribe' do
+      allow(mock_socket).to receive(:unsubscribe).with(channel).and_raise(IOError)
+
+      expect(unsubscribe).to be_nil
     end
   end
 end
