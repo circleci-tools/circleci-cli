@@ -42,13 +42,9 @@ describe CircleCI::CLI::Command::BuildRepository do
     it { is_expected.to match_array [build] }
 
     it 'updates builds from the branch endpoint when a branch is specified' do
-      expect(CircleCI::CLI::Response::Build).to receive(:all)
-        .with(build.username, build.reponame)
-        .ordered
-        .and_return([build])
       expect(CircleCI::CLI::Response::Build).to receive(:branch)
         .with(build.username, build.reponame, 'master')
-        .ordered
+        .twice
         .and_return([build])
 
       repository = described_class.new(build.username, build.reponame, branch: 'master')
@@ -56,20 +52,21 @@ describe CircleCI::CLI::Command::BuildRepository do
       expect(repository.update).to match_array([build])
     end
 
-    it 'encodes the branch in the refresh request and matches builds against the original name' do
+    it 'encodes the branch at startup and on refresh while matching the original name' do
       http = instance_double(Net::HTTP)
       allow(Net::HTTP).to receive(:new).and_return(http)
       allow(http).to receive(:start).and_yield(http)
       allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_call_original
       path = "/api/v1.1/project/github/#{build.username}/#{build.reponame}/tree/release%231"
-      payload = build_hash.merge('branch' => 'release#1', 'build_num' => 1235)
+      payload = build_hash.merge('branch' => 'release#1', 'build_num' => 1235, 'status' => 'running')
+      response = instance_double(Net::HTTPOK, code: '200', body: JSON.generate([payload]))
       expect(http).to receive(:request).with(having_attributes(uri: having_attributes(path: path)), nil)
-                                       .and_return(instance_double(Net::HTTPOK, code: '200', body: JSON.generate([payload])))
+                                       .twice.and_return(response)
 
       repository = described_class.new(build.username, build.reponame, branch: 'release#1')
-      repository.update
-
-      expect(repository.builds_to_show).to contain_exactly(having_attributes(branch: 'release#1', build_number: 1235))
+      matching_build = having_attributes(branch: 'release#1', build_number: 1235)
+      expect(repository.builds_to_show).to contain_exactly(matching_build)
+      expect(repository.update).to contain_exactly(matching_build)
     end
 
     it 'bounds retained builds and shown IDs as a fixed-size window advances' do

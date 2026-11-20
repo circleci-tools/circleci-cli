@@ -61,6 +61,9 @@ module CircleCI
         end
 
         def finished?
+          lifecycle = @hash['lifecycle']
+          return lifecycle == 'finished' unless lifecycle.nil?
+
           %w[success canceled failed no_tests].include?(status)
         end
 
@@ -72,31 +75,16 @@ module CircleCI
           "#{username}/#{reponame}"
         end
 
-        def information
-          [
-            build_number,
-            status,
-            branch,
-            author_name,
-            (@hash['subject'] || '').slice(0..60),
-            format_time(@hash['build_time_millis']),
-            start_time
-          ]
+        def subject
+          @hash['subject']
+        end
+
+        def build_time_millis
+          @hash['build_time_millis']
         end
 
         def steps
-          hash = @hash['steps']&.group_by { |s| s['actions'].first['type'] } || {}
-          hash.flat_map { |type, value| value.map { |v| Step.new(type, v) } }
-        end
-
-        private
-
-        def format_time(time)
-          return '' unless time
-
-          minute = format('%<time>02d', time: time / 1000 / 60)
-          second = format('%<time>02d', time: (time / 1000) % 60)
-          "#{minute}:#{second}"
+          (@hash['steps'] || []).map { |step| Step.new(step['actions'].first['type'], step) }
         end
       end
     end
