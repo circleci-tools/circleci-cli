@@ -21,7 +21,10 @@ module CircleCI
         end
 
         def log
-          log_records.map do |result|
+          output_url = @hash['output_url']
+          return if output_url.nil? || output_url.empty?
+
+          log_records(output_url).map do |result|
             result['message'].gsub("\r\n", "\n").gsub("\e[A\r\e[2K", '')
           end.join("\n")
         end
@@ -32,8 +35,8 @@ module CircleCI
 
         private
 
-        def log_records
-          response = Networking::HTTPClient.get_raw(@hash['output_url'])
+        def log_records(output_url)
+          response = Networking::HTTPClient.get_raw(output_url)
           return JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
 
           raise Thor::Error, "Action log download failed (HTTP #{response.code})"

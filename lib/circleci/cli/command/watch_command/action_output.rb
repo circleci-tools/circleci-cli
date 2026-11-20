@@ -13,8 +13,7 @@ module CircleCI
         def initialize(url)
           @url = url
           @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          reset_output_tail
         end
 
         def read(&write)
@@ -62,6 +61,10 @@ module CircleCI
         def flush_output(&write)
           write_escaped_output(@output_suffix, &write)
           write.call("\n") if @needs_newline
+          reset_output_tail
+        end
+
+        def reset_output_tail
           @output_suffix = ''.b
           @needs_newline = false
         end
