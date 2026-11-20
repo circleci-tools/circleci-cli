@@ -45,6 +45,35 @@ describe CircleCI::CLI::Runner, 'run' do
     expect { described_class.start(['run', run_id]) }.to output(expected).to_stdout
   end
 
+  it 'escapes terminal controls in the title and job rows' do
+    run = fixtures.fetch('run')
+    run.fetch('data').fetch('attributes').merge!('number' => "123\r", 'phase' => "started\t")
+    workflows = fixtures.fetch('workflows_first_page')
+    workflows.fetch('page')['next'] = nil
+    workflow = workflows.fetch('data').first
+    workflow.fetch('attributes')['name'] = "checks\r"
+    jobs = fixtures.fetch('checks_jobs')
+    jobs.fetch('data').first.fetch('attributes').merge!(
+      'name' => "test\e", 'outcome' => "failed\n", 'number' => "42\b"
+    )
+    stub_get("runs/#{run_id}", run)
+    stub_get(workflows_path, workflows)
+    stub_get("jobs?filter%5Bworkflow_id%5D=#{workflow.fetch('id')}", jobs)
+
+    expected = <<~'TABLE'
+      +-------------------------------------------------+
+      |           Run #123\x0D (started\x09)            |
+      +------------+----------+------------+------------+
+      | Workflow   | Job      | Status     | Job Number |
+      +------------+----------+------------+------------+
+      | checks\x0D | test\x1B | failed\x0A | 42\x08     |
+      | checks\x0D | lint     | running    | 43         |
+      +------------+----------+------------+------------+
+    TABLE
+
+    expect { described_class.start(['run', run_id]) }.to output(expected).to_stdout
+  end
+
   it 'reports an empty run' do
     stub_get("runs/#{run_id}", fixtures.fetch('run'))
     stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
@@ -112,6 +141,17 @@ describe CircleCI::CLI::Runner, 'run' do
     end.to output("CircleCI API error (HTTP 503): Jobs unavailable\n").to_stderr
   end
 
+  it 'rejects an invalid run ID without prompting for a token or requesting the API' do
+    expect(CircleCI::CLI::Command::RunCommand).not_to receive(:setup_token)
+    expect(client).not_to receive(:get_raw)
+
+    expect do
+      expect { described_class.start(%w[run 123]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).to eq(1)
+      }
+    end.to output("Run ID must be a UUID.\n").to_stderr
+  end
+
   it 'reports API failures on stderr and exits unsuccessfully' do
     stub_get("runs/#{run_id}", { 'error' => { 'detail' => 'Run not found' } },
              response_class: Net::HTTPNotFound, code: '404')
@@ -133,6 +173,28 @@ describe CircleCI::CLI::Runner, 'run' do
         expect(error.status).not_to be_zero
       }
     end.to output("CircleCI API returned invalid JSON.\n").to_stderr
+  end
+
+  context 'when a request times out' do
+    let(:run_path) { "runs/#{run_id}" }
+
+    {
+      Net::OpenTimeout => ['connection timed out', :run_path],
+      Net::ReadTimeout => ['read timed out', :workflows_path]
+    }.each do |exception, (message, path)|
+      it "reports #{exception} on stderr and exits unsuccessfully" do
+        stub_get(run_path, fixtures.fetch('run')) if path == :workflows_path
+        url = "https://circleci.com/api/v3/#{public_send(path)}"
+        timeout = exception.new(message)
+        allow(client).to receive(:get_raw).with(url, headers).and_raise(timeout)
+
+        expect do
+          expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+            expect(error.status).not_to be_zero
+          }
+        end.to output("CircleCI API request failed (GET #{url}): #{timeout.message}\n").to_stderr
+      end
+    end
   end
 
   it 'reports the HTTP status when an API failure has an invalid JSON body' do

@@ -22,13 +22,19 @@ module CircleCI
         def summary(run_id)
           run = get("runs/#{run_id}").fetch('data').fetch('attributes')
           status = run['current_outcome'] || run.fetch('phase')
-          rows = fetch_workflow_rows(workflows(run_id))
-          rows << ['No workflows found', '-', '-', '-'] if rows.empty?
-          Terminal::Table.new(title: "Run ##{run.fetch('number')} (#{status})",
-                              headings: ['Workflow', 'Job', 'Status', 'Job Number'], rows:).to_s
+          title = Printer.escape_controls("Run ##{run.fetch('number')} (#{status})")
+          Terminal::Table.new(title:,
+                              headings: ['Workflow', 'Job', 'Status', 'Job Number'], rows: summary_rows(run_id)).to_s
         end
 
         private
+
+        def summary_rows(run_id)
+          rows = fetch_workflow_rows(workflows(run_id))
+          return [['No workflows found', '-', '-', '-']] if rows.empty?
+
+          rows.map { |row| row.map { |cell| Printer.escape_controls(cell) } }
+        end
 
         def fetch_workflow_rows(workflows)
           pending = Queue.new
@@ -91,6 +97,9 @@ module CircleCI
           raise Thor::Error, api_error(response)
         rescue JSON::ParserError
           raise Thor::Error, 'CircleCI API returned invalid JSON.'
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
+               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE => e
+          raise Thor::Error, "CircleCI API request failed (GET #{url}): #{e.message}"
         end
 
         def api_error(response)

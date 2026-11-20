@@ -83,9 +83,11 @@ describe CircleCI::CLI::Command::BuildWatcher do
 
     {
       'canceled' => 'was canceled.',
-      'no_tests' => 'ran no tests.'
+      'no_tests' => 'ran no tests.',
+      'retried' => 'finished (status: retried).',
+      nil => 'finished (status: unknown).'
     }.each do |terminal_status, outcome|
-      context "when status is #{terminal_status}" do
+      context "when status is #{terminal_status.inspect}" do
         let(:status) { terminal_status }
         let(:message) { "unhappychoice/default_reponame_from_api #1234 #{outcome}" }
 

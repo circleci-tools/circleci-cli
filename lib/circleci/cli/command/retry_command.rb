@@ -8,9 +8,12 @@ module CircleCI
           def run(options)
             setup_token
             username, reponame = project_name(options).split('/')
-            number = build_number_for(username, reponame, options)
-            return say 'No failed build found.' if options.last && number.nil?
+            with_build_number(username, reponame, options) { |number| retry_build(username, reponame, number) }
+          end
 
+          private
+
+          def retry_build(username, reponame, number)
             build = Response::Build.retry(username, reponame, number)
 
             if build&.username
@@ -18,20 +21,6 @@ module CircleCI
             else
               puts "failed to trigger #{username}/#{reponame} #{number}"
             end
-          end
-
-          private
-
-          def build_number_for(username, reponame, options)
-            if options.last
-              get_last_build_number(username, reponame)
-            else
-              build_number(options)
-            end
-          end
-
-          def get_last_build_number(username, reponame)
-            Response::Build.failed(username, reponame).map(&:build_number).max
           end
         end
       end

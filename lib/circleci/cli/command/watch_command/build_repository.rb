@@ -10,17 +10,13 @@ module CircleCI
           @reponame = reponame
           @branch = branch
           @mutex = Mutex.new
-          @builds = Response::Build.all(@username, @reponame)
+          @builds = fetch_builds
           @recent_build_numbers = @builds.to_set(&:build_number)
           @build_numbers_shown = @builds.select(&:finished?).to_set(&:build_number)
         end
 
         def update
-          response = if @branch
-                       Response::Build.branch(@username, @reponame, @branch)
-                     else
-                       Response::Build.all(@username, @reponame)
-                     end
+          response = fetch_builds
 
           @mutex.synchronize { retain_builds(response) }
         end
@@ -51,8 +47,21 @@ module CircleCI
           @mutex.synchronize { @builds.select { |build| pending?(build) }.sort_by(&:build_number) }
         end
 
-        def build_for(build_number)
-          @mutex.synchronize { find_build(build_number) }
+        def refresh_evicted_builds
+          @mutex.synchronize do
+            details = @builds.select { |build| evicted_pending?(build) }.to_h do |build|
+              number = build.build_number
+              [number, Response::Build.get(@username, @reponame, number)]
+            end
+            @builds.map! { |build| details.fetch(build.build_number, build) }
+            details
+          end
+        end
+
+        def build_for(build_number, recent_only: false)
+          @mutex.synchronize do
+            find_build(build_number) if !recent_only || @recent_build_numbers.include?(build_number)
+          end
         end
 
         private
@@ -75,8 +84,18 @@ module CircleCI
             (@user.nil? || build.user == @user)
         end
 
+        def evicted_pending?(build)
+          !@recent_build_numbers.include?(build.build_number) && pending?(build)
+        end
+
         def find_build(build_number)
           @builds.find { |build| build.build_number == build_number }
+        end
+
+        def fetch_builds
+          return Response::Build.branch(@username, @reponame, @branch) if @branch
+
+          Response::Build.all(@username, @reponame)
         end
       end
     end
