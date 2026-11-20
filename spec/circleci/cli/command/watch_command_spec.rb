@@ -150,6 +150,37 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.run(options)
     end
 
+    it 'reports polled completion once and starts the next build without an account notification' do
+      response = CircleCI::CLI::Response::Build
+      attributes = {
+        'username' => 'user', 'reponame' => 'repo', 'branch' => 'main', 'user' => { 'login' => 'octocat' }
+      }
+      first = response.new(attributes.merge('build_num' => 42, 'status' => 'running'))
+      second = response.new(attributes.merge('build_num' => 43, 'status' => 'running'))
+      finished = response.new(attributes.merge('build_num' => 42, 'status' => 'success', 'lifecycle' => 'finished'))
+      watcher_class = CircleCI::CLI::Command::BuildWatcher
+      first_watcher = watcher_class.new(first)
+      second_watcher = watcher_class.new(second)
+      allow(watcher_class).to receive(:new).with(first, verbose: true).and_return(first_watcher)
+      allow(watcher_class).to receive(:new).with(second, verbose: true).and_return(second_watcher)
+      allow(first_watcher).to receive(:poll_build)
+      allow(second_watcher).to receive(:poll_build)
+
+      expect(client).to receive(:bind).with('private-pusher-id', 'call')
+      expect(response).to receive(:branch).with('user', 'repo', 'main').once.and_return([first, second])
+      allow(response).to receive(:get).with('user', 'repo', 42).and_return(first, finished)
+      expect(described_class).to receive(:sleep).with(1).twice.ordered { first_watcher.send(:update_build) }
+      expect(described_class).to receive(:sleep).with(1).ordered
+      expect(described_class).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+
+      result = 'user/repo #42 has succeeded!'
+      expected_output = satisfy('report success once before starting the next build') do |output|
+        output.scan('Start watching user/repo #42').size == 1 && output.scan(result).size == 1 &&
+          output.match?(%r{Start watching user/repo #42.*#{Regexp.escape(result)}.*Start watching user/repo #43}m)
+      end
+      expect { described_class.run(options) }.to output(expected_output).to_stdout
+    end
+
     {
       'timedout' => 'timed out.',
       'infrastructure_fail' => 'failed due to an infrastructure error.',
