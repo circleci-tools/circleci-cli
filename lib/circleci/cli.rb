@@ -64,16 +64,23 @@ module CircleCI
           return "/#{scp[1]}" if scp
 
           uri = URI.parse(remote)
+          return if uri.query || uri.fragment
+
           uri.path if github_uri?(uri)
         rescue URI::InvalidURIError
           nil
         end
 
         def github_uri?(uri)
-          return false unless uri.host&.casecmp?('github.com')
-          return false if uri.query || uri.fragment
+          case uri.host&.downcase
+          when 'github.com' then uri.scheme == 'https' || github_ssh_uri?(uri)
+          when 'ssh.github.com' then uri.port == 443 && github_ssh_uri?(uri)
+          else false
+          end
+        end
 
-          uri.scheme == 'https' || (uri.scheme == 'ssh' && uri.userinfo == 'git')
+        def github_ssh_uri?(uri)
+          uri.scheme == 'ssh' && uri.userinfo == 'git'
         end
       end
 

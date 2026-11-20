@@ -11,26 +11,25 @@ module CircleCI
           @logger = logger
           @hs = WebSocket::Handshake::Client.new(url: url)
           @frame = WebSocket::Frame::Incoming::Server.new(version: @hs.version)
-          @socket = connect_tls(cert_file || CA_FILE)
+          @cert_file = cert_file || CA_FILE
+        end
+
+        def connect
+          connect_tls
           handshake
-        rescue StandardError
-          @socket&.close
-          raise
         end
 
         private
 
-        def connect_tls(cert_file)
+        def connect_tls
           context = OpenSSL::SSL::SSLContext.new
-          context.set_params(ca_file: cert_file, verify_mode: OpenSSL::SSL::VERIFY_PEER, verify_hostname: true)
-          tcp = TCPSocket.new(@hs.host, @hs.port || 443)
-          tls = OpenSSL::SSL::SSLSocket.new(tcp, context)
+          context.set_params(ca_file: @cert_file, verify_mode: OpenSSL::SSL::VERIFY_PEER, verify_hostname: true)
+          @socket = TCPSocket.new(@hs.host, @hs.port || 443)
+          tls = OpenSSL::SSL::SSLSocket.new(@socket, context)
           tls.sync_close = true
+          @socket = tls
           tls.hostname = @hs.host
           tls.connect
-        rescue StandardError
-          tcp&.close
-          raise
         end
 
         def handshake
