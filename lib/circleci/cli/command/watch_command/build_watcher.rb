@@ -28,15 +28,15 @@ module CircleCI
           @build = build
           @verbose = verbose
           @messages = {}
+          @retained_log_bytes = 0
 
-          @build_thread = nil
           @poll_lock = Mutex.new
+          @state_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
           @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          reset_output_buffer
         end
 
         def start
@@ -45,16 +45,17 @@ module CircleCI
         end
 
         def latest_detail
-          @poll_lock.synchronize { @latest_detail }
+          @state_lock.synchronize { @latest_detail }
         end
 
         def poll_error
-          @poll_lock.synchronize { @poll_error }
+          @state_lock.synchronize { @poll_error }
         end
 
         def stop(status)
           @poll_lock.synchronize do
-            raise @poll_error if @poll_error
+            error = poll_error
+            raise error if error
 
             stop_polling
           end
@@ -69,6 +70,7 @@ module CircleCI
         ensure
           @messages.each_value(&:close)
           @messages.clear
+          @retained_log_bytes = 0
         end
 
         private
@@ -92,7 +94,7 @@ module CircleCI
               next_build_poll = refresh_live_build(count) if count >= next_build_poll
               update_actions
             end
-            break if @poll_error
+            break if poll_error
 
             sleep 1
           end
@@ -110,7 +112,7 @@ module CircleCI
                  Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
             # Resume on the next poll with the last consumed byte offset.
           rescue StandardError => e
-            @poll_error = e
+            @state_lock.synchronize { @poll_error = e }
           end
         end
 
@@ -144,7 +146,10 @@ module CircleCI
           log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
-          log&.close
+          if log
+            log.close
+            @retained_log_bytes -= log.bytesize
+          end
           @messages.delete(key)
         end
 
@@ -155,7 +160,7 @@ module CircleCI
         def update_build(stopping: false)
           detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
-          @latest_detail = detail
+          @state_lock.synchronize { @latest_detail = detail }
         end
 
         def update_steps(steps, stopping:)
@@ -185,10 +190,9 @@ module CircleCI
         end
 
         def finish_action_output?
-          return true if 2.times.any? { update_actions }
-
+          complete = 2.times.any? { update_actions }
           flush_output
-          false
+          complete
         end
 
         def update_actions
@@ -199,7 +203,6 @@ module CircleCI
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
           Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response) }
-          flush_output if complete
           complete
         rescue *OUTPUT_READ_ERRORS
           false
@@ -223,7 +226,7 @@ module CircleCI
         end
 
         def stream_output(chunk)
-          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          # Retain a partial UTF-8 character or CRLF across chunks and polls.
           text = @output_suffix + chunk
           @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
           write_escaped_output(text)
@@ -231,7 +234,11 @@ module CircleCI
 
         def flush_output
           write_escaped_output(@output_suffix)
-          write_output("\n") if @needs_newline && !@verbose
+          write_output("\n") if @needs_newline
+          reset_output_buffer
+        end
+
+        def reset_output_buffer
           @output_suffix = ''.b
           @needs_newline = false
         end
@@ -247,9 +254,15 @@ module CircleCI
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+              retain_output(chunk)
             end
           end
+        end
+
+        def retain_output(chunk)
+          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+          remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
+          @retained_log_bytes += log.append(chunk, remaining:)
         end
 
         def notify_started

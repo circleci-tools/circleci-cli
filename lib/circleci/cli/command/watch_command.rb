@@ -65,9 +65,9 @@ module CircleCI
             error = @build_watcher.poll_error
             raise error if error
 
-            build = @repository.build_for(@build_watcher.build.build_number, recent_only: true) ||
-                    @build_watcher.latest_detail
-            return if build.nil? || !build.finished?
+            build = @repository.build_for(@build_watcher.build.build_number, recent_only: true)
+            build = @build_watcher.latest_detail unless build&.finished?
+            return unless build&.finished?
 
             @build_watcher.stop(build.status)
             @repository.mark_as_shown(build.build_number)
@@ -77,25 +77,26 @@ module CircleCI
           def start_watcher_if_needed
             return unless @build_watcher.nil?
 
+            details = @repository.refresh_evicted_builds
             builds = @repository.builds_to_show
-            return if builds.empty?
-
             candidate = builds.find { |build| !build.finished? && build.running? }
             build_to_watch = @repository.watch(candidate.build_number) if candidate
-            show_interrupted_build_results
+            show_interrupted_build_results(builds, details)
             return unless build_to_watch
 
             @build_watcher = BuildWatcher.new(build_to_watch, verbose: @options.verbose)
             @build_watcher.start
           end
 
-          def show_interrupted_build_results # rubocop:disable Metrics/AbcSize
-            @repository.builds_to_show.select(&:finished?).each do |build|
-              b = Response::Build.get(build.username, build.reponame, build.build_number)
+          def show_interrupted_build_results(builds, details) # rubocop:disable Metrics/AbcSize
+            builds.select(&:finished?).each do |build|
+              detail = details.fetch(build.build_number) do
+                Response::Build.get(build.username, build.reponame, build.build_number)
+              end
               title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
               puts Printer::BuildPrinter.header_for(build, title)
-              puts Printer::StepPrinter.new(b.steps, pretty: @options.verbose)
-              @repository.mark_as_shown(b.build_number)
+              puts Printer::StepPrinter.new(detail.steps, pretty: @options.verbose)
+              @repository.mark_as_shown(build.build_number)
             end
           end
         end
