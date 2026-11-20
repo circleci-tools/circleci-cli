@@ -33,6 +33,7 @@ describe CircleCI::CLI::Runner do
     {
       'https://GITHUB.COM/user/repository' => 'user/repository',
       'ssh://git@github.com:22/user/example.com.git' => 'user/example.com',
+      'ssh://git@ssh.github.com:443/user/example.com.git' => 'user/example.com',
       'https://github.com/user/repository.git.git' => 'user/repository.git'
     }.each do |remote, slug|
       context "with #{remote} as origin" do
@@ -54,6 +55,11 @@ describe CircleCI::CLI::Runner do
       'https://github.com/user/repository.git?query',
       'ssh://git@github.com/user/repository.git#fragment',
       'ssh://git@github.com/user/..',
+      'ssh://git@ssh.github.com/user/repository.git',
+      'ssh://git@ssh.github.com:22/user/repository.git',
+      'ssh://other@ssh.github.com:443/user/repository.git',
+      'https://git@ssh.github.com:443/user/repository.git',
+      'ssh://git@ssh.github.com.example.org:443/user/repository.git',
       'git@github.com:user/repository%2Fother.git',
       "git@github.com:user/repository.git\nignored"
     ].each do |remote|
@@ -189,6 +195,20 @@ describe CircleCI::CLI::Runner do
       )
 
       described_class.start(%w[builds])
+    end
+
+    context 'with a GitHub SSH-over-HTTPS origin' do
+      let(:rugged_response_remote_url) { 'ssh://git@ssh.github.com:443/owner/repo.git' }
+
+      it 'requests builds for the inferred project without prompting' do
+        allow(CircleCI::CLI::Command::BuildsCommand).to receive(:setup_token)
+        expect(CircleCI::CLI::Command::BuildsCommand).not_to receive(:ask)
+        expect(CircleCI::CLI::Response::Project).not_to receive(:all)
+        expect(CircleCI::CLI::Response::Build).to receive(:branch)
+          .with('owner', 'repo', rugged_response_branch_name).and_return([])
+
+        expect { described_class.start(%w[builds]) }.to output.to_stdout
+      end
     end
 
     it 'skips branch inference with --all' do
