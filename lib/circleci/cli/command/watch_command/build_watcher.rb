@@ -171,10 +171,9 @@ module CircleCI
         end
 
         def finish_action_output?
-          return true if 2.times.any? { update_actions }
-
+          complete = 2.times.any? { update_actions }
           flush_output
-          false
+          complete
         end
 
         def update_actions
@@ -185,7 +184,6 @@ module CircleCI
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
           Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response) }
-          flush_output if complete
           complete
         rescue *OUTPUT_READ_ERRORS
           false
@@ -209,7 +207,7 @@ module CircleCI
         end
 
         def stream_output(chunk)
-          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          # Retain a partial UTF-8 character or CRLF across chunks and polls.
           text = @output_suffix + chunk
           @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
           write_escaped_output(text)
@@ -217,7 +215,7 @@ module CircleCI
 
         def flush_output
           write_escaped_output(@output_suffix)
-          write_output("\n") if @needs_newline && !@verbose
+          write_output("\n") if @needs_newline
           @output_suffix = ''.b
           @needs_newline = false
         end

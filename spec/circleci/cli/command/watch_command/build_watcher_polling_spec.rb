@@ -208,7 +208,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           expect(request['Range']).to eq('bytes=13-')
           read_response.call(response)
         end
-        expect_output_response(13, "final output\n")
+        expect_output_response(13, 'final output')
 
         expect do
           watcher.start
@@ -381,7 +381,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       messages = watcher.instance_variable_get(:@messages)
       expect(messages.keys).to eq([[1, 2]])
-      expect { messages.values.first.write_to($stdout) }.to output("#{escaped_log_output}\n").to_stdout
+      expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output).to_stdout
     ensure
       watcher.close
     end
@@ -413,6 +413,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
     end
 
+    it 'replays split lines intact and terminates the final line after an empty response' do
+      expect_output_response(0, 'hel')
+      expect_output_response(3, "lo\r")
+      expect_output_response(6, "\nlast line")
+      3.times { watcher.send(:update_actions) }
+      finish_step('failed', final_offset: 16)
+
+      expect { watcher.send(:update_build) }.to output("hello\nlast line\n").to_stdout
+    end
+
     it 'streams a single large response to disk and replays it once after failure' do
       expect_output_response(0, first_chunk, second_chunk, last_chunk)
       watcher.send(:update_actions)
@@ -437,7 +447,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect do
         watcher.send(:update_build)
         watcher.send(:update_build)
-      end.to output("#{first_chunk}\n#{second_chunk}#{last_chunk}").to_stdout
+      end.to output("#{first_chunk}#{second_chunk}#{last_chunk}").to_stdout
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
     end
