@@ -36,8 +36,7 @@ module CircleCI
           @steps = build.steps
           @current_step = nil
           @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          reset_output_buffer
         end
 
         def start
@@ -221,6 +220,10 @@ module CircleCI
         def flush_output
           write_escaped_output(@output_suffix)
           write_output("\n") if @needs_newline
+          reset_output_buffer
+        end
+
+        def reset_output_buffer
           @output_suffix = ''.b
           @needs_newline = false
         end
