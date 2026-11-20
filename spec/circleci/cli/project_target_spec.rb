@@ -39,14 +39,19 @@ describe CircleCI::CLI::Runner, type: :command do
     end
   end
 
-  context 'with a malformed GitHub origin' do
-    let(:rugged_response_remote_url) { 'https://github.com/owner/repo/extra.git' }
+  [
+    'https://github.com/owner/repo/extra.git',
+    'ssh://git@github.com:22/owner/repo/extra.git'
+  ].each do |remote|
+    context "with #{remote} as origin" do
+      let(:rugged_response_remote_url) { remote }
 
-    it 'rejects the inferred target before opening the browser' do
-      expect(CircleCI::CLI::Command::BrowseCommand).not_to receive(:ask)
-      expect(Launchy).not_to receive(:open)
+      it 'rejects the inferred target before opening the browser' do
+        expect(CircleCI::CLI::Command::BrowseCommand).not_to receive(:ask)
+        expect(Launchy).not_to receive(:open)
 
-      expect_project_error(%w[browse])
+        expect_project_error(%w[browse])
+      end
     end
   end
 

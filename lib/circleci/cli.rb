@@ -9,6 +9,7 @@ require 'rugged'
 require 'terminal-notifier'
 require 'terminal-table'
 require 'thor'
+require 'uri'
 
 require 'circleci/cli/version'
 require 'circleci/cli/command'
@@ -27,10 +28,10 @@ module CircleCI
           true
         end
 
-        def project
+        def project(validate_on_dispatch: false)
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
-          origin&.url&.[](%r{\A(?:git@github\.com:|https://github\.com/)(.*?)(?:\.git)*\z}, 1)
+          github_project(origin.url, validate_on_dispatch:) if origin&.url
         rescue Rugged::RepositoryError
           nil
         end
@@ -44,6 +45,35 @@ module CircleCI
           head.name.sub(%r{\Arefs/heads/}, '')
         rescue Rugged::RepositoryError, Rugged::ReferenceError
           nil
+        end
+
+        private
+
+        def github_project(remote, validate_on_dispatch:)
+          path = github_remote_path(remote)&.delete_suffix('.git')
+          return path&.delete_prefix('/') if validate_on_dispatch
+
+          return unless path&.match?(%r{\A/[\w-]+/[.\w-]+\z})
+          return if %w[. ..].include?(File.basename(path))
+
+          path.delete_prefix('/')
+        end
+
+        def github_remote_path(remote)
+          scp = /\Agit@github\.com:(.+)\z/i.match(remote)
+          return "/#{scp[1]}" if scp
+
+          uri = URI.parse(remote)
+          uri.path if github_uri?(uri)
+        rescue URI::InvalidURIError
+          nil
+        end
+
+        def github_uri?(uri)
+          return false unless uri.host&.casecmp?('github.com')
+          return false if uri.query || uri.fragment
+
+          uri.scheme == 'https' || (uri.scheme == 'ssh' && uri.userinfo == 'git')
         end
       end
 
@@ -173,7 +203,7 @@ module CircleCI
 
       def git_options(infer_branch: false)
         defaults = {}
-        defaults[:project] = self.class.project unless options.key?(:project)
+        defaults[:project] = self.class.project(validate_on_dispatch: true) unless options.key?(:project)
         defaults[:branch] = self.class.branch_name if infer_branch && !options[:all] && !options.key?(:branch)
         options.merge(defaults)
       end

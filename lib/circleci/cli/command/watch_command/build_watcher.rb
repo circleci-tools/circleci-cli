@@ -28,15 +28,13 @@ module CircleCI
           @build = build
           @verbose = verbose
           @messages = {}
+          @retained_log_bytes = 0
 
-          @build_thread = nil
           @poll_lock = Mutex.new
+          @detail_lock = Mutex.new
 
           @steps = build.steps
-          @current_step = nil
-          @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          initialize_output_state
         end
 
         def start
@@ -45,7 +43,7 @@ module CircleCI
         end
 
         def latest_detail
-          @poll_lock.synchronize { @latest_detail }
+          @detail_lock.synchronize { @latest_detail }
         end
 
         def stop(status)
@@ -61,9 +59,17 @@ module CircleCI
         ensure
           @messages.each_value(&:close)
           @messages.clear
+          @retained_log_bytes = 0
         end
 
         private
+
+        def initialize_output_state
+          @current_step = nil
+          @read_byte = 0
+          @output_suffix = ''.b
+          @needs_newline = false
+        end
 
         def stop_polling
           Thread.handle_interrupt(Interrupt => :never) do
@@ -130,7 +136,10 @@ module CircleCI
           log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
-          log&.close
+          if log
+            log.close
+            @retained_log_bytes -= log.bytesize
+          end
           @messages.delete(key)
         end
 
@@ -141,7 +150,7 @@ module CircleCI
         def update_build(stopping: false)
           detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
-          @latest_detail = detail
+          @detail_lock.synchronize { @latest_detail = detail }
         end
 
         def update_steps(steps, stopping:)
@@ -171,10 +180,9 @@ module CircleCI
         end
 
         def finish_action_output?
-          return true if 2.times.any? { update_actions }
-
+          complete = 2.times.any? { update_actions }
           flush_output
-          false
+          complete
         end
 
         def update_actions
@@ -185,7 +193,6 @@ module CircleCI
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
           Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response) }
-          flush_output if complete
           complete
         rescue *OUTPUT_READ_ERRORS
           false
@@ -209,7 +216,7 @@ module CircleCI
         end
 
         def stream_output(chunk)
-          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          # Retain a partial UTF-8 character or CRLF across chunks and polls.
           text = @output_suffix + chunk
           @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
           write_escaped_output(text)
@@ -217,7 +224,7 @@ module CircleCI
 
         def flush_output
           write_escaped_output(@output_suffix)
-          write_output("\n") if @needs_newline && !@verbose
+          write_output("\n") if @needs_newline
           @output_suffix = ''.b
           @needs_newline = false
         end
@@ -233,9 +240,15 @@ module CircleCI
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+              retain_output(chunk)
             end
           end
+        end
+
+        def retain_output(chunk)
+          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+          remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
+          @retained_log_bytes += log.append(chunk, remaining:)
         end
 
         def notify_started
