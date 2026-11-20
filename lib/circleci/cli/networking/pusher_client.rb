@@ -40,8 +40,9 @@ module CircleCI
         end
 
         def auth(socket_id, channel)
-          res = HTTPClient.post_form("https://circleci.com/auth/pusher?circle-token=#{@token}",
-                                     { socket_id: socket_id, channel_name: channel.name })
+          res = HTTPClient.post_form('https://circleci.com/auth/pusher',
+                                     { socket_id: socket_id, channel_name: channel.name },
+                                     { 'Circle-Token' => @token })
           res['auth']
         end
       end
