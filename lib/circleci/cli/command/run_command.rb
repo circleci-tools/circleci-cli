@@ -21,13 +21,19 @@ module CircleCI
         def summary(run_id)
           run = get("runs/#{run_id}").fetch('data').fetch('attributes')
           status = run['current_outcome'] || run.fetch('phase')
-          rows = workflows(run_id).flat_map { |workflow| workflow_rows(workflow) }
-          rows << ['No workflows found', '-', '-', '-'] if rows.empty?
-          Terminal::Table.new(title: "Run ##{run.fetch('number')} (#{status})",
-                              headings: ['Workflow', 'Job', 'Status', 'Job Number'], rows:).to_s
+          title = Printer.escape_controls("Run ##{run.fetch('number')} (#{status})")
+          Terminal::Table.new(title:,
+                              headings: ['Workflow', 'Job', 'Status', 'Job Number'], rows: summary_rows(run_id)).to_s
         end
 
         private
+
+        def summary_rows(run_id)
+          rows = workflows(run_id).flat_map { |workflow| workflow_rows(workflow) }
+          return [['No workflows found', '-', '-', '-']] if rows.empty?
+
+          rows.map { |row| row.map { |cell| Printer.escape_controls(cell) } }
+        end
 
         def workflows(run_id)
           query = { 'filter[run_id]' => run_id }

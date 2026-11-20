@@ -44,6 +44,35 @@ describe CircleCI::CLI::Runner, 'run' do
     expect { described_class.start(['run', run_id]) }.to output(expected).to_stdout
   end
 
+  it 'escapes terminal controls in the title and job rows' do
+    run = fixtures.fetch('run')
+    run.fetch('data').fetch('attributes').merge!('number' => "123\r", 'phase' => "started\t")
+    workflows = fixtures.fetch('workflows_first_page')
+    workflows.fetch('page')['next'] = nil
+    workflow = workflows.fetch('data').first
+    workflow.fetch('attributes')['name'] = "checks\r"
+    jobs = fixtures.fetch('checks_jobs')
+    jobs.fetch('data').first.fetch('attributes').merge!(
+      'name' => "test\e", 'outcome' => "failed\n", 'number' => "42\b"
+    )
+    stub_get("runs/#{run_id}", run)
+    stub_get(workflows_path, workflows)
+    stub_get("jobs?filter%5Bworkflow_id%5D=#{workflow.fetch('id')}", jobs)
+
+    expected = <<~'TABLE'
+      +-------------------------------------------------+
+      |           Run #123\x0D (started\x09)            |
+      +------------+----------+------------+------------+
+      | Workflow   | Job      | Status     | Job Number |
+      +------------+----------+------------+------------+
+      | checks\x0D | test\x1B | failed\x0A | 42\x08     |
+      | checks\x0D | lint     | running    | 43         |
+      +------------+----------+------------+------------+
+    TABLE
+
+    expect { described_class.start(['run', run_id]) }.to output(expected).to_stdout
+  end
+
   it 'reports an empty run' do
     stub_get("runs/#{run_id}", fixtures.fetch('run'))
     stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
