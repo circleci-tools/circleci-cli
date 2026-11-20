@@ -149,22 +149,24 @@ module CircleCI
           notify_step_changes(steps)
           @steps = steps
           @current_step = next_step
-          refresh_action_outputs(next_step.actions, continuing: true) if next_step && !continuing
+          return unless next_step && !continuing
+
+          refresh_action_outputs(next_step.actions, key: step_key(next_step), continuing: true)
         end
 
         def refresh_current_step(steps, next_step)
           key = step_key(@current_step)
           continuing = next_step && step_key(next_step) == key
           updated_step = continuing ? next_step : steps.find { |step| step_key(step) == key }
-          refresh_action_outputs(updated_step&.actions || [], continuing:)
+          refresh_action_outputs(updated_step&.actions || [], key:, continuing:)
           @action_outputs.clear unless continuing
           continuing
         end
 
-        def refresh_action_outputs(actions, continuing:)
+        def refresh_action_outputs(actions, key:, continuing:)
           track_actions(actions)
           running = continuing ? actions.select { |action| action.end_time.nil? }.map(&:identity) : []
-          finish_outputs(running)
+          finish_outputs(running, key)
         end
 
         def track_actions(actions)
@@ -190,11 +192,11 @@ module CircleCI
           end
         end
 
-        def finish_outputs(running)
+        def finish_outputs(running, key)
           failed = @action_outputs.except(*running).filter_map do |identity, output|
             next unless output
 
-            complete = output.finish_output?(&method(:write_output))
+            complete = output.finish_output? { |chunk| write_output(key, chunk) }
             @action_outputs[identity] = nil
             identity unless complete
           end
@@ -202,23 +204,26 @@ module CircleCI
         end
 
         def update_actions
-          @action_outputs.each_value { |output| output&.read(&method(:write_output)) }
+          return unless @current_step
+
+          key = step_key(@current_step)
+          @action_outputs.each_value { |output| output&.read { |chunk| write_output(key, chunk) } }
         end
 
-        def write_output(chunk)
+        def write_output(key, chunk)
           if @verbose
             $stdout.write(chunk)
             $stdout.flush
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              retain_output(chunk)
+              retain_output(key, chunk)
             end
           end
         end
 
-        def retain_output(chunk)
-          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+        def retain_output(key, chunk)
+          log = (@messages[key] ||= StepLog.new)
           remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
           @retained_log_bytes += log.append(chunk, remaining:)
         end

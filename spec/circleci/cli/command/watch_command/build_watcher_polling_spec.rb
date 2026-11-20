@@ -164,6 +164,28 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         expect { watcher.start }.to output("completed output\nlive output\n").to_stdout
       end
 
+      context 'with default output' do
+        let(:watcher) { described_class.new(build) }
+
+        it 'buffers already completed and live action logs until the step fails' do
+          allow(watcher).to receive(:sleep).with(1).and_raise(Interrupt)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get)
+            .and_return(multi_action_build('success', 'running'), multi_action_build('success', 'failed'))
+
+          second_path = output_path.sub(%r{/1/2$}, '/2/2')
+          live_output = "live output\n"
+          expect_output_response(0, "completed output\n")
+          expect_output_response(0, live_output, path: second_path)
+          expect_output_response(live_output.bytesize, "final output\n", path: second_path)
+
+          expect { watcher.start }.not_to output.to_stdout
+          expect { watcher.stop('failed') }.to output("completed output\nlive output\nfinal output\n").to_stdout
+        ensure
+          watcher.close
+        end
+      end
+
       it 'streams each action from byte zero and reads each final chunk exactly once' do
         stop_after_polls
         allow(watcher).to receive(:puts)
@@ -362,10 +384,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      watcher.instance_variable_set(:@current_step, build.steps.first)
-      watcher.send(:retain_output, log_text)
+      watcher.send(:retain_output, build.steps.first.action_identity, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(watcher).to receive(:finish_action_output?).and_return(true)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
       expect { watcher.send(:update_build) }.to output("#{status}\n#{log_text}").to_stdout
