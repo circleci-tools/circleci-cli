@@ -174,20 +174,20 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         )
 
         second_path = output_path.sub(%r{/1/2$}, '/2/2')
-        expect_output_response(0, "first\n")
+        expect_output_response(0, "first\n\r")
         expect_output_response(0, "second\n", path: second_path)
         4.times do
-          expect_output_response(6)
+          expect_output_response(7)
           expect_output_response(7, path: second_path)
         end
-        expect_output_response(6, "first tail\n")
+        expect_output_response(7, "\nfirst tail\n")
         expect_output_response(7, "second live\n", path: second_path)
         expect_output_response(19, "second tail\n", path: second_path)
 
         expect do
           watcher.start
           watcher.stop('success')
-        end.to output("first\nsecond\nfirst tail\nsecond live\nsecond tail\n").to_stdout
+        end.to output("first\nsecond\n\nfirst tail\nsecond live\nsecond tail\n").to_stdout
       end
     end
 
@@ -256,7 +256,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           expect(request['Range']).to eq('bytes=13-')
           read_response.call(response)
         end
-        expect_output_response(13, "final output\n")
+        expect_output_response(13, 'final output')
 
         expect do
           watcher.start
@@ -362,10 +362,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      log = CircleCI::CLI::Command::StepLog.new
-      log.append(log_text)
-      watcher.instance_variable_get(:@messages)[[0, 0]] = log
+      watcher.instance_variable_set(:@current_step, build.steps.first)
+      watcher.send(:retain_output, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(watcher).to receive(:finish_action_output?).and_return(true)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
       expect { watcher.send(:update_build) }.to output("#{status}\n#{log_text}").to_stdout
@@ -431,7 +431,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       messages = watcher.instance_variable_get(:@messages)
       expect(messages.keys).to eq([[1, 2]])
-      expect { messages.values.first.write_to($stdout) }.to output("#{escaped_log_output}\n").to_stdout
+      expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output).to_stdout
     ensure
       watcher.close
     end
@@ -463,6 +463,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
     end
 
+    it 'replays split lines intact and terminates the final line after an empty response' do
+      expect_output_response(0, 'hel')
+      expect_output_response(3, "lo\r")
+      expect_output_response(6, "\nlast line")
+      3.times { watcher.send(:update_actions) }
+      finish_step('failed', final_offset: 16)
+
+      expect { watcher.send(:update_build) }.to output("hello\nlast line\n").to_stdout
+    end
+
     it 'streams a single large response to disk and replays it once after failure' do
       expect_output_response(0, first_chunk, second_chunk, last_chunk)
       watcher.send(:update_actions)
@@ -487,7 +497,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect do
         watcher.send(:update_build)
         watcher.send(:update_build)
-      end.to output("#{first_chunk}\n#{second_chunk}#{last_chunk}").to_stdout
+      end.to output("#{first_chunk}#{second_chunk}#{last_chunk}").to_stdout
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
     end
@@ -510,6 +520,54 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
+    end
+
+    context 'when a live step exceeds the retention limit' do
+      let(:limit) { first_chunk.bytesize + 96 * 1024 }
+
+      before do
+        stub_const('CircleCI::CLI::Command::StepLog::RETENTION_LIMIT', limit)
+        expect_output_response(0, first_chunk, second_chunk, last_chunk)
+        watcher.send(:update_actions)
+        expect(File.size(spill_path)).to eq(limit)
+      end
+
+      def spill_path
+        messages.values.first.instance_variable_get(:@file).path
+      end
+
+      it 'keeps polling from the full byte offset and reports truncation on failure' do
+        path = spill_path
+        finish_step('failed', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        retained = first_chunk + second_chunk.byteslice(0, limit - first_chunk.bytesize)
+
+        expect { watcher.stop('failed') }
+          .to output("#{retained}\n[Step log truncated: retention limit reached.]\n").to_stdout
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'removes the capped spill file when closed while the step is still running' do
+        path = spill_path
+        watcher.close
+
+        expect(messages).to be_empty
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'shares the retention budget with other running steps' do
+        other_step = step_hash.call(name: 'Other', type: 'test', status: 'running', step: 1)
+        reordered_build = build_response.call([other_step, *initial_steps])
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(reordered_build)
+        expect_output_response(first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        expect_output_response(0, second_chunk, first_chunk, path: output_path.sub(%r{/0$}, '/1'))
+        path = spill_path
+
+        watcher.send(:update_build)
+        watcher.send(:update_actions)
+
+        expect(messages.fetch([0, 1]).bytesize).to eq(0)
+        expect(File.size(path)).to eq(limit)
+      end
     end
 
     it 'stops polling and removes the spill file while the response body is blocked' do

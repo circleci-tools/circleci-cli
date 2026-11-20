@@ -10,9 +10,8 @@ module CircleCI
         ].freeze
         OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
 
-        def initialize(url, verbose:)
+        def initialize(url)
           @url = url
-          @verbose = verbose
           @read_byte = 0
           @output_suffix = ''.b
           @needs_newline = false
@@ -22,17 +21,16 @@ module CircleCI
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
           Networking::HTTPClient.get_raw(@url, headers) { |response| complete = read_output(response, &write) }
-          flush_output(&write) if complete
           complete
         rescue *OUTPUT_READ_ERRORS
           false
         end
 
         def finish_output?(&)
-          return true if 2.times.any? { read(&) }
+          complete = 2.times.any? { read(&) }
 
           flush_output(&)
-          false
+          complete
         end
 
         private
@@ -55,7 +53,7 @@ module CircleCI
         end
 
         def stream_output(chunk, &)
-          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          # Retain a partial UTF-8 character or CRLF across chunks and polls.
           text = @output_suffix + chunk
           @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
           write_escaped_output(text, &)
@@ -63,7 +61,7 @@ module CircleCI
 
         def flush_output(&write)
           write_escaped_output(@output_suffix, &write)
-          write.call("\n") if @needs_newline && !@verbose
+          write.call("\n") if @needs_newline
           @output_suffix = ''.b
           @needs_newline = false
         end
