@@ -29,8 +29,8 @@ module CircleCI
           @verbose = verbose
           @messages = {}
 
-          @build_thread = nil
           @poll_lock = Mutex.new
+          @detail_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -45,7 +45,7 @@ module CircleCI
         end
 
         def latest_detail
-          @poll_lock.synchronize { @latest_detail }
+          @detail_lock.synchronize { @latest_detail }
         end
 
         def stop(status)
@@ -141,7 +141,7 @@ module CircleCI
         def update_build(stopping: false)
           detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
-          @latest_detail = detail
+          @detail_lock.synchronize { @latest_detail = detail }
         end
 
         def update_steps(steps, stopping:)

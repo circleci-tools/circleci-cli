@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 
 describe CircleCI::CLI::Command::WatchCommand, type: :command do
   let(:options) { OpenStruct.new(project: 'user/repo', branch: 'main', user: 'octocat', verbose: true) }
@@ -126,6 +127,43 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(client).to receive(:connect)
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
       allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(account)
+    end
+
+    it 'refreshes again while the watched build is outside the recent list and its log body is stalled' do
+      build_response = CircleCI::CLI::Response::Build
+      attributes = {
+        'username' => 'user', 'reponame' => 'repo', 'build_num' => 42, 'status' => 'running',
+        'branch' => 'main', 'user' => { 'login' => 'octocat' }
+      }
+      recent_build = build_response.new(attributes)
+      action = { 'name' => 'Test', 'type' => 'test', 'status' => 'running', 'index' => 0, 'step' => 0 }
+      detail = build_response.new(attributes.merge('steps' => [{ 'name' => 'Test', 'actions' => [action] }]))
+      allow(build_response).to receive(:get).with('user', 'repo', 42).and_return(detail)
+
+      reading = Queue.new
+      release = Queue.new
+      response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).and_yield(response)
+      allow(response).to receive(:read_body) do
+        reading << true
+        release.pop
+      end
+
+      notify = nil
+      allow(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([recent_build])
+      expect(described_class).to receive(:sleep).with(1).ordered do
+        reading.pop
+        notify.call
+      end
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
+      expect(detail).to receive(:finished?).ordered.and_call_original
+      expect(described_class).to receive(:sleep).with(1).ordered { notify.call }
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
+      expect(detail).to receive(:finished?).ordered.and_call_original
+      expect(described_class).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+
+      expect { Timeout.timeout(5) { described_class.run(options) } }.to output(/Start watching/).to_stdout
     end
 
     it 'coalesces a burst and refreshes again for a notification received during the request' do
