@@ -9,7 +9,7 @@ module CircleCI
       class WatchCommand < BaseCommand
         def self.run(options)
           token = setup_token
-          username, reponame = project_name(options).split('/')
+          username, reponame = project_target(options)
           repository = BuildRepository.new(username, reponame, branch: branch_name(options), user: options.user)
           new(options, repository).run(token)
         rescue Interrupt
@@ -101,7 +101,8 @@ module CircleCI
             end
             title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
             puts Printer::BuildPrinter.header_for(build, title)
-            puts Printer::StepPrinter.new(detail.steps, pretty: @options.verbose, verbose: @options.verbose)
+            verbose = @options.verbose
+            Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
             @repository.mark_as_shown(build.build_number)
           end
         end

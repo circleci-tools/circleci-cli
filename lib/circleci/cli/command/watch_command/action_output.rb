@@ -26,10 +26,11 @@ module CircleCI
           false
         end
 
-        def finish_output?(&)
-          complete = 2.times.any? { read(&) }
+        def finish_output?(final: true, &)
+          attempts = final ? 2 : 1
+          complete = attempts.times.any? { read(&) }
 
-          flush_output(&)
+          flush_output(&) if complete || final
           complete
         end
 

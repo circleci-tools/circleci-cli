@@ -549,15 +549,15 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
     def log_response(message)
       Net::HTTPOK.new('1.1', '200', 'OK').tap do |response|
-        allow(response).to receive(:body).and_return(JSON.generate([{ 'message' => message }]))
+        allow(response).to receive(:read_body).and_yield(JSON.generate([{ 'message' => message }]))
       end
     end
 
     before do
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw)
-        .with('https://circleci.com/output/setup').and_return(log_response("setup log\e[2K"))
+        .with('https://circleci.com/output/setup').and_yield(log_response("setup log\e[2K"))
       allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw)
-        .with('https://circleci.com/output/test').and_return(log_response('test log <%= "log" %>'))
+        .with('https://circleci.com/output/test').and_yield(log_response('test log <%= "log" %>'))
 
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
         .with(finished_build, a_string_including('Result of user/repo #42 completed in background'))
@@ -580,7 +580,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         expect(CircleCI::CLI::Response::Build).not_to receive(:get)
 
         expect { session.send(:show_interrupted_build_results, builds, { 42 => response_build }) }
-          .to output(include('setup log\x1B[2K', 'test log <%= "log" %>')).to_stdout
+          .to output(include('setup log\x1B[2K', 'test log <%= "log" %>', 'Deploy')).to_stdout
       end
     end
   end
