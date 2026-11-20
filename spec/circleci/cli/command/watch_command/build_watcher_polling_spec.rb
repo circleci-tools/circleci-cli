@@ -111,6 +111,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect_output_response(0, "recovered output\n")
 
       expect { watcher.start }.to output(a_string_including("recovered output\n")).to_stdout
+      expect(watcher.poll_error).to be_nil
+    end
+
+    it 'preserves the fatal polling error if completion is detected at the same time' do
+      error = Thor::Error.new('CircleCI API error (HTTP 401): Unauthorized')
+      expect(CircleCI::CLI::Response::Build).to receive(:get).once.and_raise(error)
+      expect(watcher).not_to receive(:sleep)
+      allow(watcher).to receive(:notify_started)
+      expect(thread).to receive(:join)
+
+      watcher.start
+
+      expect { watcher.stop('success') }.to raise_error(Thor::Error) { |raised| expect(raised).to equal(error) }
     end
 
     it 'continues polling from the last byte received after a connection reset' do

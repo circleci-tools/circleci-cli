@@ -26,7 +26,7 @@ module CircleCI
           @retained_log_bytes = 0
 
           @poll_lock = Mutex.new
-          @detail_lock = Mutex.new
+          @state_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
@@ -39,11 +39,20 @@ module CircleCI
         end
 
         def latest_detail
-          @detail_lock.synchronize { @latest_detail }
+          @state_lock.synchronize { @latest_detail }
+        end
+
+        def poll_error
+          @state_lock.synchronize { @poll_error }
         end
 
         def stop(status)
-          @poll_lock.synchronize { stop_polling }
+          @poll_lock.synchronize do
+            error = poll_error
+            raise error if error
+
+            stop_polling
+          end
           update_build(stopping: true)
           notify_stopped(status)
         ensure
@@ -79,6 +88,8 @@ module CircleCI
               next_build_poll = refresh_live_build(count) if count >= next_build_poll
               update_actions
             end
+            break if poll_error
+
             sleep 1
           end
         end
@@ -88,11 +99,15 @@ module CircleCI
           count + 5
         end
 
-        def poll_safely(&)
-          @poll_lock.synchronize(&)
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
-          # Resume on the next poll with the last consumed byte offset.
+        def poll_safely
+          @poll_lock.synchronize do
+            yield
+          rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+                 Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+            # Resume on the next poll with the last consumed byte offset.
+          rescue StandardError => e
+            @state_lock.synchronize { @poll_error = e }
+          end
         end
 
         def on_new_step(step)
@@ -139,7 +154,7 @@ module CircleCI
         def update_build(stopping: false)
           detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
           update_steps(detail.steps, stopping:)
-          @detail_lock.synchronize { @latest_detail = detail }
+          @state_lock.synchronize { @latest_detail = detail }
         end
 
         def update_steps(steps, stopping:)
