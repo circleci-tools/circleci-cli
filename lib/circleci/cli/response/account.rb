@@ -14,7 +14,7 @@ module CircleCI
 
         class << self
           def me
-            Account.new(CircleCi::User.new.me.body)
+            Account.new(Response.body!(CircleCi::User.new.me))
           end
         end
       end

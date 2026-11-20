@@ -13,7 +13,7 @@ describe CircleCI::CLI::Response::Account do
     subject(:account) { described_class.me }
 
     let(:body) { { 'pusher_id' => 'pusher-123' } }
-    let(:response) { double(body: body) }
+    let(:response) { double(body: body, success?: true) }
     let(:user) { double(me: response) }
 
     before do
