@@ -33,6 +33,9 @@ circleci-cli builds
 Enter your CircleCI API token when prompted if `CIRCLE_CI_TOKEN` is unset.
 The command identifies the project from the GitHub `origin` remote and shows a table of recent builds on the current branch, including their build numbers and statuses.
 
+See the [getting started guide](docs/getting-started.md) to find a project and
+inspect a build from any directory.
+
 ## Usage
 ```
 Commands:
