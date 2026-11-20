@@ -4,9 +4,10 @@ module CircleCI
   module CLI
     module Printer
       class StepPrinter
-        def initialize(steps, pretty: true)
+        def initialize(steps, pretty: true, verbose: false)
           @steps = steps
           @pretty = pretty
+          @verbose = verbose
         end
 
         def to_s # rubocop:disable Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
@@ -40,7 +41,7 @@ module CircleCI
         end
 
         def escaped_log(action)
-          Printer.escape_controls(action.log, multiline: true) if action.failed?
+          Printer.escape_controls(action.log, multiline: true) if @verbose || action.failed?
         end
 
         def print_actions(table, step)
