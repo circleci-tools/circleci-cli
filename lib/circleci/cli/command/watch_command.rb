@@ -11,7 +11,7 @@ module CircleCI
           def run(options) # rubocop:disable Metrics/MethodLength
             token = setup_token
 
-            username, reponame = project_name(options).split('/')
+            username, reponame = project_target(options)
             @options = options
             @repository = BuildRepository.new(
               username,

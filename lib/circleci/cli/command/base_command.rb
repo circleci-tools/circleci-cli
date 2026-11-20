@@ -11,13 +11,12 @@ module CircleCI
             token
           end
 
-          def project_name(options)
-            if options.project
-              options.project
-            else
-              puts Printer::ProjectPrinter.new(Response::Project.all)
-              ask('Input user-name/project-name :')
-            end
+          def project_target(options)
+            project = options.project || prompt_project
+            match = %r{\A([\w-]+)/([.\w-]+)\z}.match(project)
+            return match.captures if match && !%w[. ..].include?(match[2])
+
+            raise Thor::Error, 'Project must be in owner/repo format.'
           end
 
           def branch_name(options)
@@ -40,6 +39,11 @@ module CircleCI
           end
 
           private
+
+          def prompt_project
+            puts Printer::ProjectPrinter.new(Response::Project.all)
+            ask('Input user-name/project-name :')
+          end
 
           def with_build_number(username, reponame, options)
             number = build_number(options, prompt: !options.last)

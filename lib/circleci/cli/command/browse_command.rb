@@ -7,9 +7,9 @@ module CircleCI
         class << self
           def run(options)
             setup_token unless options.project
-            project = project_name(options)
+            username, reponame = project_target(options)
             number = build_number(options, prompt: false)
-            Launchy.open url(project, number)
+            Launchy.open url("#{username}/#{reponame}", number)
           end
 
           def url(project, number)
