@@ -28,6 +28,7 @@ module CircleCI
           @build = build
           @verbose = verbose
           @messages = {}
+          @retained_log_bytes = 0
 
           @poll_lock = Mutex.new
           @detail_lock = Mutex.new
@@ -61,6 +62,7 @@ module CircleCI
         ensure
           @messages.each_value(&:close)
           @messages.clear
+          @retained_log_bytes = 0
         end
 
         private
@@ -130,7 +132,10 @@ module CircleCI
           log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
-          log&.close
+          if log
+            log.close
+            @retained_log_bytes -= log.bytesize
+          end
           @messages.delete(key)
         end
 
@@ -233,9 +238,15 @@ module CircleCI
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+              retain_output(chunk)
             end
           end
+        end
+
+        def retain_output(chunk)
+          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+          remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
+          @retained_log_bytes += log.append(chunk, remaining:)
         end
 
         def notify_started
