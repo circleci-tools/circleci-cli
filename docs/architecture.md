@@ -1,0 +1,39 @@
+# Architecture
+
+## Command dispatch
+
+The [gem executable](../exe/circleci-cli) starts the Thor
+[runner](../lib/circleci/cli.rb). The runner declares the commands and options,
+fills in Git project and branch defaults for commands that use them, and
+dispatches to a command class. [BaseCommand](../lib/circleci/cli/command/base_command.rb)
+provides shared helpers for token setup, project selection, and build numbers.
+
+## API calls and terminal output
+
+Start with [BuildsCommand](../lib/circleci/cli/command/builds_command.rb) for a
+short example. It resolves the project and branch, then calls
+[Response::Build](../lib/circleci/cli/response/build.rb) for recent builds.
+The response class calls the `circleci` gem, checks for API errors through
+[`Response.body!`](../lib/circleci/cli/response.rb), and wraps the returned
+records as build objects. The command passes those objects to
+[BuildPrinter](../lib/circleci/cli/printer/build_printer.rb) for terminal output.
+
+[`run`](../lib/circleci/cli/command/run_command.rb) uses the
+[HTTP client](../lib/circleci/cli/networking/http_client.rb) directly to query
+the CircleCI v3 API and builds a table from the run's workflows and jobs.
+
+## Live build watching
+
+[WatchCommand](../lib/circleci/cli/command/watch_command.rb) listens for Pusher
+events that trigger a build list refresh.
+[BuildRepository](../lib/circleci/cli/command/watch_command/build_repository.rb)
+tracks recent builds and which results have been shown.
+[BuildWatcher](../lib/circleci/cli/command/watch_command/build_watcher.rb)
+polls build details and action output for the active build.
+
+## Where to start with tests
+
+For command dispatch and Git defaults, see the
+[runner specs](../spec/circleci/cli/cli_spec.rb). For the build-listing example
+above, see the [builds command specs](../spec/circleci/cli/command/builds_command_spec.rb).
+The [contributing guide](../CONTRIBUTING.md) covers development setup and checks.
