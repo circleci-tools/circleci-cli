@@ -314,10 +314,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      log = CircleCI::CLI::Command::StepLog.new
-      log.append(log_text)
-      watcher.instance_variable_get(:@messages)[[0, 0]] = log
+      watcher.instance_variable_set(:@current_step, build.steps.first)
+      watcher.send(:retain_output, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(watcher).to receive(:finish_action_output?).and_return(true)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
       expect { watcher.send(:update_build) }.to output("#{status}\n#{log_text}").to_stdout
@@ -460,6 +460,54 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
+    end
+
+    context 'when a live step exceeds the retention limit' do
+      let(:limit) { first_chunk.bytesize + 96 * 1024 }
+
+      before do
+        stub_const('CircleCI::CLI::Command::StepLog::RETENTION_LIMIT', limit)
+        expect_output_response(0, first_chunk, second_chunk, last_chunk)
+        watcher.send(:update_actions)
+        expect(File.size(spill_path)).to eq(limit)
+      end
+
+      def spill_path
+        messages.values.first.instance_variable_get(:@file).path
+      end
+
+      it 'keeps polling from the full byte offset and reports truncation on failure' do
+        path = spill_path
+        finish_step('failed', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        retained = first_chunk + second_chunk.byteslice(0, limit - first_chunk.bytesize)
+
+        expect { watcher.stop('failed') }
+          .to output("#{retained}\n[Step log truncated: retention limit reached.]\n").to_stdout
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'removes the capped spill file when closed while the step is still running' do
+        path = spill_path
+        watcher.close
+
+        expect(messages).to be_empty
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'shares the retention budget with other running steps' do
+        other_step = step_hash.call(name: 'Other', type: 'test', status: 'running', step: 1)
+        reordered_build = build_response.call([other_step, *initial_steps])
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(reordered_build)
+        expect_output_response(first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        expect_output_response(0, second_chunk, first_chunk, path: output_path.sub(%r{/0$}, '/1'))
+        path = spill_path
+
+        watcher.send(:update_build)
+        watcher.send(:update_actions)
+
+        expect(messages.fetch([0, 1]).bytesize).to eq(0)
+        expect(File.size(path)).to eq(limit)
+      end
     end
 
     it 'stops polling and removes the spill file while the response body is blocked' do
