@@ -67,8 +67,7 @@ module CircleCI
         def initialize_output_state
           @current_step = nil
           @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          reset_output_tail
         end
 
         def stop_polling
@@ -225,6 +224,10 @@ module CircleCI
         def flush_output
           write_escaped_output(@output_suffix)
           write_output("\n") if @needs_newline
+          reset_output_tail
+        end
+
+        def reset_output_tail
           @output_suffix = ''.b
           @needs_newline = false
         end
