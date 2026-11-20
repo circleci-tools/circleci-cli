@@ -1,36 +1,35 @@
 # frozen_string_literal: true
 
+require 'stringio'
+require 'tempfile'
+require 'circleci/cli/printer/step_table'
+
 module CircleCI
   module CLI
     module Printer
       class StepPrinter
         def initialize(steps, pretty: true, verbose: false)
-          @steps = steps
+          @groups = steps.group_by(&:type)
           @pretty = pretty
           @verbose = verbose
         end
 
-        def to_s # rubocop:disable Metrics/AbcSize, Metrics/MethodLength, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
+        def write_to(output)
           if @pretty
-            Terminal::Table.new do |t|
-              @steps
-                .group_by(&:type)
-                .each do |key, steps|
-                t << :separator
-                t << [{ value: Printer.colorize_green(Printer.escape_controls(key)), alignment: :center, colspan: 2 }]
-                steps.each { |s| print_actions(t, s) }
-              end
-            end.to_s
+            Tempfile.create('circleci-build', encoding: Encoding::UTF_8) do |file|
+              write_pretty(output, StepTable.new(file))
+            end
           else
-            @steps.group_by(&:type).map do |_, steps|
-              steps.flat_map do |step|
-                step.actions.map do |a|
-                  log = escaped_log(a)&.delete_suffix("\n")
-                  "#{action_name(a)}\n#{"#{log}\n" if log}"
-                end
-              end.join
-            end.join("\n")
+            write_compact(output)
           end
+        end
+
+        def to_s
+          output = StringIO.new
+          write_to(output)
+          return output.string.delete_suffix("\n") if @pretty || compact_empty?
+
+          output.string
         end
 
         private
@@ -40,24 +39,84 @@ module CircleCI
           Printer.colorize_by_status(name, action.status)
         end
 
-        def escaped_log(action)
-          Printer.escape_controls(action.log, multiline: true) if @verbose || action.failed?
-        end
-
-        def print_actions(table, step)
-          table << :separator
-          step.actions.each do |a|
-            table << [
-              action_name(a),
-              Printer.format_duration(a.run_time_millis)
-            ]
-            log = escaped_log(a)
-            table << [{ value: wrap_log(log), alignment: :left, colspan: 2 }] if log
+        def write_compact(output)
+          @groups.each_value.with_index do |steps, index|
+            output.puts unless index.zero?
+            steps.each { |step| step.actions.each { |action| write_action(output, action) } }
           end
+          output.puts if compact_empty?
         end
 
-        def wrap_log(log)
-          log.gsub(/[^\n]{120}(?=[^\n])/) { |chunk| "#{chunk}\n" }
+        def compact_empty?
+          @groups.size <= 1 && @groups.values.flatten.all? { |step| step.actions.empty? }
+        end
+
+        def write_action(output, action)
+          output.puts(action_name(action))
+          output.flush
+          return unless show_log?(action)
+
+          ends_with_newline = false
+          each_escaped_chunk(action) do |chunk|
+            output.write(chunk)
+            ends_with_newline = chunk.end_with?("\n")
+          end
+          output.puts unless ends_with_newline
+          output.flush
+        end
+
+        def write_pretty(output, table)
+          @groups.each do |type, steps|
+            table.add_header(Printer.colorize_green(Printer.escape_controls(type)))
+            steps.each do |step|
+              table.add_separator
+              step.actions.each { |action| add_action(table, action) }
+            end
+          end
+          table.write_to(output)
+        end
+
+        def add_action(table, action)
+          table.add_action(action_name(action), Printer.format_duration(action.run_time_millis))
+          table.add_log(enum_for(:each_wrapped_line, action)) if show_log?(action)
+        end
+
+        def show_log?(action)
+          (@verbose || action.failed?) && action.log_available?
+        end
+
+        def each_wrapped_line(action, &write_line)
+          tail = ''
+          each_escaped_chunk(action) do |chunk|
+            tail = wrap_chunk(tail + chunk, &write_line)
+            next unless tail.end_with?("\n")
+
+            write_line.call(tail.delete_suffix("\n"))
+            tail = ''
+          end
+          write_line.call(tail) unless tail.empty?
+        end
+
+        def wrap_chunk(text)
+          last = ''
+          text.scan(/[^\n]{1,120}\n?|\n/) do |segment|
+            yield last.delete_suffix("\n") unless last.empty?
+            last = segment
+          end
+          last
+        end
+
+        def each_escaped_chunk(action)
+          suffix = ''
+          action.each_log_chunk do |chunk|
+            next if chunk.empty?
+
+            text = suffix + chunk
+            suffix = text.end_with?("\r") ? "\r" : ''
+            escaped = Printer.escape_controls(text.delete_suffix(suffix), multiline: true)
+            yield escaped unless escaped.empty?
+          end
+          yield Printer.escape_controls(suffix) unless suffix.empty?
         end
       end
     end
