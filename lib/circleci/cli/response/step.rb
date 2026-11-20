@@ -16,6 +16,11 @@ module CircleCI
           @hash['actions'].map { |a| Action.new(a) }
         end
 
+        def action_identity
+          action = actions.first
+          [action.index, action.step] if action
+        end
+
         def status
           return 'running' if actions.any? { |action| action.end_time.nil? }
           return 'failed' if actions.any?(&:failed?)

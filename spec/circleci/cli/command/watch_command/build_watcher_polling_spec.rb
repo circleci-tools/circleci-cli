@@ -40,10 +40,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
   before { allow(http).to receive(:max_retries=).with(0) }
 
-  def expect_output_response(offset, *chunks, error: nil)
+  def expect_output_response(offset, *chunks, error: nil, path: output_path)
     expect(http).to receive(:request).ordered do |request, &read_response|
       expect(request).to be_a(Net::HTTP::Get)
-      expect(request.path).to eq(output_path)
+      expect(request.path).to eq(path)
       expect(request['Range']).to eq("bytes=#{offset}-")
       response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
       allow(response).to receive(:read_body) do |&read_chunk|
@@ -93,10 +93,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:step_name) { "Test <%= \"step\" %>\r\e[2K" }
     let(:escaped_step_name) { 'Test <%= "step" %>\x0D\x1B[2K' }
 
+    before do
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+    end
+
     it 'prints new steps in API order and streams output from the first running step' do
       streamed = pause_after_polls(2)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       log_tail = " done <%= \"log\" %>\n"
       expect_output_response(0, log_output.byteslice(0, 1), log_output.byteslice(1, 9), log_output.byteslice(10..))
       expect_output_response(log_output.bytesize, log_tail)
@@ -109,16 +112,44 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect { watch_until(streamed, 'success') }.to output(pattern).to_stdout
     end
 
+    it 'retries a timed-out build detail request on the next poll' do
+      polled = pause_after_polls(2)
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(Net::ReadTimeout)
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+      expect_output_response(0, "recovered output\n")
+      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+      expect_output_response("recovered output\n".bytesize)
+
+      expect { watch_until(polled, 'success') }.to output(a_string_including("recovered output\n")).to_stdout
+    end
+
     it 'continues polling from the last byte received after a connection reset' do
       streamed = pause_after_polls(2)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       expect_output_response(0, 'é', error: Errno::ECONNRESET)
       expect_output_response(2, " done\n")
       expect_output_response(8)
 
       expect { watch_until(streamed, 'success') }
         .to output(a_string_matching(/\A[^é]*é done\n[^é]*\z/m)).to_stdout
+    end
+
+    it 'retries a timed-out log request at the last consumed byte without duplicating output' do
+      polled = pause_after_polls(3)
+      allow(watcher).to receive(:puts)
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      first_chunk = "é first\n"
+      final_chunk = "last output\n"
+      expect_output_response(0, first_chunk.b)
+      expect(http).to receive(:request).ordered do |request|
+        expect(request.path).to eq(output_path)
+        expect(request['Range']).to eq("bytes=#{first_chunk.bytesize}-")
+        raise Net::ReadTimeout
+      end
+      expect_output_response(first_chunk.bytesize, final_chunk.b)
+      expect_output_response(first_chunk.bytesize + final_chunk.bytesize)
+
+      expect { watch_until(polled, 'success') }.to output(first_chunk + final_chunk).to_stdout
     end
 
     it 'fetches build details immediately and every five polling iterations' do
@@ -237,11 +268,11 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           expect(request['Range']).to eq('bytes=13-')
           read_response.call(response)
         end
-        expect_output_response(13, "final output\n")
+        expect_output_response(13, 'final output')
 
         expect do
           watch_until(polled, status)
-        end.to output(/\Afirst output\nfinal output\n.*has succeeded!/m).to_stdout
+        end.to output(/\Afirst output\nfinal output\n(?!.*final output\n).*has succeeded!/m).to_stdout
       end
     end
 
@@ -253,11 +284,12 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       it 'includes the final chunk in the failed-step output when stopped' do
         expect_output_response(13, "final ".b + log_output.byteslice(0, 1), error: Errno::ECONNRESET)
         expect_output_response(20, log_output.byteslice(1..))
+        replayed_output = Regexp.escape("first output\nfinal #{escaped_log_output}\n")
 
         expect do
           watch_until(polled, status)
-        end.to output(a_string_including(escaped_step_name, "first output\nfinal #{escaped_log_output}\n",
-                                         'has failed')).to_stdout.and output('').to_stderr
+        end.to output(/#{Regexp.escape(escaped_step_name)}.*#{replayed_output}.*has failed/m)
+          .to_stdout.and output('').to_stderr
       end
 
       it 'reports incomplete output after the final retry fails and replays the bytes received' do
@@ -279,7 +311,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     context 'with many unchanged steps' do
       let(:initial_steps) do
-        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success') }
+        Array.new(100) { |index| step_hash.call(name: "Step #{index}", type: 'test', status: 'success', step: index) }
       end
       let(:updated_build) { build_response.call(initial_steps) }
 
@@ -287,7 +319,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         previous_steps = build.steps
         allow(build).to receive(:steps).and_return(previous_steps)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-        previous_steps.each { |step| expect(step).to receive(:name).once.and_call_original }
+        previous_steps.each { |step| expect(step).to receive(:action_identity).once.and_call_original }
         expect(updated_build).to receive(:steps).once.and_call_original
         expect(watcher).not_to receive(:puts)
 
@@ -295,12 +327,54 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
+    context 'with successive actions named Test' do
+      let(:initial_steps) { [] }
+      let(:first_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2) }
+      let(:first_succeeded) { step_hash.call(name: 'Test', type: 'test', status: 'success', index: 1, step: 2) }
+      let(:second_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 2, step: 2) }
+      let(:second_failed) { step_hash.call(name: 'Test', type: 'test', status: 'failed', index: 2, step: 2) }
+
+      it 'starts the new action at byte zero and replays only its output on failure' do
+        first_build = build_response.call([first_running])
+        second_build = build_response.call([first_succeeded, second_running])
+        failed_build = build_response.call([first_succeeded, second_failed])
+        allow(CircleCI::CLI::Response::Build).to receive(:get)
+          .and_return(first_build, second_build, failed_build, failed_build)
+        allow(watcher).to receive(:puts)
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, 'a' * 400)
+        expect_output_response(400)
+        expect_output_response(0, "second action output\n", path: second_path)
+        expect_output_response(21, "second action tail\n", path: second_path)
+
+        expect do
+          2.times do
+            watcher.send(:update_build)
+            watcher.send(:update_actions)
+          end
+          2.times { watcher.send(:update_build) }
+        end.to output("second action output\nsecond action tail\n").to_stdout
+
+        expect(watcher).to have_received(:puts).with('Test').twice
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Test')}"
+        ).once
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Test')}"
+        ).once
+      ensure
+        watcher.close
+      end
+    end
+
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      log = CircleCI::CLI::Command::StepLog.new
-      log.append(log_text)
-      watcher.instance_variable_get(:@messages)[[0, 0, 'Build']] = log
+      watcher.instance_variable_set(:@current_step, build.steps.first)
+      watcher.send(:retain_output, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      allow(watcher).to receive(:finish_action_output?).and_return(true)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
 
       expect { watcher.send(:update_build) }.to output("#{status}\n#{log_text}").to_stdout
@@ -363,8 +437,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
 
       messages = watcher.instance_variable_get(:@messages)
-      expect(messages.keys).to eq([[1, 2, step_name]])
-      expect { messages.values.first.write_to($stdout) }.to output("#{escaped_log_output}\n").to_stdout
+      expect(messages.keys).to eq([[1, 2]])
+      expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output).to_stdout
     ensure
       watcher.close
     end
@@ -396,6 +470,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
     end
 
+    it 'replays split lines intact and terminates the final line after an empty response' do
+      expect_output_response(0, 'hel')
+      expect_output_response(3, "lo\r")
+      expect_output_response(6, "\nlast line")
+      3.times { watcher.send(:update_actions) }
+      finish_step('failed', final_offset: 16)
+
+      expect { watcher.send(:update_build) }.to output("hello\nlast line\n").to_stdout
+    end
+
     it 'streams a single large response to disk and replays it once after failure' do
       expect_output_response(0, first_chunk, second_chunk, last_chunk)
       watcher.send(:update_actions)
@@ -420,7 +504,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect do
         watcher.send(:update_build)
         watcher.send(:update_build)
-      end.to output("#{first_chunk}\n#{second_chunk}#{last_chunk}").to_stdout
+      end.to output("#{first_chunk}#{second_chunk}#{last_chunk}").to_stdout
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
     end
@@ -443,6 +527,54 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(messages).to be_empty
       expect(File.exist?(path)).to be(false)
+    end
+
+    context 'when a live step exceeds the retention limit' do
+      let(:limit) { first_chunk.bytesize + 96 * 1024 }
+
+      before do
+        stub_const('CircleCI::CLI::Command::StepLog::RETENTION_LIMIT', limit)
+        expect_output_response(0, first_chunk, second_chunk, last_chunk)
+        watcher.send(:update_actions)
+        expect(File.size(spill_path)).to eq(limit)
+      end
+
+      def spill_path
+        messages.values.first.instance_variable_get(:@file).path
+      end
+
+      it 'keeps polling from the full byte offset and reports truncation on failure' do
+        path = spill_path
+        finish_step('failed', final_offset: first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        retained = first_chunk + second_chunk.byteslice(0, limit - first_chunk.bytesize)
+
+        expect { watcher.stop('failed') }
+          .to output("#{retained}\n[Step log truncated: retention limit reached.]\n").to_stdout
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'removes the capped spill file when closed while the step is still running' do
+        path = spill_path
+        watcher.close
+
+        expect(messages).to be_empty
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it 'shares the retention budget with other running steps' do
+        other_step = step_hash.call(name: 'Other', type: 'test', status: 'running', step: 1)
+        reordered_build = build_response.call([other_step, *initial_steps])
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(reordered_build)
+        expect_output_response(first_chunk.bytesize + second_chunk.bytesize + last_chunk.bytesize)
+        expect_output_response(0, second_chunk, first_chunk, path: output_path.sub(%r{/0$}, '/1'))
+        path = spill_path
+
+        watcher.send(:update_build)
+        watcher.send(:update_actions)
+
+        expect(messages.fetch([0, 1]).bytesize).to eq(0)
+        expect(File.size(path)).to eq(limit)
+      end
     end
 
     it 'stops polling and removes the spill file while the response body is blocked' do
