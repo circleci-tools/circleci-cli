@@ -10,12 +10,13 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
     let(:mock_socket) { double('socket') }
     let(:mock_logger) { double('logger') }
     let(:socket_options) { {} }
+    let(:http) { instance_double(Net::HTTP) }
 
     before do
       allow(PusherClient).to receive(:logger).and_return(mock_logger)
       allow(mock_logger).to receive(:level=)
       allow(mock_socket).to receive(:connect)
-      allow(PusherClient::Socket).to receive(:new) do |key, options|
+      allow(CircleCI::CLI::Networking::VerifiedPusherSocket).to receive(:new) do |key, options|
         socket_options[:key] = key
         socket_options.merge!(options)
         mock_socket
@@ -33,8 +34,10 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       expect(mock_socket).to have_received(:connect).with(true)
     end
 
-    it 'reuses the supplied token for repeated auth callbacks' do
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:post_form).and_return('auth' => 'signed')
+    it 'authenticates repeated private-channel requests with the token in the header' do
+      response = instance_double(Net::HTTPOK, body: '{"auth":"signed"}')
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
+      allow(http).to receive(:request).and_return(response)
 
       connect
 
@@ -43,11 +46,12 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
 
       %w[first-socket second-socket].each do |socket_id|
         expect(auth.call(socket_id, channel)).to eq('signed')
-        expect(CircleCI::CLI::Networking::HTTPClient).to have_received(:post_form).with(
-          'https://circleci.com/auth/pusher?circle-token=token',
-          socket_id: socket_id,
-          channel_name: 'private-builds'
-        ).once
+        expect(http).to have_received(:request).with(an_instance_of(Net::HTTP::Post).and(satisfy do |request|
+          request.uri == URI('https://circleci.com/auth/pusher') &&
+            request['Circle-Token'] == 'token' &&
+            request.content_type == 'application/x-www-form-urlencoded' &&
+            URI.decode_www_form(request.body).to_h == { 'socket_id' => socket_id, 'channel_name' => 'private-builds' }
+        end)).once
       end
     end
   end

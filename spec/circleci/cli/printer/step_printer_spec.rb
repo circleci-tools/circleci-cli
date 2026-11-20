@@ -3,6 +3,12 @@
 require 'spec_helper'
 
 describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
+  def successful_log_response(body)
+    response = Net::HTTPOK.new('1.1', '200', 'OK')
+    allow(response).to receive(:body).and_return(body)
+    response
+  end
+
   describe '#to_s' do
     subject { described_class.new(steps, pretty: pretty).to_s }
 
@@ -11,9 +17,9 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     before do
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path: '/output/123')))
-        .and_return(instance_double(Net::HTTPOK, body: '[{"message":"action log"}]'))
+        .and_return(successful_log_response('[{"message":"action log"}]'))
       allow(http).to receive(:request).with(have_attributes(path: '/output/456'))
-        .and_return(instance_double(Net::HTTPOK, body: '[{"message":"successful action log"}]'))
+        .and_return(successful_log_response('[{"message":"successful action log"}]'))
     end
 
     after do
@@ -28,12 +34,11 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           {
             'status' => 'success',
             'actions' => [
-              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 1200 },
+              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 61_999 },
               {
                 'type' => 'build', 'name' => 'Checkout', 'status' => 'success', 'run_time_millis' => 1200,
                 'output_url' => 'https://circleci.com/output/456'
-              },
-              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
+              }
             ]
           }
         ),
@@ -50,11 +55,20 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           }
         ),
         CircleCI::CLI::Response::Step.new(
+          'build',
+          {
+            'status' => 'success',
+            'actions' => [
+              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
+            ]
+          }
+        ),
+        CircleCI::CLI::Response::Step.new(
           'deploy',
           {
             'status' => 'success',
             'actions' => [
-              { 'type' => 'deploy', 'name' => 'Deploy', 'status' => 'no_tests', 'run_time_millis' => 30_200 }
+              { 'type' => 'deploy', 'name' => 'Deploy', 'status' => 'no_tests' }
             ]
           }
         )
@@ -76,7 +90,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
 
       it 'escapes the action name and log while preserving colors and log line breaks' do
         allow(http).to receive(:request).with(have_attributes(path: '/output/123'))
-          .and_return(instance_double(Net::HTTPOK, body: JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
+          .and_return(successful_log_response(JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
 
         expect(subject).to eq("\e[0;31;49mTest\\x0D\\x1B[2K\e[0m\nfirst\nsecond\\x1B[2K\n")
       end
@@ -85,14 +99,15 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'with pretty option' do
       let(:pretty) { true }
 
-      it 'prints steps with a red timed-out action' do
+      it 'groups steps by type and prints timed-out actions in red' do
         expected = <<~EXPECTED
           +--------------------+
           +--------------------+
           |       \e[0;32;49mbuild\e[0m        |
           +------------+-------+
-          | Dependency | 00:01 |
+          | Dependency | 01:01 |
           | \e[0;32;49mCheckout\e[0m   | 00:01 |
+          +------------+-------+
           | \e[0;33;49mBuild\e[0m      | 00:25 |
           +------------+-------+
           |        \e[0;32;49mtest\e[0m        |
@@ -102,7 +117,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
           +--------------------+
           |       \e[0;32;49mdeploy\e[0m       |
           +------------+-------+
-          | \e[0;90;49mDeploy\e[0m     | 00:30 |
+          | \e[0;90;49mDeploy\e[0m     |       |
           +------------+-------+
         EXPECTED
         expect(subject).to eq expected.strip
@@ -112,7 +127,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
-      it 'prints steps with a red timed-out action' do
+      it 'groups steps by type and prints timed-out actions in red' do
         expected = <<~EXPECTED
           Dependency
           \e[0;32;49mCheckout\e[0m

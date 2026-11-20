@@ -13,6 +13,9 @@ bin/setup
 
 ## Run the checks
 
+See the [architecture guide](docs/architecture.md) for the command flow and
+where to find the corresponding specs.
+
 Run the same lint and test commands used by the GitHub Actions test workflow:
 
 ```sh

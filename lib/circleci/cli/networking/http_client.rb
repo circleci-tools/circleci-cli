@@ -21,9 +21,12 @@ module CircleCI
           end
         end
 
-        def self.post_form(url, params = {})
+        def self.post_form(url, params = {}, headers = {})
           uri = URI(url)
-          res = Net::HTTP.post_form(uri, params)
+          req = Net::HTTP::Post.new(uri, headers)
+          req.set_form_data(params)
+          req.basic_auth(uri.user, uri.password) if uri.user && !req['Authorization']
+          res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') { |http| http.request(req) }
           JSON.parse(res.body)
         end
       end

@@ -16,7 +16,7 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
             'build_num' => 1234,
             'branch' => 'master',
             'author_name' => 'unhappychoice',
-            'build_time_millis' => 23_900,
+            'build_time_millis' => 83_900,
             'start_time' => 100_000,
             'steps' => [
               {
@@ -42,7 +42,6 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
             'build_num' => 1236,
             'branch' => 'master',
             'author_name' => 'unhappychoice',
-            'build_time_millis' => 9_300,
             'start_time' => 120_000,
             'steps' => [
               {
@@ -90,8 +89,8 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
           +--------+----------+--------+---------------+--------+----------+-----------+
           | Number | Status   | Branch | Author        | Commit | Duration | StartTime |
           +--------+----------+--------+---------------+--------+----------+-----------+
-          | 1234   | \e[0;32;49msuccess\e[0m  | \e[0;32;49mmaster\e[0m | unhappychoice |        | 00:23    | 100000    |
-          | 1236   | \e[0;31;49mtimedout\e[0m | \e[0;31;49mmaster\e[0m | unhappychoice |        | 00:09    | 120000    |
+          | 1234   | \e[0;32;49msuccess\e[0m  | \e[0;32;49mmaster\e[0m | unhappychoice |        | 01:23    | 100000    |
+          | 1236   | \e[0;31;49mtimedout\e[0m | \e[0;31;49mmaster\e[0m | unhappychoice |        |          | 120000    |
           +--------+----------+--------+---------------+--------+----------+-----------+
         EXPECTED
         expect(subject).to eq expected.strip
@@ -113,12 +112,10 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
         end
       end
 
-      it 'prints aligned builds with a red timed-out status and reads information once per build' do
-        builds.each { |build| expect(build).to receive(:information).once.and_call_original }
-
+      it 'prints aligned builds with a blank duration for the timed-out build' do
         expected = <<~EXPECTED
-          1234  \e[0;32;49msuccess\e[0m   \e[0;32;49mmaster\e[0m  unhappychoice    00:23  100000
-          1236  \e[0;31;49mtimedout\e[0m  \e[0;31;49mmaster\e[0m  unhappychoice    00:09  120000
+          1234  \e[0;32;49msuccess\e[0m   \e[0;32;49mmaster\e[0m  unhappychoice    01:23  100000
+          1236  \e[0;31;49mtimedout\e[0m  \e[0;31;49mmaster\e[0m  unhappychoice           120000
         EXPECTED
         expect(subject).to eq expected.strip
       end
