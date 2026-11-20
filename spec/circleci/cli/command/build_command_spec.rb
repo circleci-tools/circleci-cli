@@ -30,19 +30,38 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
     let(:log) { 'Build log contains <%= "example" %>' }
     let(:action_name) { 'Test <%= "metadata" %>' }
     let(:output_url) { 'https://example.test/output' }
+    let(:response) { Net::HTTPOK.new('1.1', '200', 'OK') }
+    let(:response_body) { JSON.generate([{ 'message' => log }]) }
 
     before do
       build_hash['steps'].last['actions'].first.merge!(
         'name' => action_name, 'status' => 'failed', 'output_url' => output_url
       )
       http_client = CircleCI::CLI::Networking::HTTPClient
-      allow(http_client).to receive(:get).with(output_url).and_return([{ 'message' => log }])
+      allow(http_client).to receive(:get_raw).with(output_url).and_return(response)
+      allow(response).to receive(:body).and_return(response_body)
     end
 
     [true, false].each do |pretty|
       it "prints the action name and log literally with pretty=#{pretty}" do
         options = OpenStruct.new(project: 'user/repo', build: 1234, pretty:)
         expect { described_class.run(options) }.to output(a_string_including(action_name, log)).to_stdout
+      end
+
+      context "when the log download returns HTTP 403 with pretty=#{pretty}" do
+        let(:response) { Net::HTTPForbidden.new('1.1', '403', 'Forbidden') }
+        let(:response_body) { '{"message":"Access denied"}' }
+
+        it 'reports the HTTP error on stderr and exits unsuccessfully' do
+          layout = pretty ? '--pretty' : '--no-pretty'
+          arguments = %w[build -p user/repo -n 1234] + [layout]
+
+          expect do
+            expect { CircleCI::CLI::Runner.start(arguments) }.to raise_error(SystemExit) { |error|
+              expect(error.status).not_to be_zero
+            }
+          end.to output("Action log download failed (HTTP 403)\n").to_stderr
+        end
       end
     end
   end
@@ -114,8 +133,9 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
 
     before do
       build_hash['steps'].last['actions'].first.merge!('status' => 'failed', 'output_url' => output_url)
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get).with(output_url)
-        .and_return([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }])
+      response = Net::HTTPOK.new('1.1', '200', 'OK')
+      allow(response).to receive(:body).and_return(JSON.generate([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }]))
+      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(output_url).and_return(response)
     end
 
     context 'with table output' do

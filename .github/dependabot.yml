@@ -15,3 +15,7 @@ updates:
       # otherwise rubygems/release-gem aborts with Gem::LoadError.
       # Bump it by hand together with .ruby-version.
       - dependency-name: openssl
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

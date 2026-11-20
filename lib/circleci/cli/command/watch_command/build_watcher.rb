@@ -6,6 +6,16 @@ module CircleCI
   module CLI
     module Command
       class BuildWatcher # rubocop:disable Metrics/ClassLength
+        COMPLETION_MESSAGES = {
+          'success' => '🎉 %<build>s has succeeded!',
+          'fixed' => '🎉 %<build>s has been fixed!',
+          'failed' => '😥 %<build>s has failed...',
+          'timedout' => '%<build>s timed out.',
+          'infrastructure_fail' => '%<build>s failed due to an infrastructure error.',
+          'canceled' => '%<build>s was canceled.',
+          'no_tests' => '%<build>s ran no tests.'
+        }.freeze
+
         OUTPUT_READ_ERRORS = [
           EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
           Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
@@ -18,15 +28,15 @@ module CircleCI
           @build = build
           @verbose = verbose
           @messages = {}
+          @retained_log_bytes = 0
 
-          @build_thread = nil
           @poll_lock = Mutex.new
+          @detail_lock = Mutex.new
 
           @steps = build.steps
           @current_step = nil
           @read_byte = 0
-          @output_suffix = ''.b
-          @needs_newline = false
+          reset_output_tail
         end
 
         def start
@@ -35,7 +45,7 @@ module CircleCI
         end
 
         def latest_detail
-          @poll_lock.synchronize { @latest_detail }
+          @detail_lock.synchronize { @latest_detail }
         end
 
         def stop(status)
@@ -51,6 +61,7 @@ module CircleCI
         ensure
           @messages.each_value(&:close)
           @messages.clear
+          @retained_log_bytes = 0
         end
 
         private
@@ -64,16 +75,30 @@ module CircleCI
         end
 
         def poll_build
-          @build_thread = Thread.new do
-            0.step do |count|
-              @poll_lock.synchronize do
-                update_build if (count % 5).zero?
-                update_actions
-              end
+          @build_thread = Thread.new { poll_live }
+        end
 
-              sleep 1
+        def poll_live
+          next_build_poll = 0
+          0.step do |count|
+            poll_safely do
+              next_build_poll = refresh_live_build(count) if count >= next_build_poll
+              update_actions
             end
+            sleep 1
           end
+        end
+
+        def refresh_live_build(count)
+          update_build
+          count + 5
+        end
+
+        def poll_safely(&)
+          @poll_lock.synchronize(&)
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+          # Resume on the next poll with the last consumed byte offset.
         end
 
         def on_new_step(step)
@@ -106,20 +131,26 @@ module CircleCI
           log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
-          log&.close
+          if log
+            log.close
+            @retained_log_bytes -= log.bytesize
+          end
           @messages.delete(key)
         end
 
         def step_key(step)
-          action = step.actions.first
-          [action&.index, action&.step, step.name]
+          step.action_identity || step.name
         end
 
         def update_build(stopping: false)
-          @latest_detail = fetch_build
-          steps = @latest_detail.steps
+          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          update_steps(detail.steps, stopping:)
+          @detail_lock.synchronize { @latest_detail = detail }
+        end
+
+        def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
-          action_changed = action_position(@current_step) != action_position(next_step)
+          action_changed = action_changed?(next_step)
           incomplete_output = action_changed && !finish_action_output?
 
           notify_step_changes(steps)
@@ -129,8 +160,8 @@ module CircleCI
           @current_step = next_step
         end
 
-        def fetch_build
-          Response::Build.get(@build.username, @build.reponame, @build.build_number)
+        def action_changed?(next_step)
+          @current_step&.action_identity != next_step&.action_identity
         end
 
         def notify_step_changes(steps)
@@ -143,27 +174,20 @@ module CircleCI
           end
         end
 
-        def action_position(step)
-          action = step&.actions&.first
-          [action.index, action.step] if action
-        end
-
         def finish_action_output?
-          return true if 2.times.any? { update_actions }
-
+          complete = 2.times.any? { update_actions }
           flush_output
-          false
+          complete
         end
 
         def update_actions
-          position = action_position(@current_step)
+          position = @current_step&.action_identity
           return true unless position
 
           url = "https://circleci.com/api/private/output/raw/github/#{@build.username}/#{@build.reponame}/#{@build.build_number}/output/#{position.join('/')}"
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           complete = false
           Networking::HTTPClient.get_raw(url, headers) { |response| complete = read_output(response) }
-          flush_output if complete
           complete
         rescue *OUTPUT_READ_ERRORS
           false
@@ -187,7 +211,7 @@ module CircleCI
         end
 
         def stream_output(chunk)
-          # Retain a partial UTF-8 character or CRLF across chunks and interrupted reads.
+          # Retain a partial UTF-8 character or CRLF across chunks and polls.
           text = @output_suffix + chunk
           @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
           write_escaped_output(text)
@@ -195,7 +219,11 @@ module CircleCI
 
         def flush_output
           write_escaped_output(@output_suffix)
-          write_output("\n") if @needs_newline && !@verbose
+          write_output("\n") if @needs_newline
+          reset_output_tail
+        end
+
+        def reset_output_tail
           @output_suffix = ''.b
           @needs_newline = false
         end
@@ -211,9 +239,15 @@ module CircleCI
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              (@messages[step_key(@current_step)] ||= StepLog.new).append(chunk)
+              retain_output(chunk)
             end
           end
+        end
+
+        def retain_output(chunk)
+          log = (@messages[step_key(@current_step)] ||= StepLog.new)
+          remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
+          @retained_log_bytes += log.append(chunk, remaining:)
         end
 
         def notify_started
@@ -225,14 +259,15 @@ module CircleCI
 
         def notify_stopped(status)
           build_name = Printer.escape_controls("#{@build.project_name} ##{@build.build_number}")
-          text = case status
-                 when 'success' then Printer.colorize_green("🎉 #{build_name} has succeeded!")
-                 when 'failed' then Printer.colorize_red("😥 #{build_name} has failed...")
-                 when 'canceled' then Printer.colorize_yellow("#{build_name} was canceled.")
-                 when 'no_tests' then Printer.colorize_light_black("#{build_name} ran no tests.")
-                 end
-
+          text = completion_message(status, build_name)
           @verbose ? print_bordered(text) : puts(text)
+        end
+
+        def completion_message(status, build_name)
+          template = COMPLETION_MESSAGES.fetch(status) do
+            return "#{build_name} finished (status: #{Printer.escape_controls(status || 'unknown')})."
+          end
+          Printer.colorize_by_status(format(template, build: build_name), status)
         end
 
         def print_bordered(text)
