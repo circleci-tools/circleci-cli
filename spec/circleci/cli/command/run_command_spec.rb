@@ -51,6 +51,17 @@ describe CircleCI::CLI::Runner, 'run' do
     expect { described_class.start(['run', run_id]) }.to output(/No workflows found/).to_stdout
   end
 
+  it 'rejects an invalid run ID without prompting for a token or requesting the API' do
+    expect(CircleCI::CLI::Command::RunCommand).not_to receive(:setup_token)
+    expect(client).not_to receive(:get_raw)
+
+    expect do
+      expect { described_class.start(%w[run 123]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).to eq(1)
+      }
+    end.to output("Run ID must be a UUID.\n").to_stderr
+  end
+
   it 'reports API failures on stderr and exits unsuccessfully' do
     stub_get("runs/#{run_id}", { 'error' => { 'detail' => 'Run not found' } },
              response_class: Net::HTTPNotFound, code: '404')
