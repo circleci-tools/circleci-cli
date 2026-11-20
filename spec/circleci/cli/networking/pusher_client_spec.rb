@@ -15,7 +15,7 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
       allow(PusherClient).to receive(:logger).and_return(mock_logger)
       allow(mock_logger).to receive(:level=)
       allow(mock_socket).to receive(:connect)
-      allow(PusherClient::Socket).to receive(:new) do |key, options|
+      allow(CircleCI::CLI::Networking::VerifiedPusherSocket).to receive(:new) do |key, options|
         socket_options[:key] = key
         socket_options.merge!(options)
         mock_socket
