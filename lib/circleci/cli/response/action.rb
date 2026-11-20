@@ -16,6 +16,10 @@ module CircleCI
           @run_time_millis = hash['run_time_millis']
         end
 
+        def identity
+          [index, step]
+        end
+
         def log
           output_url = @hash['output_url']
           return if output_url.nil? || output_url.empty?

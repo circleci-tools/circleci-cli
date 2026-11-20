@@ -61,8 +61,9 @@ Options:
                                     # Default to false
 
   -n build_number                   # Specify build number.
-  -l last                           # Get or retry last failed build.
-  -v verbose                        # Show all the logs if applied to watch command.
+  -l, --last                        # Show or retry the last failed build (build, retry).
+  -v, --verbose                     # Show all build logs (watch).
+  -u USER, --user USER               # Filter builds by user login (watch).
 
   --pretty=true/false, --no-pretty  # Make outputs pretty or not
                                     # Default to true

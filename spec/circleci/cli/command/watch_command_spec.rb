@@ -152,13 +152,48 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       double('running build', build_number: 42, branch: 'main', user: 'octocat', running?: true, finished?: false)
     end
     let(:finished_build) { double('finished build', build_number: 42, finished?: true, status: 'success') }
-    let(:watcher) { double('watcher', build: running_build) }
+    let(:watcher) { double('watcher', build: running_build, poll_error: nil) }
 
     before do
       allow(described_class).to receive(:setup_token)
       allow(described_class).to receive(:say)
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
       allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(account)
+    end
+
+    it 'reports a fatal detail poll through Thor and closes the watcher without an account event' do
+      build_response = CircleCI::CLI::Response::Build
+      build = build_response.new(
+        'username' => 'user', 'reponame' => 'repo', 'build_num' => 42, 'branch' => 'main',
+        'status' => 'running', 'user' => { 'login' => 'octocat' }
+      )
+      active_watcher = CircleCI::CLI::Command::BuildWatcher.new(build)
+      allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).and_return(active_watcher)
+      allow(active_watcher).to receive(:notify_started)
+      expect(active_watcher).to receive(:close).once.ordered.and_call_original
+      expect(client).to receive(:unsubscribe).with('private-pusher-id').ordered
+      expect(client).to receive(:disconnect).ordered
+      expect(client).to receive(:bind).with('private-pusher-id', 'call')
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').once.and_return([build])
+      response = CircleCi::Response.new(double('HTTP response', code: '401', body: '{"message":"Unauthorized"}'))
+      detail_client = instance_double(CircleCi::Build, get: response)
+      expect(CircleCi::Build).to receive(:new).with('user', 'repo', 'github', 42).once.and_return(detail_client)
+      watch_session = nil
+      allow(described_class).to receive(:new).and_wrap_original do |new_session, *arguments|
+        watch_session = new_session.call(*arguments)
+        expect(watch_session).to receive(:sleep).with(1).once do
+          poller = active_watcher.instance_variable_get(:@build_thread)
+          expect(poller.join(5)).to eq(poller)
+        end
+        watch_session
+      end
+
+      expect do
+        expect { CircleCI::CLI::Runner.start(%w[watch -p user/repo -b main]) }
+          .to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end.to output("CircleCI API error (HTTP 401): Unauthorized\n").to_stderr
+      expect(watch_session.instance_variable_get(:@build_watcher)).to be_nil
+      expect(active_watcher.instance_variable_get(:@build_thread)).to be_nil
     end
 
     it 'ignores a retained callback from a previous watch invocation' do
@@ -413,7 +448,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
   describe '#stop_existing_watcher_if_needed' do
     let(:build) { double('build', build_number: 42) }
-    let(:watcher) { double('watcher', build:) }
+    let(:watcher) { double('watcher', build:, poll_error: nil) }
     let(:repository) { double('repository') }
     let(:finished_build) { double('finished_build', build_number: 42, finished?: true, status: 'success') }
 
