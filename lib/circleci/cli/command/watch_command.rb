@@ -9,7 +9,7 @@ module CircleCI
       class WatchCommand < BaseCommand
         def self.run(options)
           token = setup_token
-          username, reponame = project_name(options).split('/')
+          username, reponame = project_target(options)
           repository = BuildRepository.new(username, reponame, branch: branch_name(options), user: options.user)
           new(options, repository).run(token)
         rescue Interrupt

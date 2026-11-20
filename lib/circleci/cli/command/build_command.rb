@@ -7,7 +7,7 @@ module CircleCI
         class << self
           def run(options)
             setup_token
-            username, reponame = project_name(options).split('/')
+            username, reponame = project_target(options)
             with_build_number(username, reponame, options) do |number|
               build = Response::Build.get(username, reponame, number)
               Printer::StepPrinter.new(build.steps, pretty: options.pretty).write_to($stdout)

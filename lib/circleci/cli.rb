@@ -28,10 +28,10 @@ module CircleCI
           true
         end
 
-        def project
+        def project(validate_on_dispatch: false)
           repository = Rugged::Repository.new('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
-          github_project(origin.url) if origin&.url
+          github_project(origin.url, validate_on_dispatch:) if origin&.url
         rescue Rugged::RepositoryError
           nil
         end
@@ -49,8 +49,10 @@ module CircleCI
 
         private
 
-        def github_project(remote)
+        def github_project(remote, validate_on_dispatch:)
           path = github_remote_path(remote)&.delete_suffix('.git')
+          return path&.delete_prefix('/') if validate_on_dispatch
+
           return unless path&.match?(%r{\A/[\w-]+/[.\w-]+\z})
           return if %w[. ..].include?(File.basename(path))
 
@@ -208,7 +210,7 @@ module CircleCI
 
       def git_options(infer_branch: false)
         defaults = {}
-        defaults[:project] = self.class.project unless options.key?(:project)
+        defaults[:project] = self.class.project(validate_on_dispatch: true) unless options.key?(:project)
         defaults[:branch] = self.class.branch_name if infer_branch && !options[:all] && !options.key?(:branch)
         options.merge(defaults)
       end
