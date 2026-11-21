@@ -15,7 +15,7 @@ module CircleCI
 
         message = "CircleCI API error (HTTP #{response.code})"
         detail = body['message'] if body.is_a?(Hash)
-        message += ": #{detail}" if detail.is_a?(String) && !detail.strip.empty?
+        message += ": #{Printer.escape_controls(detail)}" if detail.is_a?(String) && !detail.strip.empty?
         raise Thor::Error, message
       end
     end
