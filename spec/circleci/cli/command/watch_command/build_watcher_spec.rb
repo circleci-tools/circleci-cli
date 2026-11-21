@@ -81,6 +81,10 @@ describe CircleCI::CLI::Command::BuildWatcher do
   describe '#stop' do
     subject { described_class.new(build, verbose: verbose).stop(status) }
 
+    before do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(build)
+    end
+
     {
       'canceled' => 'was canceled.',
       'no_tests' => 'ran no tests.',

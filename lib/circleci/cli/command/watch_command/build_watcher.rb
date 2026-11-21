@@ -35,8 +35,8 @@ module CircleCI
         end
 
         def start
-          poll_build
           notify_started
+          @build_thread = poll_build
         end
 
         def latest_detail
@@ -48,13 +48,11 @@ module CircleCI
         end
 
         def stop(status)
-          @poll_lock.synchronize do
-            error = poll_error
-            raise error if error
+          @stop_requested.close
+          (@build_thread ||= poll_build).join
+          error = poll_error
+          raise error if error
 
-            stop_polling
-          end
-          update_build(stopping: true)
           notify_stopped(status)
         ensure
           close
@@ -72,22 +70,25 @@ module CircleCI
         private
 
         def initialize_polling
-          @poll_lock = Mutex.new
+          @stop_requested = Queue.new
           @state_lock = Mutex.new
           @log_session = Networking::HTTPClient::Session.new
         end
 
         def stop_polling
           Thread.handle_interrupt(Interrupt => :never) do
-            @build_thread&.kill
-            @build_thread&.join
+            @build_thread.kill.join if @build_thread&.alive?
+          ensure
             @build_thread = nil
           end
         end
 
         def poll_build
-          @build_thread = Thread.new do
+          Thread.new do
             poll_live
+            update_build(stopping: true)
+          rescue StandardError => e
+            @state_lock.synchronize { @poll_error = e }
           ensure
             @log_session.close
           end
@@ -96,13 +97,13 @@ module CircleCI
         def poll_live
           next_build_poll = 0
           0.step do |count|
+            break if @stop_requested.closed?
+
             poll_safely do
               next_build_poll = refresh_live_build(count) if count >= next_build_poll
               update_actions
             end
-            break if poll_error
-
-            sleep 1
+            @stop_requested.pop(timeout: 1)
           end
         end
 
@@ -112,14 +113,10 @@ module CircleCI
         end
 
         def poll_safely
-          @poll_lock.synchronize do
-            yield
-          rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-                 Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
-            # Resume on the next poll with the last consumed byte offset.
-          rescue StandardError => e
-            @state_lock.synchronize { @poll_error = e }
-          end
+          yield
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+          # Resume on the next poll with the last consumed byte offset.
         end
 
         def on_new_step(step)

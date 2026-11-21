@@ -306,7 +306,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(watcher).to receive(:close)
 
       notify = nil
-      expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) { |*_, &callback| notify = callback }
       expect(watcher).to receive(:start).ordered
       expect(session).to receive(:sleep).with(1).ordered { notify.call }
       expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_raise(Net::ReadTimeout)
@@ -326,7 +326,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
-      expect(client).to receive(:bind).with('private-pusher-id', 'call').and_yield
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success).and_yield
       expect(response).to receive(:branch).with('user', 'repo', 'main').ordered
         .and_raise(Thor::Error, 'CircleCI API error (HTTP 401): Unauthorized')
 
@@ -370,7 +370,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       second_watcher = watcher_class.new(second)
       allow(watcher_class).to receive(:new).with(first, verbose: true).and_return(first_watcher)
       allow(watcher_class).to receive(:new).with(second, verbose: true).and_return(second_watcher)
-      allow(first_watcher).to receive(:poll_build)
+      allow(first_watcher).to receive(:start) { first_watcher.send(:notify_started) }
       allow(second_watcher).to receive(:poll_build)
 
       expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success)
@@ -410,7 +410,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
           allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
           allow(described_class).to receive(:new).with(options, repository).and_return(session)
         expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(completed_build)
-        allow_any_instance_of(CircleCI::CLI::Command::BuildWatcher).to receive(:poll_build)
+        allow_any_instance_of(CircleCI::CLI::Command::BuildWatcher).to receive(:start) do |build_watcher|
+          build_watcher.send(:notify_started)
+        end
 
         notify = nil
         expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) { |*_, &callback| notify = callback }
@@ -438,7 +440,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       watcher_class = CircleCI::CLI::Command::BuildWatcher
       first_watcher = watcher_class.new(first)
       second_watcher = watcher_class.new(second)
-      allow(first_watcher).to receive(:poll_build)
+      allow(first_watcher).to receive(:start) { first_watcher.send(:notify_started) }
       allow(second_watcher).to receive(:poll_build)
       allow(watcher_class).to receive(:new).with(first, verbose: true).and_return(first_watcher)
       allow(watcher_class).to receive(:new).with(second, verbose: true).and_return(second_watcher)
