@@ -16,6 +16,7 @@ gem 'guard-rubocop'
 # rubygems/release-gem activates it via RUBYOPT before Bundler.setup, and a
 # version mismatch aborts the release with Gem::LoadError.
 gem 'openssl', '3.3.3'
+gem 'ostruct'
 gem 'rake'
 gem 'rspec'
 gem 'rubocop'
