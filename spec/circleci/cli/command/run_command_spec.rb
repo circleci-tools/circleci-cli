@@ -236,6 +236,55 @@ describe CircleCI::CLI::Runner, 'run' do
     end.to output("CircleCI API error (HTTP 503): Jobs unavailable\n").to_stderr
   end
 
+  it 'stops queued job requests after a failure and waits for requests in flight' do
+    workflows = (1..8).map { |id| { 'id' => id, 'attributes' => { 'name' => "workflow-#{id}" } } }
+    stub_get("runs/#{run_id}", fixtures.fetch('run'))
+    stub_get(workflows_path, { 'data' => workflows, 'page' => { 'next' => nil } })
+
+    started = Queue.new
+    failure_worker = Queue.new
+    fail_request = Queue.new
+    finish_requests = Queue.new
+    success = Net::HTTPOK.new('1.1', '200', '')
+    allow(success).to receive(:body).and_return(JSON.generate(fixtures.fetch('checks_jobs')))
+    failure = Net::HTTPServiceUnavailable.new('1.1', '503', '')
+    allow(failure).to receive(:body).and_return('{"error":{"detail":"Jobs unavailable"}}')
+    jobs_url = %r{/jobs\?filter%5Bworkflow_id%5D=\d+\z}
+    allow(client).to receive(:get_raw).with(jobs_url, headers) do |url, _headers|
+      id = url.split('=').last.to_i
+      started << id
+      if id == 1
+        failure_worker << Thread.current
+        fail_request.pop
+        failure
+      else
+        finish_requests.pop if id <= 4
+        success
+      end
+    end
+
+    command = CircleCI::CLI::Command::RunCommand.new('test-token')
+    summary = Thread.new do
+      command.summary(run_id)
+    rescue Thor::Error => e
+      e
+    end
+    Timeout.timeout(5) do
+      expect(Array.new(4) { started.pop }).to match_array(1..4)
+      fail_request << true
+      failure_worker.pop.join
+      expect(summary).to be_alive
+      finish_requests.close
+      expect(summary.value).to be_a(Thor::Error)
+      expect(summary.value.message).to eq('CircleCI API error (HTTP 503): Jobs unavailable')
+    end
+    expect(client).to have_received(:get_raw).with(jobs_url, headers).exactly(4).times
+  ensure
+    fail_request&.close
+    finish_requests&.close
+    summary&.join
+  end
+
   it 'rejects an invalid run ID without prompting for a token or requesting the API' do
     expect(CircleCI::CLI::Command::RunCommand).not_to receive(:setup_token)
     expect(client).not_to receive(:get_raw)

@@ -56,20 +56,17 @@ module CircleCI
             Thread.new { fetch_pending_jobs(pending, results) }
           end
           workers.each(&:join)
-          results.map { |result| result.is_a?(StandardError) ? raise(result) : result }
+          results.each { |result| raise result if result.is_a?(StandardError) }
         end
 
         def fetch_pending_jobs(pending, results)
           while (entry = pending.pop)
             workflow, index = entry
-            results[index] = workflow_jobs_or_error(workflow)
+            results[index] = workflow_jobs(workflow)
           end
-        end
-
-        def workflow_jobs_or_error(workflow)
-          workflow_jobs(workflow)
         rescue StandardError => e
-          e
+          pending.clear
+          results[index] = e
         end
 
         def workflows(run_id)
