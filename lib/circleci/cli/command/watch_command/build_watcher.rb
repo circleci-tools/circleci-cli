@@ -213,9 +213,8 @@ module CircleCI
         def notify_step_changes(steps, next_step:, stopping:)
           previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
           steps.each do |step|
-            key = step_key(step)
-            notify_step_change(step, previous_statuses[key])
-            print_completed_outputs(step, key, stopping:) if @verbose && step != next_step
+            notify_step_change(step, previous_statuses[step_key(step)])
+            print_completed_outputs(step, stopping:) if step != next_step && (@verbose || step.status == 'failed')
           end
         end
 
@@ -225,7 +224,7 @@ module CircleCI
           on_new_step_status(step) unless previous_status == step.status
         end
 
-        def print_completed_outputs(step, key, stopping:)
+        def print_completed_outputs(step, stopping:)
           step.actions.each do |action|
             identity = action.identity
             next if action.end_time.nil? || identity.include?(nil) || @action_outputs.key?(identity)
@@ -233,12 +232,12 @@ module CircleCI
             output = @completed_outputs.fetch(identity) { @completed_outputs[identity] = new_output(identity) }
             next unless output
 
-            read_completed_output(output, identity, key, stopping:)
+            read_completed_output(output, identity, stopping:)
           end
         end
 
-        def read_completed_output(output, identity, key, stopping:)
-          complete = output.finish_output?(final: stopping) { |chunk| write_output(key, chunk) }
+        def read_completed_output(output, identity, stopping:)
+          complete = output.finish_output?(final: stopping) { |chunk| print_output(chunk) }
           @completed_outputs[identity] = nil if complete || stopping
           warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
         end
@@ -249,7 +248,7 @@ module CircleCI
 
             complete = output.finish_output? { |chunk| write_output(key, chunk) }
             @action_outputs[identity] = nil
-            @completed_outputs[identity] = nil if @verbose
+            @completed_outputs[identity] = nil
             identity unless complete
           end
           warn INCOMPLETE_OUTPUT_WARNING if failed.any?
@@ -264,14 +263,18 @@ module CircleCI
 
         def write_output(key, chunk)
           if @verbose
-            $stdout.write(chunk)
-            $stdout.flush
+            print_output(chunk)
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
               retain_output(key, chunk)
             end
           end
+        end
+
+        def print_output(chunk)
+          $stdout.write(chunk)
+          $stdout.flush
         end
 
         def retain_output(key, chunk)
