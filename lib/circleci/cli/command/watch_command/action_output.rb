@@ -8,13 +8,14 @@ module CircleCI
           EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
           Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
         ].freeze
+        LINE_BUFFER_LIMIT = 64 * 1024
         OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
 
         def initialize(url, session)
           @url = url
           @session = session
           @read_byte = 0
-          reset_output_tail
+          @line_tail = ''.b
         end
 
         def read(&write)
@@ -48,31 +49,37 @@ module CircleCI
 
             stream_output(chunk.b, &write)
             @read_byte += chunk.bytesize
-            @needs_newline = !chunk.end_with?("\n")
           end
           successful || response.is_a?(Net::HTTPRangeNotSatisfiable)
         end
 
         def stream_output(chunk, &)
-          # Retain a partial UTF-8 character or CRLF across chunks and polls.
-          text = @output_suffix + chunk
-          @output_suffix = text.slice!(OUTPUT_SUFFIX) || ''.b
-          write_escaped_output(text, &)
+          @line_tail << chunk
+          last_newline = @line_tail.rindex("\n")
+          write_escaped_output(@line_tail.slice!(0, last_newline + 1), &) if last_newline
+
+          flush_long_line(&) while @line_tail.bytesize > LINE_BUFFER_LIMIT
         end
 
-        def flush_output(&write)
-          write_escaped_output(@output_suffix, &write)
-          write.call("\n") if @needs_newline
-          reset_output_tail
+        def flush_long_line(&)
+          # Split oversized unfinished lines at a UTF-8 boundary and end each fragment.
+          fragment = @line_tail.byteslice(0, LINE_BUFFER_LIMIT)
+          fragment.slice!(OUTPUT_SUFFIX)
+          @line_tail.slice!(0, fragment.bytesize)
+          write_escaped_output(fragment, terminate: true, &)
         end
 
-        def reset_output_tail
-          @output_suffix = ''.b
-          @needs_newline = false
+        def flush_output(&)
+          write_escaped_output(@line_tail, terminate: true, &)
+          @line_tail.clear
         end
 
-        def write_escaped_output(text)
-          yield Printer.escape_controls(text, multiline: true) unless text.empty?
+        def write_escaped_output(text, terminate: false)
+          return if text.empty?
+
+          escaped = Printer.escape_controls(text, multiline: true)
+          escaped << "\n" if terminate
+          yield escaped
         end
       end
     end

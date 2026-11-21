@@ -199,6 +199,49 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         build_response.call([step])
       end
 
+      [true, false].each do |verbose|
+        it "preserves interleaved action lines with verbose=#{verbose}" do
+          watcher = described_class.new(build, verbose:)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get)
+            .and_return(multi_action_build('running', 'running'), multi_action_build('failed', 'failed'))
+
+          second_path = output_path.sub(%r{/1/2$}, '/2/2')
+          expect_output_response(0, 'hel')
+          expect_output_response(0, "world\nunterminated", path: second_path)
+          expect_output_response(3, "lo\r", "\n")
+          expect_output_response(18, path: second_path)
+          expect_output_response(7)
+          expect_output_response(18, path: second_path)
+
+          expect do
+            watcher.send(:update_build)
+            2.times { watcher.send(:update_actions) }
+            watcher.send(:update_build)
+          end.to output("world\nhello\nunterminated\n").to_stdout
+        ensure
+          watcher.close
+        end
+      end
+
+      it 'ends oversized fragments before emitting another action and preserves split UTF-8' do
+        stub_const('CircleCI::CLI::Command::ActionOutput::LINE_BUFFER_LIMIT', 5)
+        allow(watcher).to receive(:puts)
+        allow(CircleCI::CLI::Response::Build).to receive(:get)
+          .and_return(multi_action_build('running', 'running'), multi_action_build('success', 'success'))
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, 'abcdé')
+        expect_output_response(0, "other\n", path: second_path)
+        expect_output_response(6, "f\r", "\n")
+        expect_output_response(6, path: second_path)
+
+        watcher.send(:update_build)
+        expect { watcher.send(:update_actions) }.to output("abcd\nother\n").to_stdout
+        expect { watcher.send(:update_build) }.to output("éf\n").to_stdout
+      ensure
+        watcher.close
+      end
+
       it 'reads an already completed action when it first observes the running step' do
         polled = pause_after_polls(1)
         allow(watcher).to receive(:puts)
@@ -739,7 +782,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       messages = watcher.instance_variable_get(:@messages)
       expect(messages.keys).to eq([[1, 2]])
-      expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output).to_stdout
+      expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output.lines[0...-1].join).to_stdout
     ensure
       watcher.close
     end
@@ -750,8 +793,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:watcher) { described_class.new(build) }
     let(:messages) { watcher.instance_variable_get(:@messages) }
     let(:output_path) { '/api/private/output/raw/github/user/repo/1234/output/0/0' }
-    let(:first_chunk) { 'x' * (192 * 1024) }
-    let(:second_chunk) { 'y' * (128 * 1024) }
+    let(:first_chunk) { "#{'x' * ((192 * 1024) - 1)}\n" }
+    let(:second_chunk) { "#{'y' * ((128 * 1024) - 1)}\n" }
     let(:last_chunk) { "last\n" }
 
     before do
