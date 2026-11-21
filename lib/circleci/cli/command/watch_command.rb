@@ -9,7 +9,7 @@ module CircleCI
       class WatchCommand < BaseCommand
         def self.run(options)
           token = setup_token
-          username, reponame = project_name(options).split('/')
+          username, reponame = project_target(options)
           repository = BuildRepository.new(username, reponame, branch: branch_name(options), user: options.user)
           new(options, repository).run(token)
         rescue Interrupt
@@ -26,11 +26,11 @@ module CircleCI
 
         def run(token)
           client = Networking::CircleCIPusherClient.new(token:)
-          client.connect
           channel = "private-#{Response::Account.me.pusher_id}"
-          client.bind(channel, 'call') do
+          client.bind(channel, 'call', 'pusher_internal:subscription_succeeded') do
             @refresh_lock.synchronize { @refresh_pending = true }
           end
+          client.connect
           watch_builds
         ensure
           release_subscription(client, channel) if client
@@ -63,6 +63,9 @@ module CircleCI
             pending_refresh
           end
           @repository.update if pending
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
+               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+          @refresh_lock.synchronize { @refresh_pending = true }
         end
 
         def stop_existing_watcher_if_needed
@@ -101,7 +104,8 @@ module CircleCI
             end
             title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
             puts Printer::BuildPrinter.header_for(build, title)
-            puts Printer::StepPrinter.new(detail.steps, pretty: @options.verbose, verbose: @options.verbose)
+            verbose = @options.verbose
+            Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
             @repository.mark_as_shown(build.build_number)
           end
         end

@@ -7,7 +7,7 @@ module CircleCI
         class << self
           def run(options)
             setup_token
-            username, reponame = project_name(options).split('/')
+            username, reponame = project_target(options)
             with_build_number(username, reponame, options) { |number| retry_build(username, reponame, number) }
           end
 

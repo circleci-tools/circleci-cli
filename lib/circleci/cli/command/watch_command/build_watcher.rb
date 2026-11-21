@@ -17,6 +17,8 @@ module CircleCI
           'no_tests' => '%<build>s ran no tests.'
         }.freeze
 
+        INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
+
         attr_reader :build
 
         def initialize(build, verbose: false)
@@ -25,12 +27,11 @@ module CircleCI
           @messages = {}
           @retained_log_bytes = 0
 
-          @stop_requested = Queue.new
-          @state_lock = Mutex.new
-
+          initialize_polling
           @steps = build.steps
           @current_step = nil
           @action_outputs = {}
+          @completed_outputs = {}
         end
 
         def start
@@ -63,9 +64,16 @@ module CircleCI
           @messages.each_value(&:close)
           @messages.clear
           @retained_log_bytes = 0
+          @log_session.close
         end
 
         private
+
+        def initialize_polling
+          @stop_requested = Queue.new
+          @state_lock = Mutex.new
+          @log_session = Networking::HTTPClient::Session.new
+        end
 
         def stop_polling
           Thread.handle_interrupt(Interrupt => :never) do
@@ -81,6 +89,8 @@ module CircleCI
             update_build(stopping: true)
           rescue StandardError => e
             @state_lock.synchronize { @poll_error = e }
+          ensure
+            @log_session.close
           end
         end
 
@@ -160,7 +170,7 @@ module CircleCI
           next_step = steps.find { |step| step.status == 'running' } unless stopping
           continuing = refresh_current_step(steps, next_step) if @current_step
 
-          notify_step_changes(steps)
+          notify_step_changes(steps, next_step:, stopping:)
           @steps = steps
           @current_step = next_step
           return unless next_step && !continuing
@@ -186,24 +196,47 @@ module CircleCI
         def track_actions(actions)
           actions.each do |action|
             @action_outputs.fetch(action.identity) do |identity|
-              @action_outputs[identity] = ActionOutput.new(output_url(identity))
+              @action_outputs[identity] = @completed_outputs.fetch(identity) { new_output(identity) }
             end
           end
         end
 
-        def output_url(identity)
+        def new_output(identity)
           project = [@build.username, @build.reponame, @build.build_number].join('/')
-          "https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}"
+          url = "https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}"
+          ActionOutput.new(url, @log_session)
         end
 
-        def notify_step_changes(steps)
+        def notify_step_changes(steps, next_step:, stopping:)
           previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
           steps.each do |step|
-            previous_status = previous_statuses[step_key(step)]
-            next on_new_step(step) unless previous_status
-
-            on_new_step_status(step) unless previous_status == step.status
+            notify_step_change(step, previous_statuses[step_key(step)])
+            print_completed_outputs(step, stopping:) if step != next_step && (@verbose || step.status == 'failed')
           end
+        end
+
+        def notify_step_change(step, previous_status)
+          return on_new_step(step) unless previous_status
+
+          on_new_step_status(step) unless previous_status == step.status
+        end
+
+        def print_completed_outputs(step, stopping:)
+          step.actions.each do |action|
+            identity = action.identity
+            next if action.end_time.nil? || identity.include?(nil) || @action_outputs.key?(identity)
+
+            output = @completed_outputs.fetch(identity) { @completed_outputs[identity] = new_output(identity) }
+            next unless output
+
+            read_completed_output(output, identity, stopping:)
+          end
+        end
+
+        def read_completed_output(output, identity, stopping:)
+          complete = output.finish_output?(final: stopping) { |chunk| print_output(chunk) }
+          @completed_outputs[identity] = nil if complete || stopping
+          warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
         end
 
         def finish_outputs(running, key)
@@ -212,9 +245,10 @@ module CircleCI
 
             complete = output.finish_output? { |chunk| write_output(key, chunk) }
             @action_outputs[identity] = nil
+            @completed_outputs[identity] = nil
             identity unless complete
           end
-          warn 'Warning: Step log output may be incomplete.' if failed.any?
+          warn INCOMPLETE_OUTPUT_WARNING if failed.any?
         end
 
         def update_actions
@@ -226,14 +260,18 @@ module CircleCI
 
         def write_output(key, chunk)
           if @verbose
-            $stdout.write(chunk)
-            $stdout.flush
+            print_output(chunk)
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
               retain_output(key, chunk)
             end
           end
+        end
+
+        def print_output(chunk)
+          $stdout.write(chunk)
+          $stdout.flush
         end
 
         def retain_output(key, chunk)

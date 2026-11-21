@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'fileutils'
 require 'open3'
 require 'rbconfig'
 require 'spec_helper'
@@ -159,7 +160,7 @@ describe CircleCI::CLI::Runner do
        { 'project' => 'octocat/hello-world', 'branch' => 'main', 'user' => 'octocat', 'verbose' => true }]
     ].each do |command_name, arguments, command_class, expected_options|
       it "routes #{command_name} to #{command_class}" do
-        expect(Rugged::Repository).not_to receive(:new)
+        expect(Rugged::Repository).not_to receive(:discover)
         expect(command_class).to receive(:run) do |options|
           expect(options.to_h.slice(*expected_options.keys)).to eq(expected_options)
         end
@@ -217,6 +218,30 @@ describe CircleCI::CLI::Runner do
       described_class.start(%w[builds])
     end
 
+    it 'requests the same branch builds from the checkout root and a nested directory' do
+      allow(Rugged::Repository).to receive(:discover).with('.').and_call_original
+      allow(CircleCI::CLI::Command::BuildsCommand).to receive(:setup_token)
+      expect(CircleCI::CLI::Command::BuildsCommand).not_to receive(:ask)
+      expect(CircleCI::CLI::Response::Build).to receive(:branch)
+        .with('octocat', 'hello-world', 'feature/topic').twice.and_return([])
+
+      Dir.mktmpdir('cli-checkout-') do |directory|
+        repository = Rugged::Repository.init_at(directory)
+        repository.remotes.create('origin', 'https://github.com/octocat/hello-world.git')
+        tree = Rugged::Tree::Builder.new(repository).write
+        signature = { name: 'CLI Test', email: 'cli@example.com', time: Time.now }
+        branch = 'refs/heads/feature/topic'
+        Rugged::Commit.create(repository, tree: tree, parents: [], message: 'Initial commit',
+                                          author: signature, committer: signature, update_ref: branch)
+        repository.head = branch
+        nested = FileUtils.mkdir_p(File.join(directory, 'lib', 'nested')).first
+
+        [directory, nested].each do |path|
+          Dir.chdir(path) { expect { described_class.start(%w[builds]) }.to output.to_stdout }
+        end
+      end
+    end
+
     context 'with a GitHub SSH-over-HTTPS origin' do
       let(:rugged_response_remote_url) { 'ssh://git@ssh.github.com:443/owner/repo.git' }
 
@@ -232,7 +257,7 @@ describe CircleCI::CLI::Runner do
     end
 
     it 'skips branch inference with --all' do
-      expect(Rugged::Repository).not_to receive(:new)
+      expect(Rugged::Repository).not_to receive(:discover)
       expect(CircleCI::CLI::Command::BuildsCommand).to receive(:run).with(hash_including('all' => true))
 
       described_class.start(%w[builds --project octocat/hello-world --all])
@@ -240,7 +265,7 @@ describe CircleCI::CLI::Runner do
 
     context 'outside Git' do
       before do
-        allow(Rugged::Repository).to receive(:new).with('.').and_raise(Rugged::RepositoryError)
+        allow(Rugged::Repository).to receive(:discover).with('.').and_raise(Rugged::RepositoryError)
       end
 
       it 'leaves project selection to the command' do
@@ -287,7 +312,7 @@ describe CircleCI::CLI::Runner do
     end
 
     it 'prints the version' do
-      expect(Rugged::Repository).not_to receive(:new)
+      expect(Rugged::Repository).not_to receive(:discover)
       expect { described_class.start(%w[version]) }.to output("#{CircleCI::CLI::VERSION}\n").to_stdout
     end
 

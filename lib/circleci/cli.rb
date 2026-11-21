@@ -28,16 +28,16 @@ module CircleCI
           true
         end
 
-        def project
-          repository = Rugged::Repository.new('.')
+        def project(validate_on_dispatch: false)
+          repository = Rugged::Repository.discover('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
-          github_project(origin.url) if origin&.url
+          github_project(origin.url, validate_on_dispatch:) if origin&.url
         rescue Rugged::RepositoryError
           nil
         end
 
         def branch_name
-          repository = Rugged::Repository.new('.')
+          repository = Rugged::Repository.discover('.')
           head = repository.head
 
           return nil unless head.branch?
@@ -49,8 +49,10 @@ module CircleCI
 
         private
 
-        def github_project(remote)
+        def github_project(remote, validate_on_dispatch:)
           path = github_remote_path(remote)&.delete_suffix('.git')
+          return path&.delete_prefix('/') if validate_on_dispatch
+
           return unless path&.match?(%r{\A/[\w-]+/[.\w-]+\z})
           return if %w[. ..].include?(File.basename(path))
 
@@ -110,9 +112,10 @@ module CircleCI
       end
 
       desc 'run RUN_ID', 'Show all workflows and jobs in a run'
+      method_option :failed_tests, type: :boolean, desc: 'Show failed tests grouped by workflow and job'
       map 'run' => :show_run
       def show_run(run_id)
-        say Command::RunCommand.run(run_id)
+        say Command::RunCommand.run(run_id, failed_tests: options[:failed_tests])
       end
 
       desc 'build', 'Show the build result'
@@ -208,7 +211,7 @@ module CircleCI
 
       def git_options(infer_branch: false)
         defaults = {}
-        defaults[:project] = self.class.project unless options.key?(:project)
+        defaults[:project] = self.class.project(validate_on_dispatch: true) unless options.key?(:project)
         defaults[:branch] = self.class.branch_name if infer_branch && !options[:all] && !options.key?(:branch)
         options.merge(defaults)
       end

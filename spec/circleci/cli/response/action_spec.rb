@@ -15,20 +15,23 @@ describe CircleCI::CLI::Response::Action do
     let(:output) do
       [
         { 'message' => "first\r\n\r\nline\e[A\r\e[2K" },
-        { 'message' => "#{'a' * 121}\n" }
+        { 'message' => "#{'a' * 121}\n界", 'metadata' => ['}]"', { 'nested' => true }] }
       ]
     end
 
     before do
       response = Net::HTTPOK.new('1.1', '200', 'OK')
-      allow(response).to receive(:body).and_return(JSON.generate(output))
+      allow(response).to receive(:read_body) do |&read|
+        JSON.generate(output).bytes.each { |byte| read.call(byte.chr) }
+      end
+      allow(http).to receive(:max_retries=).with(0)
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
       allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path: '/output/123')))
-        .and_return(response)
+        .and_yield(response)
     end
 
     it 'normalizes and joins log messages' do
-      expect(log).to eq("first\n\nline\n#{'a' * 121}\n")
+      expect(log).to eq("first\n\nline\n#{'a' * 121}\n界")
     end
 
     context 'without an output URL' do
