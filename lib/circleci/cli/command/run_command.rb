@@ -105,8 +105,11 @@ module CircleCI
         def api_error(response)
           message = "CircleCI API error (HTTP #{response.code})"
           body = JSON.parse(response.body)
-          detail = body.dig('error', 'detail') || body.dig('error', 'title') if body.is_a?(Hash)
-          detail.to_s.empty? ? message : "#{message}: #{detail}"
+          error = body['error'] if body.is_a?(Hash)
+          return message unless error.is_a?(Hash)
+
+          detail = error.values_at('detail', 'title').find { |value| value.is_a?(String) && !value.strip.empty? }
+          detail ? "#{message}: #{detail}" : message
         rescue JSON::ParserError
           message
         end

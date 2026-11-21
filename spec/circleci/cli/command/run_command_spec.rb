@@ -175,6 +175,28 @@ describe CircleCI::CLI::Runner, 'run' do
     end.to output("CircleCI API returned invalid JSON.\n").to_stderr
   end
 
+  it 'reports the HTTP status when an API failure has a string error' do
+    stub_get("runs/#{run_id}", { 'error' => 'Bad gateway' },
+             response_class: Net::HTTPBadGateway, code: '502')
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("CircleCI API error (HTTP 502)\n").to_stderr
+  end
+
+  it 'reports the error title when the detail is empty' do
+    stub_get("runs/#{run_id}", { 'error' => { 'detail' => '', 'title' => 'Bad gateway' } },
+             response_class: Net::HTTPBadGateway, code: '502')
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("CircleCI API error (HTTP 502): Bad gateway\n").to_stderr
+  end
+
   context 'when a request times out' do
     let(:run_path) { "runs/#{run_id}" }
 
