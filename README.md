@@ -86,6 +86,11 @@ circleci-cli run 123e4567-e89b-12d3-a456-426614174000
 On projects supported by `build`, use the displayed job number to inspect its
 steps, for example `circleci-cli build -p user/project -n 42`.
 
+Use `circleci-cli run RUN_ID --failed-tests` to include failed tests from jobs
+that failed, grouped by workflow and job. Jobs must upload test results with
+`store_test_results` for test details to appear. Each reported failure is
+shown, including repeats from parallel executions.
+
 #### Watch your project
 ```
 $ circleci-cli watch

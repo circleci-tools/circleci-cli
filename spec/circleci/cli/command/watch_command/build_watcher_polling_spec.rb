@@ -495,6 +495,38 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     end
   end
 
+  describe 'completed steps in default mode' do
+    let(:initial_steps) { [] }
+    let(:watcher) { described_class.new(build) }
+
+    after { watcher.close }
+
+    it 'prints newly observed failures and previously buffered failures once and skips successful logs' do
+      running_step = step_hash.call(name: 'Deploy', type: 'shell', status: 'running', index: 1, step: 2)
+      running_build = build_response.call([running_step])
+      finished_build = build_response.call(
+        [
+          step_hash.call(name: 'Deploy', type: 'shell', status: 'failed', index: 1, step: 2),
+          step_hash.call(name: 'Compile', type: 'shell', status: 'success', step: 3),
+          step_hash.call(name: 'Test', type: 'shell', status: 'failed', step: 4)
+        ]
+      )
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(running_build, finished_build)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
+      allow(watcher).to receive(:puts)
+      expect_output_response(0, "deploy log\n")
+      expect_output_response(11)
+      expect_output_response(0, "test log\n", path: '/api/private/output/raw/github/user/repo/1234/output/0/4')
+
+      expect do
+        watcher.send(:update_build)
+        watcher.send(:update_actions)
+        2.times { watcher.send(:update_build) }
+        watcher.stop('failed')
+      end.to output("deploy log\ntest log\n").to_stdout
+    end
+  end
+
   describe '#update_build' do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: false) }
@@ -565,8 +597,12 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:retain_output, build.steps.first.action_identity, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
+      expect_output_response(0, path: '/api/private/output/raw/github/user/repo/1234/output/0/0')
 
       expect { watcher.send(:update_build) }.to output("#{status}\n#{log_text}").to_stdout
+    ensure
+      watcher.close
     end
 
     it 'prints new step statuses for success, failure, and in-progress steps' do
@@ -580,6 +616,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         )
       )
       allow(watcher).to receive(:puts)
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
+      expect_output_response(0)
 
       watcher.instance_variable_set(:@steps, [])
       watcher.send(:update_build)
@@ -587,6 +625,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}")
       expect(watcher).to have_received(:puts).with("\e[2K\r#{CircleCI::CLI::Printer.colorize_red(escaped_step_name)}")
       expect(watcher).to have_received(:puts).with('Deploy')
+    ensure
+      watcher.close
     end
 
     it 'replaces a running step with a success status line' do
