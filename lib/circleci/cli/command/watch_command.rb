@@ -63,6 +63,9 @@ module CircleCI
             pending_refresh
           end
           @repository.update if pending
+        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
+               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+          @refresh_lock.synchronize { @refresh_pending = true }
         end
 
         def stop_existing_watcher_if_needed

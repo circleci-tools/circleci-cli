@@ -266,6 +266,42 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect { Timeout.timeout(5) { described_class.run(options) } }.to output(/Start watching/).to_stdout
     end
 
+    it 'keeps watching the last build list and retries a timed-out refresh without another notification' do
+      response = CircleCI::CLI::Response::Build
+      expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([running_build])
+      allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
+      allow(described_class).to receive(:new).with(options, repository).and_return(session)
+      allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(running_build, verbose: true).and_return(watcher)
+      allow(watcher).to receive(:close)
+
+      notify = nil
+      expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      expect(watcher).to receive(:start).ordered
+      expect(session).to receive(:sleep).with(1).ordered { notify.call }
+      expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_raise(Net::ReadTimeout)
+      expect(watcher).to receive(:latest_detail).ordered.and_return(nil)
+      expect(session).to receive(:sleep).with(1).ordered do
+        expect(repository.build_for(42, recent_only: true)).to equal(running_build)
+      end
+      expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([finished_build])
+      expect(watcher).to receive(:stop).with('success').ordered
+      expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+
+      described_class.run(options)
+    end
+
+    it 'surfaces a permanent API error from an event-triggered refresh' do
+      response = CircleCI::CLI::Response::Build
+      expect(response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
+      allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
+      allow(described_class).to receive(:new).with(options, repository).and_return(session)
+      expect(client).to receive(:bind).with('private-pusher-id', 'call').and_yield
+      expect(response).to receive(:branch).with('user', 'repo', 'main').ordered
+        .and_raise(Thor::Error, 'CircleCI API error (HTTP 401): Unauthorized')
+
+      expect { described_class.run(options) }.to raise_error(Thor::Error, 'CircleCI API error (HTTP 401): Unauthorized')
+    end
+
     it 'coalesces a burst and refreshes again for a notification received during the request' do
       expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
