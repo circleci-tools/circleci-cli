@@ -610,7 +610,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
     let(:repository) { double('repository') }
     let(:step) do
-      CircleCI::CLI::Response::Step.new('build', {
+      CircleCI::CLI::Response::Step.new({
         'actions' => [
           { 'name' => 'Setup', 'status' => 'success', 'output_url' => 'https://circleci.com/output/setup' },
           { 'name' => 'Test', 'status' => 'failed', 'output_url' => 'https://circleci.com/output/test' },
