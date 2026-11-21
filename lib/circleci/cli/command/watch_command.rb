@@ -26,11 +26,11 @@ module CircleCI
 
         def run(token)
           client = Networking::CircleCIPusherClient.new(token:)
-          client.connect
           channel = "private-#{Response::Account.me.pusher_id}"
-          client.bind(channel, 'call') do
+          client.bind(channel, 'call', 'pusher_internal:subscription_succeeded') do
             @refresh_lock.synchronize { @refresh_pending = true }
           end
+          client.connect
           watch_builds
         ensure
           release_subscription(client, channel) if client

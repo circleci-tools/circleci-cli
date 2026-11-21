@@ -6,6 +6,7 @@ require 'timeout'
 describe CircleCI::CLI::Command::WatchCommand, type: :command do
   let(:options) { OpenStruct.new(project: 'user/repo', branch: 'main', user: 'octocat', verbose: true) }
 
+  let(:subscription_success) { 'pusher_internal:subscription_succeeded' }
   let(:session) { described_class.new(options, repository) }
 
   describe '.run' do
@@ -37,8 +38,8 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       expect(CircleCI::CLI::Command::BuildRepository).to receive(:new)
         .with('user', 'repo', branch: 'main', user: 'octocat')
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success).ordered
       expect(client).to receive(:connect).ordered
-      expect(client).to receive(:bind).with('private-pusher-id', 'call').ordered
       expect(watcher).to receive(:close).ordered
       expect(client).to receive(:unsubscribe).with('private-pusher-id').ordered
       expect(client).to receive(:disconnect).ordered
@@ -49,11 +50,12 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(config.token).to eq('env-token')
     end
 
-    it 'releases the subscription and client when binding fails after connecting' do
+    it 'releases the subscription and client when binding fails' do
       allow(described_class).to receive(:setup_token).and_return('token')
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client)
-      expect(client).to receive(:connect).ordered
-      expect(client).to receive(:bind).with('private-pusher-id', 'call').ordered.and_raise('bind failed')
+      expect(client).not_to receive(:connect)
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success)
+        .ordered.and_raise('bind failed')
       expect(client).to receive(:unsubscribe).with('private-pusher-id').ordered
       expect(client).to receive(:disconnect).ordered
 
@@ -142,6 +144,35 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
       described_class.run(options)
     end
+
+    it 'picks up a build that starts before subscription activation without a build event' do
+      completed_build = build_response.new(
+        'build_num' => 40, 'branch' => 'main', 'status' => 'success', 'user' => { 'login' => 'octocat' }
+      )
+      channel = PusherClient::Channel.new('private-pusher-id')
+      recent_builds = [completed_build]
+      allow(client).to receive(:bind) do |_, *events, &callback|
+        events.each { |event| channel.bind(event, &callback) }
+      end
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered { recent_builds }
+      expect(client).to receive(:connect).ordered { recent_builds = [branch_build, completed_build] }
+      ticks = 0
+      allow_any_instance_of(described_class).to receive(:sleep).with(1) do
+        ticks += 1
+        raise Interrupt if ticks == 2
+
+        channel.dispatch(subscription_success, '{}')
+      end
+      expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered do
+        expect(ticks).to eq(1)
+        recent_builds
+      end
+      expect(build_response).not_to receive(:get)
+      expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(branch_build, verbose: true).and_return(watcher)
+      expect(watcher).to receive(:start)
+
+      described_class.run(options)
+    end
   end
 
   describe 'account notifications' do
@@ -173,7 +204,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(active_watcher).to receive(:close).once.ordered.and_call_original
       expect(client).to receive(:unsubscribe).with('private-pusher-id').ordered
       expect(client).to receive(:disconnect).ordered
-      expect(client).to receive(:bind).with('private-pusher-id', 'call')
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success)
       expect(build_response).to receive(:branch).with('user', 'repo', 'main').once.and_return([build])
       response = CircleCi::Response.new(double('HTTP response', code: '401', body: '{"message":"Unauthorized"}'))
       detail_client = instance_double(CircleCi::Build, get: response)
@@ -206,10 +237,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client, other_client)
 
       previous_callback = nil
-      expect(client).to receive(:bind).with('private-pusher-id', 'call') do |*_, &callback|
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) do |*_, &callback|
         previous_callback = callback
       end
-      expect(other_client).to receive(:bind).with('private-pusher-id', 'call')
+      expect(other_client).to receive(:bind).with('private-pusher-id', 'call', subscription_success)
       ticks = 0
       allow_any_instance_of(described_class).to receive(:sleep).with(1) do
         ticks += 1
@@ -248,7 +279,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       end
 
       notify = nil
-      allow(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      allow(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) { |*_, &callback| notify = callback }
       expect(build_response).to receive(:branch).with('user', 'repo', 'main').ordered.and_return([recent_build])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
@@ -309,7 +340,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).with(running_build, verbose: true).and_return(watcher)
 
       notify = nil
-      expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) { |*_, &callback| notify = callback }
       expect(session).to receive(:sleep).with(1).ordered { 100.times { notify.call } }
       expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').ordered do
         notify.call
@@ -342,7 +373,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(first_watcher).to receive(:poll_build)
       allow(second_watcher).to receive(:poll_build)
 
-      expect(client).to receive(:bind).with('private-pusher-id', 'call')
+      expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success)
       expect(response).to receive(:branch).with('user', 'repo', 'main').once.and_return([first, second])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
@@ -382,7 +413,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         allow_any_instance_of(CircleCI::CLI::Command::BuildWatcher).to receive(:poll_build)
 
         notify = nil
-        expect(client).to receive(:bind).with('private-pusher-id', 'call') { |*_, &callback| notify = callback }
+        expect(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) { |*_, &callback| notify = callback }
         expect(session).to receive(:sleep).with(1).twice.ordered { notify.call }
         expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
 
