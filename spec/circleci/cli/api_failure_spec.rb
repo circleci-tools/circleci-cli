@@ -40,6 +40,19 @@ describe CircleCI::CLI::Runner do
       end
     end
 
+    context 'when the API error message contains terminal controls' do
+      let(:http_status) { '403' }
+      let(:projects_body) { { 'message' => "Access denied\rCheck token\n" } }
+
+      it 'reports the HTTP status and escaped message on stderr and exits unsuccessfully' do
+        expect do
+          expect { described_class.start(%w[projects]) }.to raise_error(SystemExit) { |error|
+            expect(error.status).not_to be_zero
+          }
+        end.to output("CircleCI API error (HTTP 403): Access denied\\x0DCheck token\\x0A\n").to_stderr
+      end
+    end
+
     context 'when the API returns a non-JSON error body' do
       let(:http_status) { '502' }
 

@@ -292,6 +292,21 @@ describe CircleCI::CLI::Runner, 'run' do
     end.to output("CircleCI API error (HTTP 502): Bad gateway\n").to_stderr
   end
 
+  {
+    'detail' => { 'detail' => "Access denied\rCheck token\e", 'title' => 'Forbidden' },
+    'title' => { 'detail' => ' ', 'title' => "Access denied\rCheck token\e" }
+  }.each do |field, api_error|
+    it "escapes terminal controls in the API error #{field} and exits unsuccessfully" do
+      stub_get("runs/#{run_id}", { 'error' => api_error }, response_class: Net::HTTPForbidden, code: '403')
+
+      expect do
+        expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+          expect(error.status).not_to be_zero
+        }
+      end.to output("CircleCI API error (HTTP 403): Access denied\\x0DCheck token\\x1B\n").to_stderr
+    end
+  end
+
   context 'when a request times out' do
     let(:run_path) { "runs/#{run_id}" }
 
