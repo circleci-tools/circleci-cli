@@ -200,8 +200,8 @@ module CircleCI
         end
 
         def refresh_action_outputs(actions, key:, continuing:)
-          track_actions(actions)
-          running = continuing ? actions.select { |action| action.end_time.nil? }.map(&:identity) : []
+          track_actions(actions.reject(&:skipped?))
+          running = continuing ? actions.select(&:running?).map(&:identity) : []
           finish_outputs(running, key)
         end
 
