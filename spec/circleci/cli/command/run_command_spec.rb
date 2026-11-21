@@ -1,16 +1,19 @@
 # frozen_string_literal: true
 
+require 'socket'
 require 'spec_helper'
 require 'timeout'
 
 describe CircleCI::CLI::Runner, 'run' do
   let(:client) { CircleCI::CLI::Networking::HTTPClient }
+  let(:session) { instance_double(client::Session, close: nil) }
   let(:fixtures) { JSON.parse(File.read(File.expand_path('../../../fixtures/run_responses.json', __dir__))) }
   let(:run_id) { fixtures.fetch('run').fetch('data').fetch('id') }
   let(:headers) { { 'Authorization' => 'Bearer test-token' } }
   let(:workflows_path) { "workflows?filter%5Brun_id%5D=#{run_id}" }
 
   before do
+    allow(client::Session).to receive(:new).with(max_retries: 1).and_return(session)
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
   end
@@ -18,7 +21,8 @@ describe CircleCI::CLI::Runner, 'run' do
   def stub_get(path, body, response_class: Net::HTTPOK, code: '200', raw: false)
     response = response_class.new('1.1', code, '')
     allow(response).to receive(:body).and_return(raw ? body : JSON.generate(body))
-    allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
+    transport = path.end_with?('/tests') ? client : session
+    allow(transport).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
   end
 
   it 'shows jobs grouped by workflow across pages, including approvals without a job number' do
@@ -140,7 +144,7 @@ describe CircleCI::CLI::Runner, 'run' do
             No failures in uploaded test results.
       SUMMARY
       expect { described_class.start(args) }.to output(/#{Regexp.escape(expected)}\z/).to_stdout
-      expect(client).to have_received(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=}, headers).twice
+      expect(session).to have_received(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=}, headers).twice
     end
 
     it 'reports when no jobs failed' do
@@ -189,7 +193,7 @@ describe CircleCI::CLI::Runner, 'run' do
     active = peak = 0
     response = Net::HTTPOK.new('1.1', '200', '')
     allow(response).to receive(:body).and_return(JSON.generate(fixtures.fetch('checks_jobs')))
-    allow(client).to receive(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=\d+\z}, headers) do |url, _headers|
+    allow(session).to receive(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=\d+\z}, headers) do |url, _headers|
       mutex.synchronize do
         active += 1
         peak = [peak, active].max
@@ -220,6 +224,58 @@ describe CircleCI::CLI::Runner, 'run' do
     summary&.join
   end
 
+  it 'reuses keep-alive connections for workflow pages and for jobs within a worker' do
+    server = TCPServer.new('127.0.0.1', 0)
+    sockets = []
+    allow(client::Session).to receive(:new).with(max_retries: 1).and_call_original
+    allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true) do
+      Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+    end
+    workflows = (1..5).map { |id| { 'id' => id, 'attributes' => { 'name' => "workflow-#{id}" } } }
+    command = CircleCI::CLI::Command::RunCommand.new('test-token')
+    summary = Thread.new { command.summary(run_id) }
+
+    Timeout.timeout(5) do
+      sockets << server.accept
+      metadata = sockets.first
+      expect(read_request(metadata)).to eq("runs/#{run_id}")
+      write_response(metadata, fixtures.fetch('run'))
+      expect(read_request(metadata)).to eq(workflows_path)
+      write_response(metadata, { 'data' => workflows.first(2), 'page' => { 'next' => 'more' } })
+      expect(read_request(metadata)).to eq("#{workflows_path}&page%5Bcursor%5D=more")
+      write_response(metadata, { 'data' => workflows.drop(2), 'page' => { 'next' => nil } })
+      expect(metadata.read).to eq('')
+
+      4.times { sockets << server.accept }
+      workers = sockets.drop(1)
+      expect(workers.map { |socket| read_request(socket) }).to match_array(
+        (1..4).map { |id| "jobs?filter%5Bworkflow_id%5D=#{id}" }
+      )
+      jobs = { 'data' => [] }
+      write_response(workers.first, jobs)
+      expect(read_request(workers.first)).to eq('jobs?filter%5Bworkflow_id%5D=5')
+      workers.each { |socket| write_response(socket, jobs) }
+      workers.each { |socket| expect(socket.read).to eq('') }
+      expect(summary.value.scan(/workflow-\d+/)).to eq((1..5).map { |id| "workflow-#{id}" })
+    end
+  ensure
+    sockets&.each(&:close)
+    server&.close
+    summary&.kill&.join
+  end
+
+  def read_request(socket)
+    request_line = socket.gets
+    headers = socket.each_line.take_while { |line| line != "\r\n" }
+    expect(headers).to include("Authorization: Bearer test-token\r\n")
+    request_line.split.fetch(1).delete_prefix('/api/v3/')
+  end
+
+  def write_response(socket, payload)
+    body = JSON.generate(payload)
+    socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+  end
+
   it 'reports a jobs API failure on stderr and exits unsuccessfully' do
     stub_get("runs/#{run_id}", fixtures.fetch('run'))
     workflows = %w[first last].flat_map { |page| fixtures.fetch("workflows_#{page}_page").fetch('data') }
@@ -234,11 +290,12 @@ describe CircleCI::CLI::Runner, 'run' do
         expect(error.status).not_to be_zero
       }
     end.to output("CircleCI API error (HTTP 503): Jobs unavailable\n").to_stderr
+    expect(session).to have_received(:close).exactly(3).times
   end
 
   it 'rejects an invalid run ID without prompting for a token or requesting the API' do
     expect(CircleCI::CLI::Command::RunCommand).not_to receive(:setup_token)
-    expect(client).not_to receive(:get_raw)
+    expect(client::Session).not_to receive(:new)
 
     expect do
       expect { described_class.start(%w[run 123]) }.to raise_error(SystemExit) { |error|
@@ -256,12 +313,13 @@ describe CircleCI::CLI::Runner, 'run' do
         expect(error.status).not_to be_zero
       }
     end.to output("CircleCI API error (HTTP 404): Run not found\n").to_stderr
+    expect(session).to have_received(:close).once
   end
 
   it 'reports invalid JSON in a successful API response' do
     response = Net::HTTPOK.new('1.1', '200', '')
     allow(response).to receive(:body).and_return('<html>Invalid response</html>')
-    allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
+    allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
 
     expect do
       expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
@@ -303,7 +361,7 @@ describe CircleCI::CLI::Runner, 'run' do
         stub_get(run_path, fixtures.fetch('run')) if path == :workflows_path
         url = "https://circleci.com/api/v3/#{public_send(path)}"
         timeout = exception.new(message)
-        allow(client).to receive(:get_raw).with(url, headers).and_raise(timeout)
+        allow(session).to receive(:get_raw).with(url, headers).and_raise(timeout)
 
         expect do
           expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
@@ -319,7 +377,7 @@ describe CircleCI::CLI::Runner, 'run' do
     it "reports the HTTP status when an API failure has #{description}" do
       response = Net::HTTPBadGateway.new('1.1', '502', '')
       allow(response).to receive(:body).and_return(body)
-      allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
+      allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/runs/#{run_id}", headers).and_return(response)
 
       expect do
         expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
