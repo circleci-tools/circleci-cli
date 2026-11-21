@@ -43,12 +43,13 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     allow(http).to receive(:finish)
   end
 
-  def expect_output_response(offset, *chunks, error: nil, path: output_path)
+  def expect_output_response(offset, *chunks, error: nil, path: output_path, content_range: nil)
     expect(http).to receive(:request).ordered do |request, &read_response|
       expect(request).to be_a(Net::HTTP::Get)
       expect(request.path).to eq(path)
       expect(request['Range']).to eq("bytes=#{offset}-")
       response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
+      response['Content-Range'] = content_range if content_range
       allow(response).to receive(:read_body) do |&read_chunk|
         chunks.each(&read_chunk)
         raise error if error
@@ -439,6 +440,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         end.to output(a_string_including("first output\npartial tail\n", 'has failed')).to_stdout
            .and output("Warning: Step log output may be incomplete.\n").to_stderr
       end
+
+      it 'drains every advertised range for a finishing action before replaying the log' do
+        expect_output_response(13, 'ab', content_range: 'bytes 13-14/19')
+        expect_output_response(15, 'cd', content_range: 'bytes 15-16/19')
+        expect_output_response(17, 'ef', content_range: 'bytes 17-18/19')
+
+        expect { watch_until(polled, status) }
+          .to output(a_string_including("first output\nabcdef\n", 'has failed')).to_stdout
+          .and output('').to_stderr
+      end
     end
   end
 
@@ -488,6 +499,25 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       before do
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(finished_build)
         allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
+      end
+
+      it 'joins consecutive ranges from a completed action into one line' do
+        expect_output_response(0, 'abc', path: compile_path, content_range: 'bytes 0-2/6')
+        expect_output_response(3, 'def', path: compile_path, content_range: 'bytes 3-5/6')
+        expect_output_response(0, "failed log\n", path: test_path)
+
+        expect { watcher.stop('failed') }
+          .to output(/Compile.*abcdef\n.*Test.*failed log\n.*has failed/m).to_stdout.and output('').to_stderr
+      end
+
+      it 'warns when retries cannot retrieve the remaining advertised bytes' do
+        expect_output_response(0, 'abc', path: compile_path, content_range: 'bytes 0-2/6')
+        expect_output_response(3, path: compile_path, error: EOFError)
+        expect_output_response(3, path: compile_path)
+        expect_output_response(0, "failed log\n", path: test_path)
+
+        expect { watcher.stop('failed') }.to output(/Compile.*abc\n.*Test.*failed log\n.*has failed/m).to_stdout
+          .and output("Warning: Step log output may be incomplete.\n").to_stderr
       end
 
       it 'retries each completed action from its own offset without repeating output' do
