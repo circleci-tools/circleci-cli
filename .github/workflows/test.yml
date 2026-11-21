@@ -39,6 +39,8 @@ jobs:
         env:
           COVERAGE: true
         run: bundle exec rspec
+      - name: Build gem
+        run: bundle exec rake build
       - name: Upload coverage to Codecov
         if: matrix.ruby == '3.4.13' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: codecov/codecov-action@v7
