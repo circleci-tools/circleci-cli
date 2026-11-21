@@ -93,7 +93,7 @@ module CircleCI
         end
 
         def column_width(column)
-          column.to_s.gsub(/\e\[[\d;]*m/, '').size
+          Unicode::DisplayWidth.of(column.to_s.gsub(/\e\[[\d;]*m/, ''))
         end
       end
     end

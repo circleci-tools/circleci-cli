@@ -100,6 +100,24 @@ describe CircleCI::CLI::Printer::BuildPrinter, type: :printer do
     context 'without pretty option' do
       let(:pretty) { false }
 
+      context 'with colored ASCII and full-width branch names' do
+        let(:builds) do
+          %w[main 開発].map do |branch|
+            CircleCI::CLI::Response::Build.new(
+              'build_num' => 1234, 'status' => 'success', 'branch' => branch, 'author_name' => 'unhappychoice'
+            )
+          end
+        end
+
+        it 'starts the author column at the same terminal cell in both rows' do
+          author_offsets = subject.lines.map do |line|
+            prefix = line.split('unhappychoice', 2).first
+            Unicode::DisplayWidth.of(prefix.gsub(/\e\[[\d;]*m/, ''))
+          end
+          expect(author_offsets).to eq([21, 21])
+        end
+      end
+
       context 'with an uncolored build' do
         let(:builds) do
           super() + [CircleCI::CLI::Response::Build.new(
