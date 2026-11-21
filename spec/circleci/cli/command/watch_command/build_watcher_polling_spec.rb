@@ -320,6 +320,25 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:initial_steps) { [] }
     let(:reponame) { 'Repo <%= "metadata" %>' }
 
+    it 'propagates the final detail timeout after two attempts without reporting completion' do
+      watcher = described_class.new(build)
+      error = Net::ReadTimeout.new
+      expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', reponame, 1234).twice.and_raise(error)
+      expect(watcher).not_to receive(:puts)
+
+      expect { watcher.stop('success') }.to raise_error(Net::ReadTimeout) { |raised| expect(raised).to equal(error) }
+    end
+
+    it 'does not fetch details again if final step processing times out' do
+      watcher = described_class.new(build)
+      detail = build_response.call([])
+      expect(CircleCI::CLI::Response::Build).to receive(:get).once.and_return(detail)
+      expect(detail).to receive(:steps).once.and_raise(Net::ReadTimeout)
+      expect(watcher).not_to receive(:puts)
+
+      expect { watcher.stop('success') }.to raise_error(Net::ReadTimeout)
+    end
+
     [true, false].each do |verbose|
       it "prints completion metadata literally with verbose=#{verbose}" do
         watcher = described_class.new(build, verbose:)
