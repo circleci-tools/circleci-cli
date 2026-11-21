@@ -105,8 +105,14 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
     end
 
-    it 'prints new steps in API order and streams output from the first running step' do
+    it 'prints the build banner before polling output, then prints steps in API order and streams logs' do
       streamed = pause_after_polls(2)
+      worker = nil
+      allow(watcher).to receive(:poll_build).and_wrap_original do |poll|
+        worker = poll.call
+        Timeout.timeout(5) { streamed.pop }
+        worker
+      end
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       expect(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).once.and_return(http)
       expect(http).to receive(:finish).once
@@ -117,10 +123,16 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect_output_response(log_output.bytesize + log_tail.bytesize)
 
-      expected = [build.author_name, 'Checkout', "checked out\n", escaped_step_name, "tested\n", 'Upload', 'Deploy',
-                  "#{escaped_log_output}#{log_tail}", 'has succeeded!']
+      expected = ['Start watching user/repo #1234', build.author_name, 'Checkout', "checked out\n", escaped_step_name,
+                  "tested\n", 'Upload', 'Deploy', "#{escaped_log_output}#{log_tail}", 'has succeeded!']
       pattern = Regexp.new(expected.map { |text| Regexp.escape(text) }.join('.*'), Regexp::MULTILINE)
-      expect { watch_until(streamed, 'success') }.to output(pattern).to_stdout
+      expect do
+        watcher.start
+        watcher.stop('success')
+      end.to output(pattern).to_stdout
+    ensure
+      worker.kill.join if worker&.alive?
+      watcher.close
     end
 
     it 'retries a timed-out build detail request on the next poll' do
