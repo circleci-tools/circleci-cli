@@ -37,37 +37,10 @@ See the [getting started guide](docs/getting-started.md) to find a project and
 inspect a build from any directory.
 
 ## Usage
-```
-Commands:
-  circleci-cli browse               # Open CircleCI website
-  circleci-cli build                # Show the build result
-  circleci-cli builds               # List builds
-  circleci-cli cancel               # Cancel a build
-  circleci-cli help [COMMAND]       # Describe available commands or one specific command
-  circleci-cli projects             # List projects
-  circleci-cli retry                # Retry a build
-  circleci-cli run RUN_ID           # Show all workflows and jobs in a run
-  circleci-cli version              # Show gem version
-  circleci-cli watch                # Watch builds in real time
 
-Options:
-  -p user_name/project              # Specify repository
-                                    # Default to the Git remote of current directory
-
-  -b branch                         # Specify branch name
-                                    # Default to the current Git branch
-
-  -a, --all, --no-all               # Ignore the branch option and stop being filtered by the branch
-                                    # Default to false
-
-  -n build_number                   # Specify build number.
-  -l, --last                        # Show or retry the last failed build (build, retry).
-  -v, --verbose                     # Show all build logs (watch).
-  -u USER, --user USER               # Filter builds by user login (watch).
-
-  --pretty=true/false, --no-pretty  # Make outputs pretty or not
-                                    # Default to true
-```
+See the [command reference](docs/usage.md) for command options, Git defaults,
+and token configuration. Run `circleci-cli help COMMAND` to see the options
+for an individual command.
 
 ### Examples
 
