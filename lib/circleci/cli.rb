@@ -29,7 +29,7 @@ module CircleCI
         end
 
         def project(validate_on_dispatch: false)
-          repository = Rugged::Repository.new('.')
+          repository = Rugged::Repository.discover('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
           github_project(origin.url, validate_on_dispatch:) if origin&.url
         rescue Rugged::RepositoryError
@@ -37,7 +37,7 @@ module CircleCI
         end
 
         def branch_name
-          repository = Rugged::Repository.new('.')
+          repository = Rugged::Repository.discover('.')
           head = repository.head
 
           return nil unless head.branch?
