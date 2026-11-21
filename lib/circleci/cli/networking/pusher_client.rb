@@ -8,6 +8,7 @@ module CircleCI
       class CircleCIPusherClient
         def initialize(token:)
           @token = token
+          @connection_errors = Queue.new
         end
 
         def connect
@@ -17,8 +18,13 @@ module CircleCI
           connection = socket
           # The socket's async mode cannot disconnect before the handshake finishes.
           Thread.handle_interrupt(Interrupt => :never) do
+            @connection_errors.clear
             @connection_thread = Thread.new { connect_socket(connection) }
           end
+        end
+
+        def poll_connection_error
+          @connection_errors.pop(timeout: 0)
         end
 
         def disconnect
@@ -50,6 +56,7 @@ module CircleCI
         def connect_socket(connection)
           connection.connect
         rescue StandardError => e
+          @connection_errors.push(e)
           connection.global_channel.dispatch_with_all('pusher:error', e)
         end
 

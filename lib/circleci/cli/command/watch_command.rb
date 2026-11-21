@@ -31,7 +31,7 @@ module CircleCI
           client.bind(channel, 'call') do
             @refresh_lock.synchronize { @refresh_pending = true }
           end
-          watch_builds
+          watch_builds(client)
         ensure
           release_subscription(client, channel) if client
         end
@@ -44,8 +44,9 @@ module CircleCI
           client.disconnect
         end
 
-        def watch_builds
+        def watch_builds(client)
           loop do
+            check_connection(client)
             refresh_builds_if_needed
             stop_existing_watcher_if_needed
             start_watcher_if_needed
@@ -54,6 +55,11 @@ module CircleCI
         ensure
           @build_watcher&.close
           @build_watcher = nil
+        end
+
+        def check_connection(client)
+          error = client.poll_connection_error
+          raise Thor::Error, "Pusher connection failed: #{error.message}" if error
         end
 
         def refresh_builds_if_needed

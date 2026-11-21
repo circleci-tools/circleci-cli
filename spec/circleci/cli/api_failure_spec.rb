@@ -58,9 +58,47 @@ describe CircleCI::CLI::Runner do
     end
   end
 
+  describe 'watch Pusher connection failure' do
+    it 'reports the failure on stderr, exits unsuccessfully, and disconnects' do
+      allow(ENV).to receive(:fetch).and_call_original
+      allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
+      expect(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').once.and_return([])
+      account = circleci_response('pusher_id' => 'pusher-123')
+      allow(CircleCi::User).to receive(:new).and_return(double(me: account))
+
+      release_connection = Queue.new
+      connecting = Queue.new
+      global_channel = instance_double(PusherClient::Channel, dispatch_with_all: nil)
+      channel = instance_double(PusherClient::Channel, bind: nil)
+      socket = instance_double(PusherClient::Socket, global_channel:)
+      networking = CircleCI::CLI::Networking
+      allow(networking::VerifiedPusherSocket).to receive(:new).and_return(socket)
+      allow(socket).to receive(:connect) do
+        connecting << Thread.current
+        release_connection.pop
+        raise IOError, 'socket closed'
+      end
+      allow(socket).to receive(:subscribe).with('private-pusher-123')
+      allow(socket).to receive(:[]).with('private-pusher-123').and_return(channel)
+      expect(socket).to receive(:unsubscribe).with('private-pusher-123').ordered
+      expect(socket).to receive(:disconnect).ordered
+      expect_any_instance_of(CircleCI::CLI::Command::WatchCommand).to receive(:sleep).with(1).once do
+        worker = connecting.pop(timeout: 5)
+        expect(worker).to be_a(Thread)
+        release_connection << true
+        expect(worker.join(5)).to eq(worker)
+      end
+
+      expect do
+        expect { described_class.start(%w[watch -p user/repo -b main]) }
+          .to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end.to output("Pusher connection failed: socket closed\n").to_stderr
+    end
+  end
+
   describe 'watch account lookup' do
     let(:arguments) { %w[watch -p user/repo -b main] }
-    let(:client) { double('Pusher client', connect: nil, unsubscribe: nil, disconnect: nil) }
+    let(:client) { double('Pusher client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil) }
     let(:builds_body) { [] }
 
     before do

@@ -10,7 +10,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
   describe '.run' do
     let(:repository) { double('repository') }
-    let(:client) { double('client', connect: nil, bind: nil, unsubscribe: nil, disconnect: nil) }
+    let(:client) do
+      double('client', connect: nil, poll_connection_error: nil, bind: nil, unsubscribe: nil, disconnect: nil)
+    end
     let(:account) { double('account', pusher_id: 'pusher-id') }
     let(:config) { Struct.new(:token).new }
 
@@ -101,7 +103,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
   end
 
   describe 'the first watch iteration' do
-    let(:client) { double('client', connect: nil, bind: nil, unsubscribe: nil, disconnect: nil) }
+    let(:client) do
+      double('client', connect: nil, poll_connection_error: nil, bind: nil, unsubscribe: nil, disconnect: nil)
+    end
     let(:account) { double('account', pusher_id: 'pusher-id') }
     let(:watcher) { double('watcher', close: nil) }
     let(:build_response) { CircleCI::CLI::Response::Build }
@@ -146,7 +150,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
   describe 'account notifications' do
     let(:repository) { CircleCI::CLI::Command::BuildRepository.new('user', 'repo', branch: 'main', user: 'octocat') }
-    let(:client) { double('client', connect: nil, unsubscribe: nil, disconnect: nil) }
+    let(:client) { double('client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil) }
     let(:account) { double('account', pusher_id: 'pusher-id') }
     let(:running_build) do
       double('running build', build_number: 42, branch: 'main', user: 'octocat', running?: true, finished?: false)
@@ -202,7 +206,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(builds).to receive(:branch).with('user', 'other', 'main').once.and_return([])
       other_options = options.dup
       other_options.project = 'user/other'
-      other_client = double('other client', connect: nil, unsubscribe: nil, disconnect: nil)
+      other_client = double('other client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil)
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).and_return(client, other_client)
 
       previous_callback = nil
