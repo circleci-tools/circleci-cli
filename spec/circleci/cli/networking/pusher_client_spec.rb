@@ -136,19 +136,20 @@ describe CircleCI::CLI::Networking::CircleCIPusherClient, type: :networking do
   end
 
   describe '#bind' do
-    subject { described_class.new(token: 'token').bind(channel, event) }
+    subject { described_class.new(token: 'token').bind(channel, event, 'subscription-event') }
 
     let(:mock_socket) { double('socket') }
     let(:mock_channel) { double('channel') }
     let(:channel) { 'channel' }
     let(:event) { 'event' }
 
-    it 'binds event' do
+    it 'binds each event with one subscription' do
       allow_any_instance_of(described_class).to receive(:socket) { mock_socket }
 
       expect(mock_socket).to receive(:subscribe).with(channel)
       expect(mock_socket).to receive(:[]).with(channel) { mock_channel }
       expect(mock_channel).to receive(:bind).with(event)
+      expect(mock_channel).to receive(:bind).with('subscription-event')
 
       subject
     end

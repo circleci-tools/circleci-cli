@@ -29,7 +29,7 @@ module CircleCI
         end
 
         def project(validate_on_dispatch: false)
-          repository = Rugged::Repository.new('.')
+          repository = Rugged::Repository.discover('.')
           origin = repository.remotes.find { |r| r.name == 'origin' }
           github_project(origin.url, validate_on_dispatch:) if origin&.url
         rescue Rugged::RepositoryError
@@ -37,7 +37,7 @@ module CircleCI
         end
 
         def branch_name
-          repository = Rugged::Repository.new('.')
+          repository = Rugged::Repository.discover('.')
           head = repository.head
 
           return nil unless head.branch?
@@ -112,9 +112,10 @@ module CircleCI
       end
 
       desc 'run RUN_ID', 'Show all workflows and jobs in a run'
+      method_option :failed_tests, type: :boolean, desc: 'Show failed tests grouped by workflow and job'
       map 'run' => :show_run
       def show_run(run_id)
-        say Command::RunCommand.run(run_id)
+        say Command::RunCommand.run(run_id, failed_tests: options[:failed_tests])
       end
 
       desc 'build', 'Show the build result'

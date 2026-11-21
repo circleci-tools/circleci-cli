@@ -35,9 +35,11 @@ module CircleCI
           end
         end
 
-        def bind(channel, event, &)
+        def bind(channel, *events, &)
           socket.subscribe(channel)
-          socket[channel].bind(event, &)
+          subscription = socket[channel]
+          events.each { |event| subscription.bind(event, &) }
+          subscription
         end
 
         def bind_event_json(channel, event, &)

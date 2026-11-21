@@ -123,7 +123,7 @@ describe CircleCI::CLI::Runner do
     it 'subscribes to the account channel after a successful lookup' do
       response = circleci_response('pusher_id' => 'pusher-123')
       allow(CircleCi::User).to receive(:new).and_return(double(me: response))
-      expect(client).to receive(:bind).with('private-pusher-123', 'call')
+      expect(client).to receive(:bind).with('private-pusher-123', 'call', 'pusher_internal:subscription_succeeded')
       expect(CircleCI::CLI::Command::WatchCommand).to receive(:say).with('Exited')
 
       described_class.start(arguments)

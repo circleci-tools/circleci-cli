@@ -13,7 +13,7 @@ shared_context 'mock rugged response' do
   let(:rugged_response_is_branch) { rugged_response_branch_name }
 
   before do
-    allow(Rugged::Repository).to receive(:new).with('.').and_return(mock_rugged_repository)
+    allow(Rugged::Repository).to receive(:discover).with('.').and_return(mock_rugged_repository)
   end
 end
 
