@@ -361,7 +361,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.run(options)
     end
 
-    it 'reports polled completion once and starts the next build without an account notification' do
+    it 'reports polled completion once after a final detail timeout and starts the next build' do
       response = CircleCI::CLI::Response::Build
       attributes = {
         'username' => 'user', 'reponame' => 'repo', 'branch' => 'main', 'user' => { 'login' => 'octocat' }
@@ -381,7 +381,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(response).to receive(:branch).with('user', 'repo', 'main').once.and_return([first, second])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
-      allow(response).to receive(:get).with('user', 'repo', 42).and_return(first, finished)
+      expect(response).to receive(:get).with('user', 'repo', 42).exactly(4).times.and_invoke(
+        ->(*) { first }, ->(*) { finished }, ->(*) { raise Net::ReadTimeout }, ->(*) { finished }
+      )
       expect(session).to receive(:sleep).with(1).twice.ordered { first_watcher.send(:update_build) }
       expect(session).to receive(:sleep).with(1).ordered
       expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)

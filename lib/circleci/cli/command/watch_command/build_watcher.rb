@@ -18,6 +18,11 @@ module CircleCI
         }.freeze
 
         INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
+        TRANSIENT_POLL_ERRORS = [
+          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+          Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+        ].freeze
+        FINAL_DETAIL_ATTEMPTS = 2
 
         attr_reader :build
 
@@ -114,8 +119,7 @@ module CircleCI
 
         def poll_safely
           yield
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-               Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
+        rescue *TRANSIENT_POLL_ERRORS
           # Resume on the next poll with the last consumed byte offset.
         end
 
@@ -161,9 +165,17 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          detail = Response::Build.get(@build.username, @build.reponame, @build.build_number)
+          detail = fetch_detail(attempts: stopping ? FINAL_DETAIL_ATTEMPTS : 1)
           update_steps(detail.steps, stopping:)
           @state_lock.synchronize { @latest_detail = detail }
+        end
+
+        def fetch_detail(attempts:)
+          Response::Build.get(@build.username, @build.reponame, @build.build_number)
+        rescue *TRANSIENT_POLL_ERRORS
+          attempts -= 1
+          retry if attempts.positive?
+          raise
         end
 
         def update_steps(steps, stopping:)
