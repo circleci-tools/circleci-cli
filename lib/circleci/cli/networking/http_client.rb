@@ -8,6 +8,17 @@ module CircleCI
     module Networking
       module HTTPClient
         class Session
+          def self.open(max_retries: 0)
+            session = new(max_retries:)
+            yield session
+          ensure
+            session&.close
+          end
+
+          def initialize(max_retries: 0)
+            @max_retries = max_retries
+          end
+
           def get_raw(url, headers = {}, &)
             uri = URI(url)
             request = HTTPClient.get_request(uri, headers)
@@ -28,7 +39,7 @@ module CircleCI
             close
             @origin = uri.origin
             @http = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https')
-            @http.max_retries = 0
+            @http.max_retries = @max_retries
             @http
           end
         end
