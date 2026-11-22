@@ -6,7 +6,12 @@ require 'circleci/cli/command/watch_command/build_watcher'
 module CircleCI
   module CLI
     module Command
-      class WatchCommand < BaseCommand
+      class WatchCommand < BaseCommand # rubocop:disable Metrics/ClassLength
+        TRANSIENT_REQUEST_ERRORS = [
+          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
+          Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+        ].freeze
+
         def self.run(options)
           token = setup_token
           username, reponame = project_target(options)
@@ -69,8 +74,7 @@ module CircleCI
             pending_refresh
           end
           @repository.update if pending
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
-               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+        rescue *TRANSIENT_REQUEST_ERRORS
           @refresh_lock.synchronize { @refresh_pending = true }
         end
 
@@ -92,28 +96,48 @@ module CircleCI
         def start_watcher_if_needed
           return unless @build_watcher.nil?
 
-          details = @repository.refresh_evicted_builds
-          builds = @repository.builds_to_show
-          candidate = builds.find { |build| !build.finished? && build.running? }
-          build_to_watch = @repository.watch(candidate.build_number) if candidate
-          show_interrupted_build_results(builds, details)
+          build_to_watch = next_build_to_watch
           return unless build_to_watch
 
           @build_watcher = BuildWatcher.new(build_to_watch, verbose: @options.verbose)
           @build_watcher.start
         end
 
-        def show_interrupted_build_results(builds, details) # rubocop:disable Metrics/AbcSize
-          builds.select(&:finished?).each do |build|
+        def next_build_to_watch
+          details = fetch_background_details { @repository.refresh_evicted_builds }
+          return unless details
+
+          builds = @repository.builds_to_show
+          return unless show_interrupted_build_results(builds, details)
+
+          candidate = builds.find { |build| !build.finished? && build.running? }
+          @repository.watch(candidate.build_number) if candidate
+        end
+
+        def show_interrupted_build_results(builds, details)
+          builds.select(&:finished?).all? do |build|
             detail = details.fetch(build.build_number) do
-              Response::Build.get(build.username, build.reponame, build.build_number)
+              fetch_background_details { Response::Build.get(build.username, build.reponame, build.build_number) }
             end
-            title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
-            puts Printer::BuildPrinter.header_for(build, title)
-            verbose = @options.verbose
-            Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
-            @repository.mark_as_shown(build.build_number)
+            next false unless detail
+
+            show_background_result(build, detail)
+            true
           end
+        end
+
+        def show_background_result(build, detail)
+          title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
+          puts Printer::BuildPrinter.header_for(build, title)
+          verbose = @options.verbose
+          Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
+          @repository.mark_as_shown(build.build_number)
+        end
+
+        def fetch_background_details
+          yield
+        rescue *TRANSIENT_REQUEST_ERRORS
+          nil
         end
       end
     end

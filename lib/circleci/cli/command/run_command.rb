@@ -22,8 +22,10 @@ module CircleCI
         end
 
         def summary(run_id, failed_tests: false)
-          title = run_title(run_id)
-          groups = fetch_workflow_jobs(workflows(run_id))
+          title, workflow_list = Networking::HTTPClient::Session.open(max_retries: 1) do |session|
+            [run_title(session, run_id), workflows(session, run_id)]
+          end
+          groups = fetch_workflow_jobs(workflow_list)
           table = Terminal::Table.new(title:, headings: ['Workflow', 'Job', 'Status', 'Job Number'],
                                       rows: summary_rows(groups)).to_s
           return table unless failed_tests
@@ -34,8 +36,8 @@ module CircleCI
 
         private
 
-        def run_title(run_id)
-          run = get("runs/#{run_id}").fetch('data').fetch('attributes')
+        def run_title(session, run_id)
+          run = get(session, "runs/#{run_id}").fetch('data').fetch('attributes')
           status = run['current_outcome'] || run.fetch('phase')
           Printer.escape_controls("Run ##{run.fetch('number')} (#{status})")
         end
@@ -48,35 +50,32 @@ module CircleCI
         end
 
         def fetch_workflow_jobs(workflows)
-          pending = Queue.new
-          workflows.each_with_index { |workflow, index| pending << [workflow, index] }
-          pending.close
+          pending = Queue.new(workflows.each_with_index).tap(&:close)
           results = Array.new(workflows.size)
           workers = Array.new([workflows.size, JOB_FETCH_LIMIT].min) do
             Thread.new { fetch_pending_jobs(pending, results) }
           end
           workers.each(&:join)
-          results.map { |result| result.is_a?(StandardError) ? raise(result) : result }
+          results.each { |result| raise result if result.is_a?(StandardError) }
         end
 
         def fetch_pending_jobs(pending, results)
-          while (entry = pending.pop)
-            workflow, index = entry
-            results[index] = workflow_jobs_or_error(workflow)
+          Networking::HTTPClient::Session.open(max_retries: 1) do |session|
+            while (entry = pending.pop)
+              workflow, index = entry
+              results[index] = workflow_jobs(session, workflow)
+            end
+          rescue StandardError => e
+            pending.clear
+            results[index] = e
           end
         end
 
-        def workflow_jobs_or_error(workflow)
-          workflow_jobs(workflow)
-        rescue StandardError => e
-          e
-        end
-
-        def workflows(run_id)
+        def workflows(session, run_id)
           query = { 'filter[run_id]' => run_id }
           results = []
           loop do
-            page = get('workflows', query)
+            page = get(session, 'workflows', query)
             results.concat(page.fetch('data'))
             cursor = page.fetch('page').fetch('next')
             return results unless cursor
@@ -85,8 +84,8 @@ module CircleCI
           end
         end
 
-        def workflow_jobs(workflow)
-          jobs = get('jobs', 'filter[workflow_id]' => workflow.fetch('id')).fetch('data')
+        def workflow_jobs(session, workflow)
+          jobs = get(session, 'jobs', 'filter[workflow_id]' => workflow.fetch('id')).fetch('data')
           [workflow.fetch('attributes').fetch('name'), jobs]
         end
 
@@ -102,16 +101,16 @@ module CircleCI
           [workflow_name, job.fetch('name'), status, job['number'] || '-']
         end
 
-        def get(path, query = nil)
-          JSON.parse(request(path, query).body)
+        def get(session, path, query = nil)
+          JSON.parse(request(path, query, client: session).body)
         rescue JSON::ParserError
           raise Thor::Error, 'CircleCI API returned invalid JSON.'
         end
 
-        def request(path, query = nil)
+        def request(path, query = nil, client: Networking::HTTPClient)
           url = "#{API_URL}/#{path}"
           url += "?#{URI.encode_www_form(query)}" if query
-          response = Networking::HTTPClient.get_raw(url, @headers)
+          response = client.get_raw(url, @headers)
           return response if response.is_a?(Net::HTTPSuccess)
 
           raise Thor::Error, api_error(response)
@@ -124,7 +123,7 @@ module CircleCI
           message = "CircleCI API error (HTTP #{response.code})"
           error = JSON.parse(response.body.to_s).then { |body| body['error'] if body.is_a?(Hash) }
           detail = error.values_at('detail', 'title').grep(String).find { !_1.strip.empty? } if error.is_a?(Hash)
-          detail ? "#{message}: #{detail}" : message
+          detail ? "#{message}: #{Printer.escape_controls(detail)}" : message
         rescue JSON::ParserError
           message
         end

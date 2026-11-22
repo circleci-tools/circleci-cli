@@ -4,7 +4,6 @@ require 'circleci'
 
 require 'highline/import'
 require 'launchy'
-require 'ostruct'
 require 'rugged'
 require 'terminal-notifier'
 require 'terminal-table'
@@ -16,6 +15,7 @@ require 'circleci/cli/command'
 require 'circleci/cli/response'
 require 'circleci/cli/printer'
 require 'circleci/cli/networking/http_client'
+require 'circleci/cli/networking/circleci_request_authentication'
 require 'circleci/cli/networking'
 
 module CircleCI

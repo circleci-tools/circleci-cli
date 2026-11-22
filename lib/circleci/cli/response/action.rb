@@ -6,10 +6,11 @@ module CircleCI
   module CLI
     module Response
       class Action
-        attr_reader :name, :status, :index, :step, :end_time, :run_time_millis
+        attr_reader :type, :name, :status, :index, :step, :end_time, :run_time_millis
 
         def initialize(hash)
           @hash = hash
+          @type = hash['type']
           @name = hash['name']
           @status = hash['status']
           @index = hash['index']

@@ -14,13 +14,8 @@ module CircleCI
           private
 
           def retry_build(username, reponame, number)
-            build = Response::Build.retry(username, reponame, number)
-
-            if build&.username
-              puts "build #{username}/#{reponame} #{build.build_number} is triggered"
-            else
-              puts "failed to trigger #{username}/#{reponame} #{number}"
-            end
+            workflow_id = Response::Build.retry(username, reponame, number)
+            puts "workflow #{workflow_id} is triggered for build #{username}/#{reponame} #{number}"
           end
         end
       end
