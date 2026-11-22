@@ -15,7 +15,7 @@ gem 'guard-rubocop'
 # Keep in sync with the openssl default gem of the Ruby in .ruby-version:
 # rubygems/release-gem activates it via RUBYOPT before Bundler.setup, and a
 # version mismatch aborts the release with Gem::LoadError.
-gem 'openssl', '3.3.3'
+gem 'openssl', '4.0.2'
 gem 'ostruct'
 gem 'rake'
 gem 'rspec'

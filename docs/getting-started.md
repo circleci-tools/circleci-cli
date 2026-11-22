@@ -43,3 +43,6 @@ shows the build steps and includes logs for failed actions when available:
 ```sh
 circleci-cli build -p user/project -n 42
 ```
+
+See [FAQ and troubleshooting](troubleshooting.md) for help with project
+selection, missing builds, and run IDs.

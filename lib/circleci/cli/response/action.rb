@@ -47,6 +47,14 @@ module CircleCI
           end
         end
 
+        def running?
+          end_time.nil? && !skipped?
+        end
+
+        def skipped?
+          status == 'not_run'
+        end
+
         def failed?
           @status == 'timedout' || @status == 'failed'
         end

@@ -7,7 +7,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:step_hash) do
     lambda do |name:, type:, status:, index: 0, step: 0|
       action = { 'type' => type, 'name' => name, 'status' => status, 'index' => index, 'step' => step }
-      action['end_time'] = '2024-01-01T00:00:00Z' unless status == 'running'
+      action['end_time'] = '2024-01-01T00:00:00Z' unless %w[running not_run].include?(status)
 
       { 'name' => name, 'actions' => [action] }
     end
@@ -193,10 +193,11 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     context 'when actions in the same step finish on different refreshes' do
       let(:poll_count) { 6 }
 
-      def multi_action_build(first_status, second_status)
+      def multi_action_build(first_status, second_status, reverse: false)
         step = step_hash.call(name: 'Test', type: 'test', status: first_status, index: 1, step: 2)
         second = step_hash.call(name: 'Test', type: 'test', status: second_status, index: 2, step: 2)
         step['actions'].concat(second['actions'])
+        step['actions'].reverse! if reverse
         build_response.call([step])
       end
 
@@ -304,6 +305,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       context 'with default output' do
         let(:watcher) { described_class.new(build) }
 
+        it 'polls the running action and prints its buffered failure log once alongside a skipped action' do
+          polled = pause_after_polls(2)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get)
+            .and_return(multi_action_build('running', 'not_run'), multi_action_build('failed', 'not_run'))
+          expect_output_response(0, "first output\n")
+          expect_output_response(13, "second output\n")
+          expect_output_response(27, "failure tail\n")
+
+          expect { watch_until(polled, 'failed') }.to output("first output\nsecond output\nfailure tail\n").to_stdout
+          expect(watcher.latest_detail.steps.first.status).to eq('failed')
+        end
+
         it 'skips an already successful action and replays the failed live action once' do
           polled = pause_after_polls(1)
           allow(watcher).to receive(:puts)
@@ -317,6 +331,35 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
           expect { watch_until(polled, 'failed') }.to output("live output\nfinal output\n").to_stdout
         end
+      end
+
+      it 'keeps both action offsets and replays each failed action log once after actions reorder' do
+        watcher = described_class.new(build)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+          multi_action_build('running', 'running'),
+          multi_action_build('running', 'running', reverse: true),
+          multi_action_build('failed', 'failed')
+        )
+        allow(watcher).to receive(:puts)
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, "first\n")
+        expect_output_response(0, "second\n", path: second_path)
+        expect_output_response(6, "first tail\n")
+        expect_output_response(7, "second tail\n", path: second_path)
+        expect_output_response(17)
+        expect_output_response(19, path: second_path)
+
+        expect do
+          2.times do
+            watcher.send(:update_build)
+            watcher.send(:update_actions)
+          end
+          2.times { watcher.send(:update_build) }
+        end.to output("first\nfirst tail\nsecond\nsecond tail\n").to_stdout
+        expect(watcher).to have_received(:puts).with('Test').once
+      ensure
+        watcher.close
       end
 
       it 'streams each action from byte zero and reads each final chunk exactly once' do
@@ -728,7 +771,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         previous_steps = build.steps
         allow(build).to receive(:steps).and_return(previous_steps)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
-        previous_steps.each { |step| expect(step).to receive(:action_identity).once.and_call_original }
+        previous_steps.each { |step| expect(step).to receive(:identity).once.and_call_original }
         expect(updated_build).to receive(:steps).once.and_call_original
         expect(watcher).not_to receive(:puts)
 
@@ -780,7 +823,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      watcher.send(:retain_output, build.steps.first.action_identity, log_text)
+      watcher.send(:retain_output, build.steps.first.actions.first.identity, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)

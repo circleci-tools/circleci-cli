@@ -107,8 +107,8 @@ describe CircleCI::CLI::Runner, 'run' do
     end
 
     def stub_test_response(id, response)
-      allow(client).to receive(:get_raw).with("https://circleci.com/api/v3/jobs/#{id}/tests", headers)
-                                       .and_yield(response).and_return(response)
+      allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/jobs/#{id}/tests", headers)
+                                        .and_yield(response).and_return(response)
     end
 
     def stub_test_chunks(id, chunks, response: Net::HTTPOK.new('1.1', '200', ''))
@@ -181,6 +181,68 @@ describe CircleCI::CLI::Runner, 'run' do
       expect { described_class.start(args) }.to output(/No uploaded test results\./).to_stdout
     end
 
+    it 'overlaps up to four test requests, reuses connections, and preserves order after retrying a partial response' do
+      server = TCPServer.new('127.0.0.1', 0)
+      sockets = []
+      allow(client::Session).to receive(:new).with(max_retries: 1).and_call_original
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true) do
+        Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+      end
+      workflows = %w[checks deploy].map { |name| { 'id' => name, 'attributes' => { 'name' => name } } }
+      command = CircleCI::CLI::Command::RunCommand.new('test-token')
+      summary = Thread.new { command.summary(run_id, failed_tests: true) }
+
+      Timeout.timeout(5) do
+        sockets << server.accept
+        metadata = sockets.first
+        expect(read_request(metadata)).to eq("runs/#{run_id}")
+        write_response(metadata, fixtures.fetch('run'))
+        expect(read_request(metadata)).to eq(workflows_path)
+        write_response(metadata, { 'data' => workflows, 'page' => { 'next' => nil } })
+
+        2.times do
+          socket = server.accept
+          sockets << socket
+          workflow = read_request(socket).split('=').last
+          ids = workflow == 'checks' ? (1..3) : (4..5)
+          write_response(socket, { 'data' => ids.map { |id| failed_job(id, "job-#{id}") } })
+        end
+
+        4.times { sockets << server.accept }
+        workers = sockets.last(4).to_h { |socket| [read_request(socket), socket] }
+        expect(workers.keys).to match_array((1..4).map { |id| "jobs/#{id}/tests" })
+
+        reused = workers.fetch('jobs/4/tests')
+        write_response(reused, { 'name' => 'failure-4', 'result' => 'failure' })
+        expect(read_request(reused)).to eq('jobs/5/tests')
+        interrupted = "{\"name\":\"interrupted failure\",\"result\":\"failure\"}\n{\"result\":"
+        reused.write("HTTP/1.1 200 OK\r\nContent-Length: #{interrupted.bytesize + 1}\r\n\r\n#{interrupted}")
+        reused.close
+
+        sockets << server.accept
+        retried = sockets.last
+        expect(read_request(retried)).to eq('jobs/5/tests')
+        workers.delete('jobs/4/tests')
+        workers['jobs/5/tests'] = retried
+        workers.each do |path, socket|
+          id = path.split('/')[1]
+          write_response(socket, { 'name' => "failure-#{id}", 'result' => 'failure' })
+        end
+        workers.each_value { |socket| expect(socket.read).to eq('') }
+        expect(IO.select([server], nil, nil, 0)).to be_nil
+
+        report = summary.value.split("Failed tests\n\n").last
+        expect(report.lines.map(&:strip)).to eq(
+          ['checks', 'job-1', '- failure-1', 'job-2', '- failure-2', 'job-3', '- failure-3',
+           '', 'deploy', 'job-4', '- failure-4', 'job-5', '- failure-5']
+        )
+      end
+    ensure
+      sockets&.each(&:close)
+      server&.close
+      summary&.kill&.join
+    end
+
     it 'reports when no jobs failed' do
       stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => nil } })
 
@@ -229,6 +291,7 @@ describe CircleCI::CLI::Runner, 'run' do
           expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
         end.to output("Unable to load test results for job unit (#{unit_id}): " \
                       "CircleCI API request failed (GET #{url}): #{timeout.message}\n").to_stderr
+        expect(session).to have_received(:get_raw).with(url, headers).twice
       end
     end
   end
