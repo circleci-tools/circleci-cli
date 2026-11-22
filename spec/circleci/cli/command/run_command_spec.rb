@@ -21,8 +21,7 @@ describe CircleCI::CLI::Runner, 'run' do
   def stub_get(path, body, response_class: Net::HTTPOK, code: '200', raw: false)
     response = response_class.new('1.1', code, '')
     allow(response).to receive(:body).and_return(raw ? body : JSON.generate(body))
-    transport = path.end_with?('/tests') ? client : session
-    allow(transport).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
+    allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
   end
 
   it 'shows jobs grouped by workflow across pages, including approvals without a job number' do
@@ -145,6 +144,59 @@ describe CircleCI::CLI::Runner, 'run' do
       SUMMARY
       expect { described_class.start(args) }.to output(/#{Regexp.escape(expected)}\z/).to_stdout
       expect(session).to have_received(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=}, headers).twice
+    end
+
+    it 'overlaps up to four test requests, reuses connections, and preserves workflow and job order' do
+      server = TCPServer.new('127.0.0.1', 0)
+      sockets = []
+      allow(client::Session).to receive(:new).with(max_retries: 1).and_call_original
+      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true) do
+        Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+      end
+      workflows = %w[checks deploy].map { |name| { 'id' => name, 'attributes' => { 'name' => name } } }
+      command = CircleCI::CLI::Command::RunCommand.new('test-token')
+      summary = Thread.new { command.summary(run_id, failed_tests: true) }
+
+      Timeout.timeout(5) do
+        sockets << server.accept
+        metadata = sockets.first
+        expect(read_request(metadata)).to eq("runs/#{run_id}")
+        write_response(metadata, fixtures.fetch('run'))
+        expect(read_request(metadata)).to eq(workflows_path)
+        write_response(metadata, { 'data' => workflows, 'page' => { 'next' => nil } })
+
+        2.times do
+          socket = server.accept
+          sockets << socket
+          workflow = read_request(socket).split('=').last
+          ids = workflow == 'checks' ? (1..3) : (4..5)
+          write_response(socket, { 'data' => ids.map { |id| failed_job(id, "job-#{id}") } })
+        end
+
+        4.times { sockets << server.accept }
+        workers = sockets.last(4).to_h { |socket| [read_request(socket), socket] }
+        expect(workers.keys).to match_array((1..4).map { |id| "jobs/#{id}/tests" })
+
+        reused = workers.fetch('jobs/4/tests')
+        write_response(reused, { 'name' => 'failure-4', 'result' => 'failure' })
+        expect(read_request(reused)).to eq('jobs/5/tests')
+        workers.each do |path, socket|
+          id = socket == reused ? '5' : path.split('/')[1]
+          write_response(socket, { 'name' => "failure-#{id}", 'result' => 'failure' })
+        end
+        workers.each_value { |socket| expect(socket.read).to eq('') }
+        expect(IO.select([server], nil, nil, 0)).to be_nil
+
+        report = summary.value.split("Failed tests\n\n").last
+        expect(report.lines.map(&:strip)).to eq(
+          ['checks', 'job-1', '- failure-1', 'job-2', '- failure-2', 'job-3', '- failure-3',
+           '', 'deploy', 'job-4', '- failure-4', 'job-5', '- failure-5']
+        )
+      end
+    ensure
+      sockets&.each(&:close)
+      server&.close
+      summary&.kill&.join
     end
 
     it 'reports when no jobs failed' do
