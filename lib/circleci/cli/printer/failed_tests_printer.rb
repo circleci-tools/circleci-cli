@@ -5,14 +5,13 @@ module CircleCI
     module Printer
       module FailedTestsPrinter
         class << self
-          def render(job_name, results)
+          def render(job_name, failures:, records_received:)
             heading = "  #{Printer.escape_controls(job_name)}"
-            return "#{heading}\n    No uploaded test results." if results.empty?
+            return "#{heading}\n    No uploaded test results." unless records_received
 
-            failures = results.filter_map { |test| format_failure(test) if test['result'] == 'failure' }
             return "#{heading}\n    No failures in uploaded test results." if failures.empty?
 
-            [heading, *failures].join("\n")
+            [heading, *failures.map { |test| format_failure(test) }].join("\n")
           end
 
           private
