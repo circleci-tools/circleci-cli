@@ -116,7 +116,12 @@ module CircleCI
         end
 
         def steps
-          (@hash['steps'] || []).map { |step| Step.new(step) }
+          occurrences = Hash.new(0)
+          (@hash['steps'] || []).map do |step|
+            key = [step['name'], step.fetch('actions').filter_map { |action| action['step'] }.min]
+            occurrence = occurrences[key] += 1
+            Step.new(step, [*key, occurrence])
+          end
         end
       end
     end

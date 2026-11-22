@@ -4,10 +4,11 @@ module CircleCI
   module CLI
     module Response
       class Step
-        attr_reader :name
+        attr_reader :name, :identity
 
-        def initialize(hash)
+        def initialize(hash, identity = nil)
           @name = hash['name']
+          @identity = identity
           @hash = hash
         end
 
@@ -15,12 +16,8 @@ module CircleCI
           @hash['actions'].map { |a| Action.new(a) }
         end
 
-        def action_identity
-          actions.first&.identity
-        end
-
         def status
-          return 'running' if actions.any? { |action| action.end_time.nil? }
+          return 'running' if actions.any?(&:running?)
           return 'failed' if actions.any?(&:failed?)
 
           'success'
