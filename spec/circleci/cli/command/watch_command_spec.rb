@@ -612,8 +612,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:step) do
       CircleCI::CLI::Response::Step.new('build', {
         'actions' => [
-          { 'name' => 'Setup', 'status' => 'success', 'output_url' => 'https://circleci.com/output/setup' },
-          { 'name' => 'Test', 'status' => 'failed', 'output_url' => 'https://circleci.com/output/test' },
+          { 'name' => 'Setup', 'status' => 'success', 'index' => 0, 'step' => 1,
+            'output_url' => 'https://circleci.com/output/setup' },
+          { 'name' => 'Test', 'status' => 'failed', 'index' => 1, 'step' => 1,
+            'output_url' => 'https://circleci.com/output/test' },
           { 'name' => 'Deploy', 'status' => 'not_run' }
         ]
       })
@@ -645,7 +647,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(CircleCI::CLI::Networking::HTTPClient).not_to receive(:get_raw).with('https://circleci.com/output/setup')
 
       expect { session.send(:show_interrupted_build_results, builds, {}) }
-        .to output(include('header output <%= "metadata" %>', 'test log <%= "log" %>')).to_stdout
+        .to output(satisfy do |output|
+          output.include?('header output <%= "metadata" %>') &&
+            output.scan('test log <%= "log" %>').size == 1 && !output.include?('setup log')
+        end).to_stdout
     end
 
     context 'with verbose enabled' do
@@ -655,7 +660,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         expect(CircleCI::CLI::Response::Build).not_to receive(:get)
 
         expect { session.send(:show_interrupted_build_results, builds, { 42 => response_build }) }
-          .to output(include('setup log\x1B[2K', 'test log <%= "log" %>', 'Deploy')).to_stdout
+          .to output(satisfy do |output|
+            output.scan('setup log\x1B[2K').size == 1 && output.scan('test log <%= "log" %>').size == 1 &&
+              output.include?('Deploy')
+          end).to_stdout
       end
     end
   end
