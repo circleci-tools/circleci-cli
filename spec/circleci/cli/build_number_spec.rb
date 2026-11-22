@@ -31,10 +31,12 @@ describe CircleCI::CLI::Runner, type: :command do
     describe command do
       let(:build) { CircleCI::CLI::Response::Build.new(build_hash) }
 
+      let(:result) { command == 'retry' ? 'new-workflow-id' : build }
+
       it_behaves_like 'build number validation', command, operation
 
       it 'sends a valid build option as an integer' do
-        expect(build_response).to receive(operation).with('octocat', 'hello-world', 42).and_return(build)
+        expect(build_response).to receive(operation).with('octocat', 'hello-world', 42).and_return(result)
         described_class.start([command, *project_args, '--build', '42'])
       end
 
@@ -42,7 +44,7 @@ describe CircleCI::CLI::Runner, type: :command do
         let(:io_response_build_number) { '42' }
 
         it 'sends a valid answer as an integer' do
-          expect(build_response).to receive(operation).with('octocat', 'hello-world', 42).and_return(build)
+          expect(build_response).to receive(operation).with('octocat', 'hello-world', 42).and_return(result)
           described_class.start([command, *project_args])
         end
 
@@ -69,7 +71,8 @@ describe CircleCI::CLI::Runner, type: :command do
       build = build_response.new(build_hash.merge('build_num' => 99))
       operation = command == 'build' ? :get : :retry
       expect(build_response).to receive(:failed).with('octocat', 'hello-world').and_return([build])
-      expect(build_response).to receive(operation).with('octocat', 'hello-world', 99).and_return(build)
+      result = command == 'retry' ? 'new-workflow-id' : build
+      expect(build_response).to receive(operation).with('octocat', 'hello-world', 99).and_return(result)
 
       described_class.start([command, *project_args, '--last', '--build=42'])
     end

@@ -42,7 +42,6 @@ shared_context 'mock circle ci response' do
     allow_any_instance_of(CircleCi::Project).to receive(:recent_builds) { circleci_response(builds_body) }
     allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_return(circleci_response(builds_body))
     allow_any_instance_of(CircleCi::Build).to receive(:get) { circleci_response(build_hash) }
-    allow_any_instance_of(CircleCi::Build).to receive(:retry).and_return(circleci_response(build_hash))
     allow_any_instance_of(CircleCi::Build).to receive(:cancel).and_return(circleci_response(build_hash))
     allow_any_instance_of(CircleCi::Projects).to receive(:get).and_return(circleci_response(projects_body))
   end

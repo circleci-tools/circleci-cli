@@ -30,12 +30,12 @@ describe 'CircleCI API v1.1 authentication' do
   it 'authenticates a POST with a token-free request target' do
     expect(http).to receive(:request) do |request, _body|
       expect(request.method).to eq('POST')
-      expect(request.path).to eq('/api/v1.1/project/github/owner/repo/42/retry')
+      expect(request.path).to eq('/api/v1.1/project/github/owner/repo/42/cancel')
       expect(request['Circle-Token']).to eq(token)
       expect(request.body).to eq('{}')
       response
     end
 
-    CircleCi.request(config, '/project/github/owner/repo/42/retry').post
+    CircleCi.request(config, '/project/github/owner/repo/42/cancel').post
   end
 end

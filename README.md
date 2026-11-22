@@ -107,6 +107,9 @@ $ circleci-cli build --last
 ```
 
 #### Retry last failed build
+
+The retry command requires a CircleCI personal API token and prints the ID of the new workflow.
+
 ```
 $ circleci-cli retry --last
 ```
