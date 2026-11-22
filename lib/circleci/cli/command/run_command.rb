@@ -22,7 +22,7 @@ module CircleCI
                                       rows: summary_rows(groups)).to_s
           return table unless failed_tests
 
-          tests = FailedTestsSummary.new { |job_id| request("jobs/#{job_id}/tests") }
+          tests = FailedTestsSummary.new { |session, job_id| request("jobs/#{job_id}/tests", client: session) }
           [table, tests.render(groups)].join("\n\n")
         end
 

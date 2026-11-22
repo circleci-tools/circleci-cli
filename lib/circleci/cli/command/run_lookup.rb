@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/run_command/run_request_pool'
+
 module CircleCI
   module CLI
     module Command
       class RunLookup < BaseCommand
         API_URL = 'https://circleci.com/api/v3'
         UUID = /\A[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/i
-        JOB_FETCH_LIMIT = 4
 
         def initialize(token)
           super()
@@ -21,25 +22,7 @@ module CircleCI
         end
 
         def fetch_workflow_jobs(workflows)
-          pending = Queue.new(workflows.each_with_index).tap(&:close)
-          results = Array.new(workflows.size)
-          workers = Array.new([workflows.size, JOB_FETCH_LIMIT].min) do
-            Thread.new { fetch_pending_jobs(pending, results) }
-          end
-          workers.each(&:join)
-          results.each { |result| raise result if result.is_a?(StandardError) }
-        end
-
-        def fetch_pending_jobs(pending, results)
-          Networking::HTTPClient::Session.open(max_retries: 1) do |session|
-            while (entry = pending.pop)
-              workflow, index = entry
-              results[index] = workflow_jobs(session, workflow)
-            end
-          rescue StandardError => e
-            pending.clear
-            results[index] = e
-          end
+          RunRequestPool.fetch(workflows, &method(:workflow_jobs))
         end
 
         def workflows(session, run_id)
@@ -66,7 +49,7 @@ module CircleCI
           raise Thor::Error, 'CircleCI API returned invalid JSON.'
         end
 
-        def request(path, query = nil, client: Networking::HTTPClient)
+        def request(path, query = nil, client:)
           url = "#{API_URL}/#{path}"
           url += "?#{URI.encode_www_form(query)}" if query
           response = client.get_raw(url, @headers)
