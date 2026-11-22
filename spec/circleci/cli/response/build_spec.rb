@@ -15,6 +15,19 @@ describe CircleCI::CLI::Response::Build do
     }
   end
 
+  describe '#steps' do
+    it 'decodes actionless and populated steps in API order' do
+      steps = [
+        { 'name' => 'waiting', 'actions' => [] },
+        { 'name' => 'checkout', 'actions' => [{ 'type' => 'build', 'name' => 'Checkout' }] }
+      ]
+      decoded_steps = described_class.new(base_attributes.merge('steps' => steps)).steps
+
+      expect(decoded_steps.map(&:name)).to eq(%w[waiting checkout])
+      expect(decoded_steps.map { |step| step.actions.map(&:name) }).to eq([[], ['Checkout']])
+    end
+  end
+
   describe '#running?' do
     %w[running queued].each do |status|
       it "returns true for #{status}" do

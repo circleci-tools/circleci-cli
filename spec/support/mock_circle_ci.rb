@@ -27,11 +27,25 @@ shared_context 'mock circle ci response' do
     }
   end
 
-  let(:project_hash) { { 'username' => 'unhappychoice', 'reponame' => 'default_reponame_from_api' } }
+  let(:project_hash) do
+    {
+      'vcs_url' => 'https://github.com/unhappychoice/default_reponame_from_api',
+      'username' => 'unhappychoice',
+      'reponame' => 'default_reponame_from_api'
+    }
+  end
+
+  let(:bitbucket_project_hash) do
+    {
+      'vcs_url' => 'https://bitbucket.org/unhappychoice/bitbucket_repo',
+      'username' => 'unhappychoice',
+      'reponame' => 'bitbucket_repo'
+    }
+  end
 
   let(:http_status) { '200' }
   let(:builds_body) { [build_hash] }
-  let(:projects_body) { [project_hash] }
+  let(:projects_body) { [project_hash, bitbucket_project_hash] }
 
   def circleci_response(body)
     CircleCi::Response.new(double('HTTP response', code: http_status, body: JSON.generate(body)))
@@ -42,7 +56,6 @@ shared_context 'mock circle ci response' do
     allow_any_instance_of(CircleCi::Project).to receive(:recent_builds) { circleci_response(builds_body) }
     allow_any_instance_of(CircleCi::Project).to receive(:recent_builds_branch).and_return(circleci_response(builds_body))
     allow_any_instance_of(CircleCi::Build).to receive(:get) { circleci_response(build_hash) }
-    allow_any_instance_of(CircleCi::Build).to receive(:retry).and_return(circleci_response(build_hash))
     allow_any_instance_of(CircleCi::Build).to receive(:cancel).and_return(circleci_response(build_hash))
     allow_any_instance_of(CircleCi::Projects).to receive(:get).and_return(circleci_response(projects_body))
   end

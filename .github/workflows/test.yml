@@ -45,3 +45,5 @@ jobs:
             lines = JSON.parse(File.read("coverage/coverage.json")).fetch("total").fetch("lines")
             printf "Line coverage: %.2f%% (%d/%d lines)\n", lines.fetch("percent"), lines.fetch("covered"), lines.fetch("total")
           ' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build gem
+        run: bundle exec rake build

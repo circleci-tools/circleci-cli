@@ -9,7 +9,7 @@ module CircleCI
     module Printer
       class StepPrinter
         def initialize(steps, pretty: true, verbose: false)
-          @groups = steps.group_by(&:type)
+          @groups = steps.map(&:actions).reject(&:empty?).group_by { |actions| actions.first.type }
           @pretty = pretty
           @verbose = verbose
         end
@@ -27,7 +27,7 @@ module CircleCI
         def to_s
           output = StringIO.new
           write_to(output)
-          return output.string.delete_suffix("\n") if @pretty || compact_empty?
+          return output.string.delete_suffix("\n") if @pretty || @groups.empty?
 
           output.string
         end
@@ -40,15 +40,11 @@ module CircleCI
         end
 
         def write_compact(output)
-          @groups.each_value.with_index do |steps, index|
+          @groups.each_value.with_index do |action_lists, index|
             output.puts unless index.zero?
-            steps.each { |step| step.actions.each { |action| write_action(output, action) } }
+            action_lists.each { |actions| actions.each { |action| write_action(output, action) } }
           end
-          output.puts if compact_empty?
-        end
-
-        def compact_empty?
-          @groups.size <= 1 && @groups.values.flatten.all? { |step| step.actions.empty? }
+          output.puts if @groups.empty?
         end
 
         def write_action(output, action)
@@ -66,11 +62,11 @@ module CircleCI
         end
 
         def write_pretty(output, table)
-          @groups.each do |type, steps|
+          @groups.each do |type, action_lists|
             table.add_header(Printer.colorize_green(Printer.escape_controls(type)))
-            steps.each do |step|
+            action_lists.each do |actions|
               table.add_separator
-              step.actions.each { |action| add_action(table, action) }
+              actions.each { |action| add_action(table, action) }
             end
           end
           table.write_to(output)

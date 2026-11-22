@@ -30,51 +30,37 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     end
 
     let(:steps) do
-      [
-        CircleCI::CLI::Response::Step.new(
-          'build',
-          {
-            'status' => 'success',
-            'actions' => [
-              { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 61_999 },
-              {
-                'type' => 'build', 'name' => 'Checkout', 'status' => 'success', 'run_time_millis' => 1200,
-                'output_url' => 'https://circleci.com/output/456'
-              }
-            ]
-          }
-        ),
-        CircleCI::CLI::Response::Step.new(
-          'test',
-          {
-            'status' => 'success',
-            'actions' => [
-              {
-                'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200,
-                'output_url' => 'https://circleci.com/output/123'
-              }
-            ]
-          }
-        ),
-        CircleCI::CLI::Response::Step.new(
-          'build',
-          {
-            'status' => 'success',
-            'actions' => [
-              { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
-            ]
-          }
-        ),
-        CircleCI::CLI::Response::Step.new(
-          'deploy',
-          {
-            'status' => 'success',
-            'actions' => [
-              { 'type' => 'deploy', 'name' => 'Deploy', 'status' => 'no_tests' }
-            ]
-          }
-        )
+      steps = [
+        { 'name' => 'waiting', 'actions' => [] },
+        {
+          'actions' => [
+            { 'type' => 'build', 'name' => 'Dependency', 'status' => 'ok', 'run_time_millis' => 61_999 },
+            {
+              'type' => 'build', 'name' => 'Checkout', 'status' => 'success', 'run_time_millis' => 1200,
+              'output_url' => 'https://circleci.com/output/456'
+            }
+          ]
+        },
+        {
+          'actions' => [
+            {
+              'type' => 'test', 'name' => 'Test', 'status' => 'timedout', 'run_time_millis' => 1_200,
+              'output_url' => 'https://circleci.com/output/123'
+            }
+          ]
+        },
+        {
+          'actions' => [
+            { 'type' => 'build', 'name' => 'Build', 'status' => 'canceled', 'run_time_millis' => 25_000 }
+          ]
+        },
+        {
+          'actions' => [
+            { 'type' => 'deploy', 'name' => 'Deploy', 'status' => 'no_tests' }
+          ]
+        }
       ]
+      CircleCI::CLI::Response::Build.new('steps' => steps).steps
     end
 
     context 'with control characters in step output' do
@@ -82,9 +68,11 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
       let(:steps) do
         [
           CircleCI::CLI::Response::Step.new(
-            'test',
             'actions' => [
-              { 'name' => "Test\r\e[2K", 'status' => 'failed', 'output_url' => 'https://circleci.com/output/123' }
+              {
+                'type' => 'test', 'name' => "Test\r\e[2K", 'status' => 'failed',
+                'output_url' => 'https://circleci.com/output/123'
+              }
             ]
           )
         ]
@@ -167,9 +155,13 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     end
 
     let(:steps) do
-      [CircleCI::CLI::Response::Step.new('test', 'actions' => (1..3).map do |index|
-        { 'name' => "Action #{index}", 'status' => 'failed', 'output_url' => "https://circleci.com/log/#{index}" }
-      end)]
+      actions = (1..3).map do |index|
+        {
+          'type' => 'test', 'name' => "Action #{index}", 'status' => 'failed',
+          'output_url' => "https://circleci.com/log/#{index}"
+        }
+      end
+      [CircleCI::CLI::Response::Step.new('actions' => actions)]
     end
 
     def log_lines(index, record)

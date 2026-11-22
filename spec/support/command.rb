@@ -13,8 +13,12 @@ shared_examples_for 'a command asks project name' do
     EXPECTED
   end
 
-  it 'should show project list' do
-    allow(Launchy).to receive(:open)
+  it 'suggests only followed GitHub projects and opens the selected repository' do
+    project = project_hash.values_at('username', 'reponame').join('/')
+    allow(CircleCI::CLI::Command::BrowseCommand).to receive(:ask).with('Input user-name/project-name :').and_return(project)
+    url = "https://circleci.com/gh/#{project}"
+    url += "/#{options.build}" if options.build
+    expect(Launchy).to receive(:open).with(url)
     expect { CircleCI::CLI::Command::BrowseCommand.run(options) }.to output(expected_project_name_output).to_stdout
   end
 end
