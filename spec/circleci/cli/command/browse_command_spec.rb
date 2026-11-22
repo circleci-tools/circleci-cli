@@ -18,7 +18,8 @@ describe CircleCI::CLI::Command::BrowseCommand, type: :command do
 
   context 'with no input' do
     let(:options) { OpenStruct.new(project: nil, build: nil) }
-    let(:expected_url) { 'https://circleci.com/gh/user/project_name_from_io' }
+    let(:io_response_project_name) { 'unhappychoice/default_reponame_from_api' }
+    let(:expected_url) { 'https://circleci.com/gh/unhappychoice/default_reponame_from_api' }
 
     it_behaves_like 'a command opens browser'
     it_behaves_like 'a command asks project name'

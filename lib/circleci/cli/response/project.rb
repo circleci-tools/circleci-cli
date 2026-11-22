@@ -13,7 +13,9 @@ module CircleCI
         end
 
         def self.all
-          Response.body!(CircleCi::Projects.new.get).map { |p| Project.new(p) }
+          Response.body!(CircleCi::Projects.new.get)
+                  .select { |project| project['vcs_url'].to_s.match?(%r{\Ahttps?://github\.com/}i) }
+                  .map { |project| new(project) }
         end
       end
     end
