@@ -4,7 +4,6 @@ require 'circleci'
 
 require 'highline/import'
 require 'launchy'
-require 'ostruct'
 require 'rugged'
 require 'terminal-notifier'
 require 'terminal-table'
