@@ -20,7 +20,7 @@ module CircleCI
         end
 
         def status
-          return 'running' if actions.any? { |action| action.end_time.nil? }
+          return 'running' if actions.any?(&:running?)
           return 'failed' if actions.any?(&:failed?)
 
           'success'

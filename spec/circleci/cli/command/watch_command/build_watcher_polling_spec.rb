@@ -7,7 +7,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
   let(:step_hash) do
     lambda do |name:, type:, status:, index: 0, step: 0|
       action = { 'type' => type, 'name' => name, 'status' => status, 'index' => index, 'step' => step }
-      action['end_time'] = '2024-01-01T00:00:00Z' unless status == 'running'
+      action['end_time'] = '2024-01-01T00:00:00Z' unless %w[running not_run].include?(status)
 
       { 'name' => name, 'actions' => [action] }
     end
@@ -303,6 +303,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       context 'with default output' do
         let(:watcher) { described_class.new(build) }
+
+        it 'polls the running action and prints its buffered failure log once alongside a skipped action' do
+          polled = pause_after_polls(2)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get)
+            .and_return(multi_action_build('running', 'not_run'), multi_action_build('failed', 'not_run'))
+          expect_output_response(0, "first output\n")
+          expect_output_response(13, "second output\n")
+          expect_output_response(27, "failure tail\n")
+
+          expect { watch_until(polled, 'failed') }.to output("first output\nsecond output\nfailure tail\n").to_stdout
+          expect(watcher.latest_detail.steps.first.status).to eq('failed')
+        end
 
         it 'skips an already successful action and replays the failed live action once' do
           polled = pause_after_polls(1)
