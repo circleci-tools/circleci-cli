@@ -149,7 +149,7 @@ module CircleCI
         end
 
         def finish_step_log(step, status)
-          key = step_key(step)
+          key = step.identity
           log = @messages[key]
           log&.write_to($stdout) if status == 'failed'
         ensure
@@ -158,10 +158,6 @@ module CircleCI
             @retained_log_bytes -= log.bytesize
           end
           @messages.delete(key)
-        end
-
-        def step_key(step)
-          step.action_identity || step.name
         end
 
         def update_build(stopping: false)
@@ -187,13 +183,13 @@ module CircleCI
           @current_step = next_step
           return unless next_step && !continuing
 
-          refresh_action_outputs(next_step.actions, key: step_key(next_step), continuing: true)
+          refresh_action_outputs(next_step.actions, key: next_step.identity, continuing: true)
         end
 
         def refresh_current_step(steps, next_step)
-          key = step_key(@current_step)
-          continuing = next_step && step_key(next_step) == key
-          updated_step = continuing ? next_step : steps.find { |step| step_key(step) == key }
+          key = @current_step.identity
+          continuing = next_step && next_step.identity == key
+          updated_step = continuing ? next_step : steps.find { |step| step.identity == key }
           refresh_action_outputs(updated_step&.actions || [], key:, continuing:)
           @action_outputs.clear unless continuing
           continuing
@@ -220,9 +216,9 @@ module CircleCI
         end
 
         def notify_step_changes(steps, next_step:, stopping:)
-          previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
+          previous_statuses = @steps.to_h { |step| [step.identity, step.status] }
           steps.each do |step|
-            notify_step_change(step, previous_statuses[step_key(step)])
+            notify_step_change(step, previous_statuses[step.identity])
             print_completed_outputs(step, stopping:) if step != next_step && (@verbose || step.status == 'failed')
           end
         end
@@ -266,7 +262,7 @@ module CircleCI
         def update_actions
           return unless @current_step
 
-          key = step_key(@current_step)
+          key = @current_step.identity
           @action_outputs.each_value { |output| output&.read { |chunk| write_output(key, chunk) } }
         end
 
