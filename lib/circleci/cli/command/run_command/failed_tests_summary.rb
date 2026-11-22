@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/run_command/run_request_pool'
+
 module CircleCI
   module CLI
     module Command
@@ -9,11 +11,10 @@ module CircleCI
         end
 
         def render(groups)
-          sections = groups.filter_map do |name, jobs|
-            failed_jobs = jobs.select { |job| job.fetch('attributes')['outcome'] == 'failed' }
-            next if failed_jobs.empty?
-
-            [Printer.escape_controls(name), *failed_jobs.map { |job| failed_job_summary(job) }].join("\n")
+          failed_groups = failed_job_groups(groups)
+          summaries = RunRequestPool.fetch(failed_groups.flat_map(&:last), &method(:failed_job_summary))
+          sections = failed_groups.map do |name, jobs|
+            [Printer.escape_controls(name), *summaries.shift(jobs.size)].join("\n")
           end
           sections << 'No failed jobs found.' if sections.empty?
           ['Failed tests', *sections].join("\n\n")
@@ -21,18 +22,25 @@ module CircleCI
 
         private
 
-        def failed_job_summary(job)
+        def failed_job_groups(groups)
+          groups.filter_map do |name, jobs|
+            failed_jobs = jobs.select { |job| job.fetch('attributes')['outcome'] == 'failed' }
+            [name, failed_jobs] unless failed_jobs.empty?
+          end
+        end
+
+        def failed_job_summary(session, job)
           name = job.fetch('attributes').fetch('name')
           job_id = job.fetch('id')
-          Printer::FailedTestsPrinter.render(name, test_results(job_id))
+          Printer::FailedTestsPrinter.render(name, test_results(session, job_id))
         rescue Thor::Error => e
           name = Printer.escape_controls(name)
           detail = Printer.escape_controls(e.message)
           raise Thor::Error, "Unable to load test results for job #{name} (#{job_id}): #{detail}"
         end
 
-        def test_results(job_id)
-          response = @fetch_results.call(job_id)
+        def test_results(session, job_id)
+          response = @fetch_results.call(session, job_id)
           response.body.to_s.lines.reject { |line| line.strip.empty? }.map do |line|
             record = JSON.parse(line)
             raise JSON::ParserError unless record.is_a?(Hash)
