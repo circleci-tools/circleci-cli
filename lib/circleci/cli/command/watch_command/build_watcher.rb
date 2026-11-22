@@ -170,10 +170,6 @@ module CircleCI
           end
         end
 
-        def step_key(step)
-          step.action_identity || step.name
-        end
-
         def update_build(stopping: false)
           detail = fetch_detail(attempts: stopping ? FINAL_DETAIL_ATTEMPTS : 1)
           update_steps(detail.steps, stopping:)
@@ -201,9 +197,9 @@ module CircleCI
         end
 
         def refresh_current_step(steps, next_step)
-          key = step_key(@current_step)
-          continuing = next_step && step_key(next_step) == key
-          updated_step = continuing ? next_step : steps.find { |step| step_key(step) == key }
+          key = @current_step.identity
+          continuing = next_step && next_step.identity == key
+          updated_step = continuing ? next_step : steps.find { |step| step.identity == key }
           refresh_action_outputs(updated_step&.actions || [], continuing:)
           @action_outputs.clear unless continuing
           continuing
@@ -232,9 +228,9 @@ module CircleCI
         end
 
         def notify_step_changes(steps, next_step:, stopping:)
-          previous_statuses = @steps.to_h { |step| [step_key(step), step.status] }
+          previous_statuses = @steps.to_h { |step| [step.identity, step.status] }
           steps.each do |step|
-            notify_step_change(step, previous_statuses[step_key(step)])
+            notify_step_change(step, previous_statuses[step.identity])
             finish_action_logs(step)
             next if step == next_step || (!@verbose && step.status == 'running')
 
