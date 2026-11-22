@@ -116,7 +116,7 @@ module CircleCI
         end
 
         def steps
-          (@hash['steps'] || []).map { |step| Step.new(step['actions'].first['type'], step) }
+          (@hash['steps'] || []).map { |step| Step.new(step) }
         end
       end
     end
