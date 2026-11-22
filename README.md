@@ -64,6 +64,19 @@ that failed, grouped by workflow and job. Jobs must upload test results with
 `store_test_results` for test details to appear. Each reported failure is
 shown, including repeats from parallel executions.
 
+#### List and download artifacts from a run
+
+```sh
+circleci-cli artifacts RUN_ID
+circleci-cli artifacts RUN_ID --download 'screenshots/**/*.png' --destination ./artifacts
+```
+
+The list shows each artifact's workflow, job name, job UUID, execution index,
+and path. Downloads require both a path glob and a destination. Quote the glob
+to match against the paths shown in the list. Files are saved under
+`DESTINATION/JOB_UUID/EXECUTION/PATH`, so parallel executions can keep the same
+artifact path. A completed download replaces any existing file at that path.
+
 #### Watch your project
 ```
 $ circleci-cli watch

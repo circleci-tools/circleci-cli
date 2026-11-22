@@ -118,6 +118,13 @@ module CircleCI
         say Command::RunCommand.run(run_id, failed_tests: options[:failed_tests])
       end
 
+      desc 'artifacts RUN_ID', 'List or download artifacts from a run'
+      method_option :download, type: :string, banner: 'PATH', desc: 'Download artifacts matching this path glob'
+      method_option :destination, type: :string, banner: 'DIRECTORY', desc: 'Save matching artifacts in this directory'
+      def artifacts(run_id)
+        say Command::ArtifactsCommand.run(run_id, download: options[:download], destination: options[:destination])
+      end
+
       desc 'build', 'Show the build result'
       method_option :project,
                     aliases: 'p',
