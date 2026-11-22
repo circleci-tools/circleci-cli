@@ -45,5 +45,5 @@ jobs:
         if: matrix.ruby == '3.4.13' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: codecov/codecov-action@v7
         with:
-          token: efe02ed0-e754-42a6-bb90-bbf345747bdc
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/.resultset.json
