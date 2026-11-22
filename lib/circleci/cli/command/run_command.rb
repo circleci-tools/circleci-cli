@@ -50,14 +50,13 @@ module CircleCI
         end
 
         def fetch_workflow_jobs(workflows)
-          pending = Queue.new(workflows.each_with_index)
-          pending.close
+          pending = Queue.new(workflows.each_with_index).tap(&:close)
           results = Array.new(workflows.size)
           workers = Array.new([workflows.size, JOB_FETCH_LIMIT].min) do
             Thread.new { fetch_pending_jobs(pending, results) }
           end
           workers.each(&:join)
-          results.map { |result| result.is_a?(StandardError) ? raise(result) : result }
+          results.each { |result| raise result if result.is_a?(StandardError) }
         end
 
         def fetch_pending_jobs(pending, results)
@@ -66,6 +65,9 @@ module CircleCI
               workflow, index = entry
               results[index] = workflow_jobs(session, workflow)
             end
+          rescue StandardError => e
+            pending.clear
+            results[index] = e
           end
         end
 
@@ -85,8 +87,6 @@ module CircleCI
         def workflow_jobs(session, workflow)
           jobs = get(session, 'jobs', 'filter[workflow_id]' => workflow.fetch('id')).fetch('data')
           [workflow.fetch('attributes').fetch('name'), jobs]
-        rescue StandardError => e
-          e
         end
 
         def workflow_rows(name, jobs)
