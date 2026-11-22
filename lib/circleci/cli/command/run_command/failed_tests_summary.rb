@@ -24,7 +24,7 @@ module CircleCI
         def failed_job_summary(job)
           name = job.fetch('attributes').fetch('name')
           job_id = job.fetch('id')
-          Printer::FailedTestsPrinter.render(name, test_results(job_id))
+          Printer::FailedTestsPrinter.render(name, **test_results(job_id))
         rescue Thor::Error => e
           name = Printer.escape_controls(name)
           detail = Printer.escape_controls(e.message)
@@ -32,13 +32,45 @@ module CircleCI
         end
 
         def test_results(job_id)
-          response = @fetch_results.call(job_id)
-          response.body.to_s.lines.reject { |line| line.strip.empty? }.map do |line|
-            record = JSON.parse(line)
-            raise JSON::ParserError unless record.is_a?(Hash)
+          failures = []
+          records_received = false
+          each_test_line(job_id) do |line|
+            record = parse_record(line)
+            next unless record
 
-            record
+            records_received = true
+            failures << record if record['result'] == 'failure'
           end
+          { failures:, records_received: }
+        end
+
+        def each_test_line(job_id)
+          pending = String.new(encoding: Encoding::BINARY)
+          read_chunks(job_id) do |chunk|
+            chunk.b.each_line("\n") do |part|
+              pending << part
+              next unless part.end_with?("\n")
+
+              yield pending
+              pending.clear
+            end
+          end
+          yield pending unless pending.empty?
+        end
+
+        def read_chunks(job_id, &read_chunk)
+          @fetch_results.call(job_id) do |response|
+            response.read_body(&read_chunk) if response.is_a?(Net::HTTPSuccess)
+          end
+        end
+
+        def parse_record(line)
+          return if line.strip.empty?
+
+          record = JSON.parse(line)
+          raise JSON::ParserError unless record.is_a?(Hash)
+
+          record
         rescue JSON::ParserError
           raise Thor::Error, 'CircleCI API returned invalid JSON Lines.'
         end
