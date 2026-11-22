@@ -21,11 +21,11 @@ jobs:
       id-token: write
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@be3c7df29b3349ec6bcfc6b4792f1cf9f5237d18 # v1.343.0
         with:
           bundler-cache: true
           ruby-version: .ruby-version
@@ -38,4 +38,4 @@ jobs:
           BUNDLE_FROZEN=true bundle exec gem bump --version ${{inputs.version}} --message ':tada: Bump %{name} to %{version}'
           bundle config set frozen false && bundle install
           git add . && git commit --amend --no-edit
-      - uses: rubygems/release-gem@v1
+      - uses: rubygems/release-gem@5c53f5308233b7c0f47411f0471b3faae6fa57b2 # v1.4.2
