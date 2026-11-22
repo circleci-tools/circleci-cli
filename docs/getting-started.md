@@ -11,8 +11,8 @@ circleci-cli version
 
 ## Find your project
 
-Have your CircleCI API token ready and list the projects available to your
-account:
+Have your CircleCI API token ready and list the GitHub projects you follow in
+CircleCI:
 
 ```sh
 circleci-cli projects
