@@ -49,6 +49,8 @@ module CircleCI
         end
 
         def read_output(response, &)
+          return read_full_output(response, &) if response.is_a?(Net::HTTPOK)
+
           content_range = response['Content-Range'] if response.is_a?(Net::HTTPPartialContent)
           return read_range(response, content_range, &) if content_range
 
@@ -56,6 +58,14 @@ module CircleCI
           read_body(response, successful, &)
           return :retry unless successful || response.is_a?(Net::HTTPRangeNotSatisfiable)
 
+          output_status
+        end
+
+        def read_full_output(response, &)
+          read_body(response, true, skip: @read_byte, &).zero? ? output_status : :retry
+        end
+
+        def output_status
           @output_length && @read_byte < @output_length ? :retry : :complete
         end
 
@@ -78,14 +88,19 @@ module CircleCI
           last + 1
         end
 
-        def read_body(response, successful, &)
+        def read_body(response, successful, skip: 0, &)
           response.ignore_eof = false
           response.read_body do |chunk|
-            next if !successful || chunk.empty?
+            next unless successful
 
-            stream_output(chunk.b, &)
-            @read_byte += chunk.bytesize
+            skipped = [skip, chunk.bytesize].min
+            skip -= skipped
+            next if skipped == chunk.bytesize
+
+            stream_output(chunk.byteslice(skipped..).b, &)
+            @read_byte += chunk.bytesize - skipped
           end
+          skip
         end
 
         def stream_output(chunk, &)

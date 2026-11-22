@@ -4,10 +4,9 @@ module CircleCI
   module CLI
     module Response
       class Step
-        attr_reader :type, :name, :identity
+        attr_reader :name, :identity
 
-        def initialize(type, hash, identity = nil)
-          @type = type
+        def initialize(hash, identity = nil)
           @name = hash['name']
           @identity = identity
           @hash = hash

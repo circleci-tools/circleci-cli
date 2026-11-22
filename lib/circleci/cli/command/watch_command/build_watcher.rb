@@ -145,19 +145,29 @@ module CircleCI
           when 'failed'
             puts "\e[1A\e[2K\r#{Printer.colorize_red(name)}"
           end
-          finish_step_log(step, status) unless status == 'running'
         end
 
-        def finish_step_log(step, status)
-          key = step.identity
-          log = @messages[key]
-          log&.write_to($stdout) if status == 'failed'
+        def finish_action_logs(step)
+          return if @messages.empty?
+
+          running = step.status == 'running'
+          step.actions.each do |action|
+            next if action.end_time.nil? || (running && action.failed?)
+
+            finish_action_log(action)
+          end
+        end
+
+        def finish_action_log(action)
+          log = @messages.delete(action.identity)
+          return unless log
+
+          log.write_to($stdout) if action.failed?
         ensure
           if log
             log.close
             @retained_log_bytes -= log.bytesize
           end
-          @messages.delete(key)
         end
 
         def update_build(stopping: false)
@@ -183,26 +193,28 @@ module CircleCI
           @current_step = next_step
           return unless next_step && !continuing
 
-          refresh_action_outputs(next_step.actions, key: next_step.identity, continuing: true)
+          refresh_action_outputs(next_step.actions, continuing: true)
         end
 
         def refresh_current_step(steps, next_step)
           key = @current_step.identity
           continuing = next_step && next_step.identity == key
           updated_step = continuing ? next_step : steps.find { |step| step.identity == key }
-          refresh_action_outputs(updated_step&.actions || [], key:, continuing:)
+          refresh_action_outputs(updated_step&.actions || [], continuing:)
           @action_outputs.clear unless continuing
           continuing
         end
 
-        def refresh_action_outputs(actions, key:, continuing:)
+        def refresh_action_outputs(actions, continuing:)
           track_actions(actions)
           running = continuing ? actions.select { |action| action.end_time.nil? }.map(&:identity) : []
-          finish_outputs(running, key)
+          finish_outputs(running)
         end
 
         def track_actions(actions)
           actions.each do |action|
+            next if action.identity.include?(nil) || (action.end_time && !show_action_log?(action))
+
             @action_outputs.fetch(action.identity) do |identity|
               @action_outputs[identity] = @completed_outputs.fetch(identity) { new_output(identity) }
             end
@@ -219,7 +231,10 @@ module CircleCI
           previous_statuses = @steps.to_h { |step| [step.identity, step.status] }
           steps.each do |step|
             notify_step_change(step, previous_statuses[step.identity])
-            print_completed_outputs(step, stopping:) if step != next_step && (@verbose || step.status == 'failed')
+            finish_action_logs(step)
+            next if step == next_step || (!@verbose && step.status == 'running')
+
+            print_completed_outputs(step, stopping:)
           end
         end
 
@@ -229,10 +244,18 @@ module CircleCI
           on_new_step_status(step) unless previous_status == step.status
         end
 
+        def show_action_log?(action)
+          @verbose || action.failed?
+        end
+
+        def completed_log_actions(step)
+          step.actions.select { |action| action.end_time && show_action_log?(action) }
+        end
+
         def print_completed_outputs(step, stopping:)
-          step.actions.each do |action|
+          completed_log_actions(step).each do |action|
             identity = action.identity
-            next if action.end_time.nil? || identity.include?(nil) || @action_outputs.key?(identity)
+            next if identity.include?(nil) || @action_outputs.key?(identity)
 
             output = @completed_outputs.fetch(identity) { @completed_outputs[identity] = new_output(identity) }
             next unless output
@@ -247,11 +270,11 @@ module CircleCI
           warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
         end
 
-        def finish_outputs(running, key)
+        def finish_outputs(running)
           failed = @action_outputs.except(*running).filter_map do |identity, output|
             next unless output
 
-            complete = output.finish_output? { |chunk| write_output(key, chunk) }
+            complete = output.finish_output? { |chunk| write_output(identity, chunk) }
             @action_outputs[identity] = nil
             @completed_outputs[identity] = nil
             identity unless complete
@@ -262,17 +285,16 @@ module CircleCI
         def update_actions
           return unless @current_step
 
-          key = @current_step.identity
-          @action_outputs.each_value { |output| output&.read { |chunk| write_output(key, chunk) } }
+          @action_outputs.each { |identity, output| output&.read { |chunk| write_output(identity, chunk) } }
         end
 
-        def write_output(key, chunk)
+        def write_output(identity, chunk)
           if @verbose
             print_output(chunk)
           else
             # Defer thread termination until any spill file is registered for cleanup.
             Thread.handle_interrupt(Object => :never) do
-              retain_output(key, chunk)
+              retain_output(identity, chunk)
             end
           end
         end
@@ -282,8 +304,8 @@ module CircleCI
           $stdout.flush
         end
 
-        def retain_output(key, chunk)
-          log = (@messages[key] ||= StepLog.new)
+        def retain_output(identity, chunk)
+          log = (@messages[identity] ||= StepLog.new)
           remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
           @retained_log_bytes += log.append(chunk, remaining:)
         end

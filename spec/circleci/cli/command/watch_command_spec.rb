@@ -522,6 +522,62 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
   end
 
+  describe 'background detail requests during watch' do
+    let(:response) { CircleCI::CLI::Response::Build }
+    let(:attributes) { { 'username' => 'user', 'reponame' => 'repo' } }
+    let(:background) { response.new(attributes.merge('build_num' => 1, 'status' => 'not_running')) }
+    let(:completed) { response.new(attributes.merge('build_num' => 1, 'status' => 'success')) }
+    let(:live) { response.new(attributes.merge('build_num' => 2, 'status' => 'running')) }
+    let(:repository) { CircleCI::CLI::Command::BuildRepository.new('user', 'repo') }
+    let(:client) { double('client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil) }
+    let(:watcher_class) { CircleCI::CLI::Command::BuildWatcher }
+    let(:watcher) { instance_double(watcher_class, build: live, poll_error: nil, latest_detail: nil, close: nil) }
+
+    before do
+      allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(double(pusher_id: 'pusher-id'))
+      allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).with(token: 'token').and_return(client)
+      allow(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success).and_yield
+      allow(response).to receive(:all).with('user', 'repo').and_return([background], recent_builds)
+    end
+
+    shared_examples 'retrying a background detail request' do
+      it 'reports the completion once and starts the live build after retrying on the next iteration' do
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
+        expect(session).to receive(:sleep).with(1).ordered
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
+        expect(watcher_class).to receive(:new).with(live, verbose: true).ordered.and_return(watcher)
+        expect(watcher).to receive(:start).ordered
+        expect(session).to receive(:sleep).with(1).ordered
+        expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+
+        result = 'Result of user/repo #1 completed in background'
+        expect do
+          expect { session.run('token') }.to raise_error(Interrupt)
+        end.to output(satisfy { |output| output.scan(result).size == 1 }).to_stdout
+      end
+
+      it 'surfaces a permanent detail failure' do
+        error = Thor::Error.new('CircleCI API error (HTTP 401): Unauthorized')
+        expect(response).to receive(:get).with('user', 'repo', 1).once.and_raise(error)
+        expect(watcher_class).not_to receive(:new)
+
+        expect { session.run('token') }.to raise_error(error)
+      end
+    end
+
+    context 'when the background build has dropped out of the recent list' do
+      let(:recent_builds) { [live] }
+
+      include_examples 'retrying a background detail request'
+    end
+
+    context 'when the background build finished in the recent list' do
+      let(:recent_builds) { [completed, live] }
+
+      include_examples 'retrying a background detail request'
+    end
+  end
+
   describe '#stop_existing_watcher_if_needed' do
     let(:build) { double('build', build_number: 42) }
     let(:watcher) { double('watcher', build:, poll_error: nil) }
@@ -550,11 +606,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     before { allow(repository).to receive(:refresh_evicted_builds).and_return({}) }
 
     it 'starts a watcher for the first running build that has not been shown' do
-      allow(session).to receive(:show_interrupted_build_results)
       allow(CircleCI::CLI::Command::BuildWatcher).to receive(:new).and_return(build_watcher)
 
       expect(repository).to receive(:builds_to_show).and_return([waiting_build, running_build])
-      expect(session).to receive(:show_interrupted_build_results)
       expect(repository).to receive(:watch).with(42).and_return(running_build)
       expect(CircleCI::CLI::Command::BuildWatcher).to receive(:new)
         .with(running_build, verbose: true)
@@ -610,10 +664,12 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
     let(:repository) { double('repository') }
     let(:step) do
-      CircleCI::CLI::Response::Step.new('build', {
+      CircleCI::CLI::Response::Step.new({
         'actions' => [
-          { 'name' => 'Setup', 'status' => 'success', 'output_url' => 'https://circleci.com/output/setup' },
-          { 'name' => 'Test', 'status' => 'failed', 'output_url' => 'https://circleci.com/output/test' },
+          { 'name' => 'Setup', 'status' => 'success', 'index' => 0, 'step' => 1,
+            'output_url' => 'https://circleci.com/output/setup' },
+          { 'name' => 'Test', 'status' => 'failed', 'index' => 1, 'step' => 1,
+            'output_url' => 'https://circleci.com/output/test' },
           { 'name' => 'Deploy', 'status' => 'not_run' }
         ]
       })
@@ -645,7 +701,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(CircleCI::CLI::Networking::HTTPClient).not_to receive(:get_raw).with('https://circleci.com/output/setup')
 
       expect { session.send(:show_interrupted_build_results, builds, {}) }
-        .to output(include('header output <%= "metadata" %>', 'test log <%= "log" %>')).to_stdout
+        .to output(satisfy do |output|
+          output.include?('header output <%= "metadata" %>') &&
+            output.scan('test log <%= "log" %>').size == 1 && !output.include?('setup log')
+        end).to_stdout
     end
 
     context 'with verbose enabled' do
@@ -655,7 +714,10 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         expect(CircleCI::CLI::Response::Build).not_to receive(:get)
 
         expect { session.send(:show_interrupted_build_results, builds, { 42 => response_build }) }
-          .to output(include('setup log\x1B[2K', 'test log <%= "log" %>', 'Deploy')).to_stdout
+          .to output(satisfy do |output|
+            output.scan('setup log\x1B[2K').size == 1 && output.scan('test log <%= "log" %>').size == 1 &&
+              output.include?('Deploy')
+          end).to_stdout
       end
     end
   end

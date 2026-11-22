@@ -202,7 +202,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
 
       [true, false].each do |verbose|
-        it "preserves interleaved action lines with verbose=#{verbose}" do
+        it "preserves complete lines for each action with verbose=#{verbose}" do
           watcher = described_class.new(build, verbose:)
           allow(watcher).to receive(:puts)
           allow(CircleCI::CLI::Response::Build).to receive(:get)
@@ -220,7 +220,51 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
             watcher.send(:update_build)
             2.times { watcher.send(:update_actions) }
             watcher.send(:update_build)
-          end.to output("world\nhello\nunterminated\n").to_stdout
+          end.to output(verbose ? "world\nhello\nunterminated\n" : "hello\nworld\nunterminated\n").to_stdout
+        ensure
+          watcher.close
+        end
+      end
+
+      [false, true].each do |verbose|
+        it "filters a step first observed after completion with verbose=#{verbose}" do
+          watcher = described_class.new(build, verbose:)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get)
+            .and_return(multi_action_build('success', 'timedout'))
+
+          expect_output_response(0, "successful log\n") if verbose
+          expect_output_response(0, "failed log\n", path: output_path.sub(%r{/1/2$}, '/2/2'))
+
+          expect do
+            watcher.send(:update_build)
+            watcher.stop('timedout')
+          end.to output(verbose ? "successful log\nfailed log\n" : "failed log\n").to_stdout
+        ensure
+          watcher.close
+        end
+
+        it "filters logs streamed before the action outcomes with verbose=#{verbose}" do
+          watcher = described_class.new(build, verbose:)
+          allow(watcher).to receive(:puts)
+          allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+            multi_action_build('running', 'running'),
+            multi_action_build('success', 'running'),
+            multi_action_build('success', 'failed')
+          )
+
+          second_path = output_path.sub(%r{/1/2$}, '/2/2')
+          expect_output_response(0, "successful log\n")
+          expect_output_response(0, "failed log\n", path: second_path)
+          expect_output_response(15)
+          expect_output_response(11, "failed tail\n", path: second_path)
+
+          expect do
+            watcher.send(:update_build)
+            watcher.send(:update_actions)
+            watcher.send(:update_build)
+            watcher.stop('failed')
+          end.to output(verbose ? "successful log\nfailed log\nfailed tail\n" : "failed log\nfailed tail\n").to_stdout
         ensure
           watcher.close
         end
@@ -261,7 +305,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       context 'with default output' do
         let(:watcher) { described_class.new(build) }
 
-        it 'buffers already completed and live action logs until the step fails' do
+        it 'skips an already successful action and replays the failed live action once' do
           polled = pause_after_polls(1)
           allow(watcher).to receive(:puts)
           allow(CircleCI::CLI::Response::Build).to receive(:get)
@@ -269,15 +313,14 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
           second_path = output_path.sub(%r{/1/2$}, '/2/2')
           live_output = "live output\n"
-          expect_output_response(0, "completed output\n")
           expect_output_response(0, live_output, path: second_path)
           expect_output_response(live_output.bytesize, "final output\n", path: second_path)
 
-          expect { watch_until(polled, 'failed') }.to output("completed output\nlive output\nfinal output\n").to_stdout
+          expect { watch_until(polled, 'failed') }.to output("live output\nfinal output\n").to_stdout
         end
       end
 
-      it 'keeps both action offsets and replays the step log once after actions reorder' do
+      it 'keeps both action offsets and replays each failed action log once after actions reorder' do
         watcher = described_class.new(build)
         allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
           multi_action_build('running', 'running'),
@@ -299,8 +342,8 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
             watcher.send(:update_build)
             watcher.send(:update_actions)
           end
-          watcher.send(:update_build)
-        end.to output("first\nsecond\nfirst tail\nsecond tail\n").to_stdout
+          2.times { watcher.send(:update_build) }
+        end.to output("first\nfirst tail\nsecond\nsecond tail\n").to_stdout
         expect(watcher).to have_received(:puts).with('Test').once
       ensure
         watcher.close
@@ -767,7 +810,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
-      watcher.send(:retain_output, build.steps.first.identity, log_text)
+      watcher.send(:retain_output, build.steps.first.actions.first.identity, log_text)
       allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
       status = "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_red('Build')}"
       allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
@@ -841,7 +884,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.send(:update_actions)
 
       messages = watcher.instance_variable_get(:@messages)
-      expect(messages.keys).to eq(updated_build.steps.map(&:identity))
+      expect(messages.keys).to eq([[1, 2]])
       expect { messages.values.first.write_to($stdout) }.to output(escaped_log_output.lines[0...-1].join).to_stdout
     ensure
       watcher.close
@@ -976,7 +1019,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         watcher.send(:update_build)
         watcher.send(:update_actions)
 
-        expect(messages.fetch(reordered_build.steps.first.identity).bytesize).to eq(0)
+        expect(messages.fetch([0, 1]).bytesize).to eq(0)
         expect(File.size(path)).to eq(limit)
       end
     end
