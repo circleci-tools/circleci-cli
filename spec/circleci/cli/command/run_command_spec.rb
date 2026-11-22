@@ -365,6 +365,19 @@ describe CircleCI::CLI::Runner, 'run' do
     expect(session).to have_received(:close).once
   end
 
+  %w[detail title].each do |field|
+    it "escapes control characters in the API error #{field} on stderr and exits unsuccessfully" do
+      stub_get("runs/#{run_id}", { 'error' => { field => "Run not found\r\nCheck the ID" } },
+               response_class: Net::HTTPNotFound, code: '404')
+
+      expect do
+        expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+          expect(error.status).not_to be_zero
+        }
+      end.to output("CircleCI API error (HTTP 404): Run not found\\x0D\\x0ACheck the ID\n").to_stderr
+    end
+  end
+
   it 'reports invalid JSON in a successful API response' do
     response = Net::HTTPOK.new('1.1', '200', '')
     allow(response).to receive(:body).and_return('<html>Invalid response</html>')

@@ -123,7 +123,7 @@ module CircleCI
           message = "CircleCI API error (HTTP #{response.code})"
           error = JSON.parse(response.body.to_s).then { |body| body['error'] if body.is_a?(Hash) }
           detail = error.values_at('detail', 'title').grep(String).find { !_1.strip.empty? } if error.is_a?(Hash)
-          detail ? "#{message}: #{detail}" : message
+          detail ? "#{message}: #{Printer.escape_controls(detail)}" : message
         rescue JSON::ParserError
           message
         end
