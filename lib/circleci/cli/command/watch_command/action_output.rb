@@ -19,10 +19,10 @@ module CircleCI
           @line_tail = ''.b
         end
 
-        def read(&)
+        def read(session: @session, &)
           headers = { 'Range' => "bytes=#{@read_byte}-" }
           status = :retry
-          @session.get_raw(@url, headers) { |response| status = read_output(response, &) }
+          session.get_raw(@url, headers) { |response| status = read_output(response, &) }
           status
         rescue *OUTPUT_READ_ERRORS
           :retry
