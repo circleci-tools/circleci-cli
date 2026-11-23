@@ -1,7 +1,6 @@
 # circleci-cli
 [![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
 [![Gem Version](https://badge.fury.io/rb/circleci-cli.svg)](https://badge.fury.io/rb/circleci-cli)
-[![codecov](https://codecov.io/gh/circleci-tools/circleci-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/circleci-tools/circleci-cli)
 [![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/circleci-tools/circleci-cli.svg)](https://libraries.io/github/circleci-tools/circleci-cli)
 ![](http://ruby-gem-downloads-badge.herokuapp.com/circleci-cli?type=total)
 ![GitHub](https://img.shields.io/github/license/circleci-tools/circleci-cli.svg)
@@ -9,6 +8,13 @@
 circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/circleci-tools/circleci-cli/raw/master/movie/rec.gif)
+
+## Features
+
+- List followed projects and filter recent builds by branch.
+- Inspect build steps and logs, or watch running builds in real time.
+- Summarize a run's workflows and jobs, including uploaded test failures on request.
+- Retry or cancel builds and open project or build pages in your browser.
 
 ## Installation
 
@@ -62,7 +68,22 @@ steps, for example `circleci-cli build -p user/project -n 42`.
 Use `circleci-cli run RUN_ID --failed-tests` to include failed tests from jobs
 that failed, grouped by workflow and job. Jobs must upload test results with
 `store_test_results` for test details to appear. Each reported failure is
-shown, including repeats from parallel executions.
+shown in order, including repeats from parallel executions, within the output
+limits. Records over 256 KiB are skipped, and the failed-test section is
+limited to 1 MiB per run. The section reports when details were omitted.
+
+#### List and download artifacts from a run
+
+```sh
+circleci-cli artifacts RUN_ID
+circleci-cli artifacts RUN_ID --download 'screenshots/**/*.png' --destination ./artifacts
+```
+
+The list shows each artifact's workflow, job name, job UUID, execution index,
+and path. Downloads require both a path glob and a destination. Quote the glob
+to match against the paths shown in the list. Files are saved under
+`DESTINATION/JOB_UUID/EXECUTION/PATH`, so parallel executions can keep the same
+artifact path. A completed download replaces any existing file at that path.
 
 #### Watch your project
 ```

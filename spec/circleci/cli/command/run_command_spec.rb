@@ -157,7 +157,7 @@ describe CircleCI::CLI::Runner, 'run' do
       expect(session).to have_received(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=}, headers).twice
     end
 
-    it 'passes only failures from a large streamed result set to the printer' do
+    it 'formats only failures from a large streamed result set' do
       fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
       stub_workflow_page('first', [failed_job(unit_id, 'unit')])
       passing_chunk = "{\"result\":\"success\"}\n" * 100
@@ -168,9 +168,51 @@ describe CircleCI::CLI::Runner, 'run' do
       end
       stub_test_chunks(unit_id, chunks)
       printer = CircleCI::CLI::Printer::FailedTestsPrinter
-      expect(printer).to receive(:render).with('unit', failures: [failure], records_received: true).and_call_original
+      expect(printer).to receive(:format_failure).with(failure).once.and_call_original
 
       expect { described_class.start(args) }.to output(/  unit\n    - fails after passing tests\n\z/).to_stdout
+    end
+
+    it 'skips oversized records split across chunks and resumes at the next record' do
+      limit = CircleCI::CLI::Command::TestResultLines::MAX_RECORD_BYTES
+      fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+      stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      first = JSON.generate('name' => 'first', 'result' => 'failure')
+      last = JSON.generate('name' => 'last', 'result' => 'failure')
+      chunks = ["#{first}\n{\"result\":\"failure\",\"message\":\"", 'é' * (limit / 2),
+                "\"}\n#{last}\n{\"message\":\"", 'x' * limit]
+      stub_test_chunks(unit_id, chunks)
+
+      expect { described_class.start(args) }.to output(
+        /  unit\n    - first\n    - last\n\nFailed test output truncated\. Some uploaded test results were omitted\.\n\z/
+      ).to_stdout
+    end
+
+    it 'bounds rendered failures across jobs without splitting a failure' do
+      command = CircleCI::CLI::Command::RunCommand.new('test-token')
+      summary = CircleCI::CLI::Command::FailedTestsSummary
+      names = %w[unit integration system smoke browser acceptance]
+      jobs = names.each_with_index.map { |name, index| failed_job(index + 1, name) }
+      stub_workflow_page('first', jobs.take(4))
+      stub_workflow_page('last', jobs.drop(4), cursor: '&page%5Bcursor%5D=cursor%2B%2F%3D')
+      message = 'é' * 500
+      jobs.each do |job|
+        name = job.fetch('attributes').fetch('name')
+        chunks = 200.times.lazy.map do |index|
+          "#{JSON.generate('name' => "#{name}-#{index}", 'result' => 'failure', 'message' => message)}\n"
+        end
+        stub_test_chunks(job.fetch('id'), chunks)
+      end
+
+      report = command.summary(run_id, failed_tests: true).split("\n\nFailed tests", 2).last.prepend('Failed tests')
+      expect(report.bytesize).to be <= summary::MAX_OUTPUT_BYTES
+      expect(report).to end_with(summary::TRUNCATION_NOTICE)
+      details = report.scan(/^    - (.+)\n      (.*)$/)
+      expected_names = names.flat_map { |name| 200.times.map { |index| "#{name}-#{index}" } }
+      expect(details.map(&:first)).to eq(expected_names.take(details.size))
+      expect(details.size).to be_between(1001, 1199)
+      expect(details.map(&:last).uniq).to eq([message])
+      expect(report.scan(/^    - /).size).to eq(details.size)
     end
 
     it 'reports whitespace-only results as no uploaded tests' do
@@ -181,7 +223,7 @@ describe CircleCI::CLI::Runner, 'run' do
       expect { described_class.start(args) }.to output(/No uploaded test results\./).to_stdout
     end
 
-    it 'overlaps up to four test requests, reuses connections, and preserves order after retrying a partial response' do
+    it 'bounds concurrent test requests and preserves order after retrying a partial response' do
       server = TCPServer.new('127.0.0.1', 0)
       sockets = []
       allow(client::Session).to receive(:new).with(max_retries: 1).and_call_original
@@ -212,23 +254,24 @@ describe CircleCI::CLI::Runner, 'run' do
         workers = sockets.last(4).to_h { |socket| [read_request(socket), socket] }
         expect(workers.keys).to match_array((1..4).map { |id| "jobs/#{id}/tests" })
 
-        reused = workers.fetch('jobs/4/tests')
-        write_response(reused, { 'name' => 'failure-4', 'result' => 'failure' })
-        expect(read_request(reused)).to eq('jobs/5/tests')
-        interrupted = "{\"name\":\"interrupted failure\",\"result\":\"failure\"}\n{\"result\":"
-        reused.write("HTTP/1.1 200 OK\r\nContent-Length: #{interrupted.bytesize + 1}\r\n\r\n#{interrupted}")
-        reused.close
-
-        sockets << server.accept
-        retried = sockets.last
-        expect(read_request(retried)).to eq('jobs/5/tests')
-        workers.delete('jobs/4/tests')
-        workers['jobs/5/tests'] = retried
-        workers.each do |path, socket|
+        workers.to_a.reverse_each do |path, socket|
           id = path.split('/')[1]
           write_response(socket, { 'name' => "failure-#{id}", 'result' => 'failure' })
         end
         workers.each_value { |socket| expect(socket.read).to eq('') }
+
+        sockets << server.accept
+        interrupted_socket = sockets.last
+        expect(read_request(interrupted_socket)).to eq('jobs/5/tests')
+        interrupted = "{\"name\":\"interrupted failure\",\"result\":\"failure\"}\n{\"result\":"
+        interrupted_socket.write("HTTP/1.1 200 OK\r\nContent-Length: #{interrupted.bytesize + 1}\r\n\r\n#{interrupted}")
+        interrupted_socket.close
+
+        sockets << server.accept
+        retried = sockets.last
+        expect(read_request(retried)).to eq('jobs/5/tests')
+        write_response(retried, { 'name' => 'failure-5', 'result' => 'failure' })
+        expect(retried.read).to eq('')
         expect(IO.select([server], nil, nil, 0)).to be_nil
 
         report = summary.value.split("Failed tests\n\n").last

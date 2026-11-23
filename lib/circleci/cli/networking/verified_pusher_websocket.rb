@@ -1,11 +1,14 @@
 # frozen_string_literal: true
 
 require 'pusher-client'
+require 'timeout'
 
 module CircleCI
   module CLI
     module Networking
       class VerifiedPusherWebSocket < PusherClient::PusherWebSocket
+        CONNECT_TIMEOUT = 10
+
         # The parent initializer opens the connection without hostname verification.
         def initialize(url, cert_file: nil, logger: PusherClient.logger) # rubocop:disable Lint/MissingSuper
           @logger = logger
@@ -15,8 +18,10 @@ module CircleCI
         end
 
         def connect
-          connect_tls
-          handshake
+          Timeout.timeout(CONNECT_TIMEOUT, nil, 'Pusher WebSocket handshake timed out') do
+            connect_tls
+            handshake
+          end
         end
 
         private

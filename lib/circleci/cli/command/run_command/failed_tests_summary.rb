@@ -1,38 +1,69 @@
 # frozen_string_literal: true
 
 require 'circleci/cli/command/run_command/run_request_pool'
+require 'circleci/cli/command/run_command/test_result_lines'
 
 module CircleCI
   module CLI
     module Command
       class FailedTestsSummary
+        MAX_OUTPUT_BYTES = 1024 * 1024
+        TRUNCATION_NOTICE = "\n\nFailed test output truncated. Some uploaded test results were omitted."
+
         def initialize(&fetch_results)
           @fetch_results = fetch_results
         end
 
         def render(groups)
-          failed_groups = failed_job_groups(groups)
-          summaries = RunRequestPool.fetch(failed_groups.flat_map(&:last), &method(:failed_job_summary))
-          sections = failed_groups.map do |name, jobs|
-            [Printer.escape_controls(name), *summaries.shift(jobs.size)].join("\n")
+          jobs = failed_jobs(groups)
+          return "Failed tests\n\nNo failed jobs found." if jobs.empty?
+
+          output = +'Failed tests'
+          truncated = false
+          each_job_summary(jobs) do |header, entries, status, capped|
+            return output << TRUNCATION_NOTICE unless append_job(output, header, entries, status, capped) && !capped
+
+            truncated ||= status == :oversized
           end
-          sections << 'No failed jobs found.' if sections.empty?
-          ['Failed tests', *sections].join("\n\n")
+          output << TRUNCATION_NOTICE if truncated
+          output
         end
 
         private
 
-        def failed_job_groups(groups)
-          groups.filter_map do |name, jobs|
-            failed_jobs = jobs.select { |job| job.fetch('attributes')['outcome'] == 'failed' }
-            [name, failed_jobs] unless failed_jobs.empty?
+        def each_job_summary(jobs)
+          jobs.each_slice(RunRequestPool::LIMIT) do |batch|
+            RunRequestPool.fetch(batch, &method(:failed_job_summary)).each { |summary| yield(*summary) }
           end
         end
 
-        def failed_job_summary(session, job)
+        def append_job(output, header, entries, status, capped)
+          entries = [empty_message(status)] if entries.empty? && status != :oversized && !capped
+
+          append(output, header) && entries.all? { |entry| append(output, entry) }
+        end
+
+        def failed_jobs(groups)
+          groups.flat_map do |name, jobs|
+            jobs.select { |job| job.fetch('attributes')['outcome'] == 'failed' }.map.with_index do |job, index|
+              [index.zero? ? name : nil, job]
+            end
+          end
+        end
+
+        def append(output, entry)
+          return false if output.bytesize + entry.bytesize + TRUNCATION_NOTICE.bytesize > MAX_OUTPUT_BYTES
+
+          output << entry
+        end
+
+        def failed_job_summary(session, item)
+          workflow, job = item
           name = job.fetch('attributes').fetch('name')
           job_id = job.fetch('id')
-          Printer::FailedTestsPrinter.render(name, **test_results(session, job_id))
+          header = workflow ? "\n\n#{Printer.escape_controls(workflow)}\n" : "\n"
+          header = "#{header}  #{Printer.escape_controls(name)}"
+          [header, *test_results(session, job_id)]
         rescue Thor::Error => e
           name = Printer.escape_controls(name)
           detail = Printer.escape_controls(e.message)
@@ -48,31 +79,33 @@ module CircleCI
         end
 
         def collect_results(response)
-          response.ignore_eof = false
-          failures = []
-          records_received = false
-          each_test_line(response) do |line|
-            record = parse_record(line)
-            next unless record
+          entries = []
+          bytes = 0
+          status = each_failure(response) do |record|
+            next if bytes > MAX_OUTPUT_BYTES
 
-            records_received = true
-            failures << record if record['result'] == 'failure'
+            entry = "\n#{Printer::FailedTestsPrinter.format_failure(record)}"
+            bytes += entry.bytesize
+            entries << entry if bytes <= MAX_OUTPUT_BYTES
           end
-          { failures:, records_received: }
+          [entries, status, bytes > MAX_OUTPUT_BYTES]
         end
 
-        def each_test_line(response)
-          pending = String.new(encoding: Encoding::BINARY)
-          response.read_body do |chunk|
-            chunk.b.each_line("\n") do |part|
-              pending << part
-              next unless part.end_with?("\n")
+        def each_failure(response)
+          status = :empty
+          TestResultLines.each(response) do |line|
+            status = :oversized unless line
+            record = line && parse_record(line)
+            next unless record
 
-              yield pending
-              pending.clear
-            end
+            status = :received if status == :empty
+            yield record if record['result'] == 'failure'
           end
-          yield pending unless pending.empty?
+          status
+        end
+
+        def empty_message(status)
+          status == :received ? "\n    No failures in uploaded test results." : "\n    No uploaded test results."
         end
 
         def parse_record(line)

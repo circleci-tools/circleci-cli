@@ -528,6 +528,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:background) { response.new(attributes.merge('build_num' => 1, 'status' => 'not_running')) }
     let(:completed) { response.new(attributes.merge('build_num' => 1, 'status' => 'success')) }
     let(:live) { response.new(attributes.merge('build_num' => 2, 'status' => 'running')) }
+    let(:later_completed) { response.new(attributes.merge('build_num' => 3, 'status' => 'success')) }
     let(:repository) { CircleCI::CLI::Command::BuildRepository.new('user', 'repo') }
     let(:client) { double('client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil) }
     let(:watcher_class) { CircleCI::CLI::Command::BuildWatcher }
@@ -541,19 +542,24 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     shared_examples 'retrying a background detail request' do
-      it 'reports the completion once and starts the live build after retrying on the next iteration' do
-        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
-        expect(session).to receive(:sleep).with(1).ordered
-        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
+      it 'starts the live build and reports other completions while retrying a failed detail request' do
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(SocketError)
+        expect(response).to receive(:get).with('user', 'repo', 3).once.ordered.and_return(later_completed)
         expect(watcher_class).to receive(:new).with(live, verbose: true).ordered.and_return(watcher)
         expect(watcher).to receive(:start).ordered
         expect(session).to receive(:sleep).with(1).ordered
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
+        expect(session).to receive(:sleep).with(1).ordered
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
+        expect(session).to receive(:sleep).with(1).ordered
         expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
 
-        result = 'Result of user/repo #1 completed in background'
+        results = satisfy('print each background result once in completion order') do |output|
+          output.scan(%r{Result of user/repo #(\d+) completed in background}).flatten == %w[3 1]
+        end
         expect do
           expect { session.run('token') }.to raise_error(Interrupt)
-        end.to output(satisfy { |output| output.scan(result).size == 1 }).to_stdout
+        end.to output(results).to_stdout
       end
 
       it 'surfaces a permanent detail failure' do
@@ -566,13 +572,13 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     context 'when the background build has dropped out of the recent list' do
-      let(:recent_builds) { [live] }
+      let(:recent_builds) { [live, later_completed] }
 
       include_examples 'retrying a background detail request'
     end
 
     context 'when the background build finished in the recent list' do
-      let(:recent_builds) { [completed, live] }
+      let(:recent_builds) { [completed, live, later_completed] }
 
       include_examples 'retrying a background detail request'
     end
@@ -747,6 +753,28 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         .and output(satisfy do |output|
           output.match?(/header output.*Test.*next build header/m) && !output.include?('test log')
         end).to_stdout
+    end
+
+    it 'preserves the background result when a live step completes afterward' do
+      attributes = { 'username' => 'user', 'reponame' => 'repo', 'build_num' => 43 }
+      build_class = CircleCI::CLI::Response::Build
+      watcher = CircleCI::CLI::Command::BuildWatcher.new(build_class.new(attributes))
+      session.instance_variable_set(:@build_watcher, watcher)
+      running = { 'name' => 'Live test', 'actions' => [{ 'status' => 'running' }] }
+      completed = running.merge('actions' => [{ 'status' => 'success', 'end_time' => '2024-01-01T00:00:00Z' }])
+      allow(build_class).to receive(:get).with('user', 'repo', 43).and_return(
+        build_class.new(attributes.merge('steps' => [running])),
+        build_class.new(attributes.merge('steps' => [completed]))
+      )
+      completed_line = CircleCI::CLI::Printer.colorize_green('Live test')
+
+      expect do
+        watcher.send(:update_build)
+        session.send(:show_interrupted_build_results, builds, { 42 => response_build })
+        watcher.send(:update_build)
+      end.to output(/\ALive test\n.*test log <%= "log" %>\n.*\n#{Regexp.escape(completed_line)}\n\z/m).to_stdout
+    ensure
+      watcher&.close
     end
 
     context 'with verbose enabled' do

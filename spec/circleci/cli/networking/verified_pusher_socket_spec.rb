@@ -28,13 +28,29 @@ describe CircleCI::CLI::Networking::VerifiedPusherSocket do
     end
   end
 
-  def with_tls_server(certificate_hostname)
+  it 'reports a stalled upgrade in watch, exits with status 1, and closes the connection' do
+    stub_const('CircleCI::CLI::Networking::VerifiedPusherWebSocket::CONNECT_TIMEOUT', 1)
+    allow(CircleCI::CLI::Command::WatchCommand).to receive(:setup_token).and_return('token')
+    allow(CircleCI::CLI::Response::Account).to receive(:me).and_return(double(pusher_id: 'test-id'))
+    allow(CircleCI::CLI::Response::Build).to receive(:branch).with('user', 'repo', 'main').and_return([])
+
+    with_tls_server(hostname, stall: true) do |client, server|
+      allow(described_class).to receive(:new).and_return(client)
+      expect do
+        expect { Timeout.timeout(5) { CircleCI::CLI::Runner.start(%w[watch -p user/repo -b main]) } }
+          .to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end.to output("Pusher connection failed: Pusher WebSocket handshake timed out\n").to_stderr
+      expect(Timeout.timeout(5) { server.value }).to match([a_string_starting_with('GET /app/test-key?'), nil])
+    end
+  end
+
+  def with_tls_server(certificate_hostname, stall: false)
     listener = TCPServer.new('127.0.0.1', 0)
     port = listener.addr[1]
     context = OpenSSL::SSL::SSLContext.new
     context.cert = certificate(certificate_hostname, server_key, issuer: ca)
     context.key = server_key
-    server = Thread.new { receive_upgrade(OpenSSL::SSL::SSLServer.new(listener, context)) }
+    server = Thread.new { receive_upgrade(OpenSSL::SSL::SSLServer.new(listener, context), stall:) }
 
     Tempfile.create('pusher-ca') do |ca_file|
       ca_file.write(ca.to_pem)
@@ -51,10 +67,11 @@ describe CircleCI::CLI::Networking::VerifiedPusherSocket do
     listener&.close
   end
 
-  def receive_upgrade(server)
+  def receive_upgrade(server, stall:)
     connection = server.accept
     request = connection.gets("\r\n\r\n")
     return if request.nil?
+    return [request, connection.getc] if stall
 
     handshake = WebSocket::Handshake::Server.new
     handshake << request
