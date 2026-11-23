@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'circleci/cli/response/log_records'
+require 'uri'
 
 module CircleCI
   module CLI
@@ -25,7 +26,7 @@ module CircleCI
 
         def log_available?
           output_url = @hash['output_url']
-          !output_url.nil? && !output_url.empty?
+          !output_url.nil? && output_url != ''
         end
 
         def log
@@ -63,7 +64,7 @@ module CircleCI
 
         def read_log_records(&read_record)
           records = LogRecords.new
-          Networking::HTTPClient.get_raw(@hash['output_url']) do |response|
+          Networking::HTTPClient.get_raw(validated_log_url) do |response|
             unless response.is_a?(Net::HTTPSuccess)
               raise Thor::Error, "Action log download failed (HTTP #{response.code})"
             end
@@ -72,6 +73,16 @@ module CircleCI
             response.read_body { |chunk| records.read(chunk, &read_record) }
           end
           records.finish
+        end
+
+        def validated_log_url
+          output_url = @hash['output_url']
+          uri = URI.parse(output_url)
+          return output_url if uri.is_a?(URI::HTTPS) && !uri.hostname.to_s.empty?
+
+          raise URI::InvalidURIError
+        rescue URI::Error
+          raise Thor::Error, 'Action log URL must be an absolute HTTPS URL with a hostname', cause: nil
         end
       end
     end
