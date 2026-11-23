@@ -43,8 +43,10 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     allow(http).to receive(:finish)
   end
 
-  def expect_output_response(offset, *chunks, error: nil, path: output_path, content_range: nil)
-    expect(http).to receive(:request).ordered do |request, &read_response|
+  def expect_output_response(offset, *chunks, error: nil, path: output_path, content_range: nil, concurrent: false)
+    expectation = receive(:request).with(having_attributes(path:))
+    expectation.ordered unless concurrent
+    expect(http).to expectation do |request, &read_response|
       expect(request).to be_a(Net::HTTP::Get)
       expect(request.path).to eq(path)
       expect(request['Range']).to eq("bytes=#{offset}-")
@@ -136,17 +138,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.close
     end
 
-    it 'retries a timed-out build detail request on the next poll' do
-      polled = pause_after_polls(2)
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(Net::ReadTimeout)
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
-      expect_completed_outputs
-      expect_output_response(0, "recovered output\n")
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
-      expect_output_response("recovered output\n".bytesize)
+    [Net::ReadTimeout, SocketError].each do |error_class|
+      it "retries a build detail request after #{error_class} on the next poll" do
+        polled = pause_after_polls(2)
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(error_class)
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+        expect_completed_outputs
+        expect_output_response(0, "recovered output\n")
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+        expect_output_response("recovered output\n".bytesize)
 
-      expect { watch_until(polled, 'success') }.to output(a_string_including("recovered output\n")).to_stdout
-      expect(watcher.poll_error).to be_nil
+        expect { watch_until(polled, 'success') }.to output(a_string_including("recovered output\n")).to_stdout
+        expect(watcher.poll_error).to be_nil
+      end
     end
 
     it 'preserves the fatal polling error if completion is detected at the same time' do
@@ -193,12 +197,89 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     context 'when actions in the same step finish on different refreshes' do
       let(:poll_count) { 6 }
 
-      def multi_action_build(first_status, second_status, reverse: false)
+      def multi_action_build(first_status, second_status, reverse: false, extra_actions: [])
         step = step_hash.call(name: 'Test', type: 'test', status: first_status, index: 1, step: 2)
         second = step_hash.call(name: 'Test', type: 'test', status: second_status, index: 2, step: 2)
-        step['actions'].concat(second['actions'])
+        step['actions'].concat(second['actions'], extra_actions)
         step['actions'].reverse! if reverse
         build_response.call([step])
+      end
+
+      def expect_output_response(*args, **kwargs)
+        super(*args, **kwargs, concurrent: true)
+      end
+
+      it 'streams another action while a slow response is open and bounds concurrent reads' do
+        stub_const("#{described_class}::MAX_CONCURRENT_LOG_READS", 2)
+        third = step_hash.call(name: 'Test', type: 'test', status: 'running', index: 3, step: 2)
+        detail = multi_action_build('running', 'running', extra_actions: third.fetch('actions'))
+        third_path = output_path.sub(%r{/1/2$}, '/3/2')
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(detail)
+        allow(watcher).to receive(:puts)
+        watcher.send(:update_build)
+
+        slow_started = Queue.new
+        fast_printed = Queue.new
+        queued_printed = Queue.new
+        active = 0
+        peak = 0
+        request_lock = Mutex.new
+        allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_return(http)
+        release_slow = Queue.new
+        release_fast = Queue.new
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        allow(watcher).to receive(:print_output).and_wrap_original do |print, chunk|
+          print.call(chunk)
+          fast_printed << true if chunk == "fast\n"
+          queued_printed << true if chunk == "queued\n"
+        end
+
+        watcher.instance_variable_get(:@log_sessions).each do |session|
+          allow(session).to receive(:get_raw).and_wrap_original do |get, *args, &read|
+            request_lock.synchronize { peak = [peak, active += 1].max }
+            get.call(*args, &read)
+          ensure
+            request_lock.synchronize { active -= 1 }
+          end
+        end
+        expect_blocked_response(output_path, slow_started, release_slow, "caf\xC3".b, "\xA9\r\n".b)
+        expect_blocked_response(second_path, nil, release_fast, "fast\n")
+        expect_output_response(0, "queued\n", path: third_path)
+        expect_output_response(7, "tail\n")
+        expect_output_response(5, path: second_path)
+        expect_output_response(7, path: third_path)
+
+        expect do
+          poll = Thread.new { watcher.send(:update_actions) }
+          Timeout.timeout(5) do
+            slow_started.pop
+            fast_printed.pop
+            release_fast << true
+            queued_printed.pop
+            release_slow << true
+            poll.value
+          end
+          watcher.send(:update_actions)
+        ensure
+          poll&.kill&.join if poll&.alive?
+        end.to output("fast\nqueued\ncafé\ntail\n").to_stdout
+        expect(peak).to eq(2)
+      ensure
+        watcher.close
+      end
+
+      def expect_blocked_response(path, started, release, head, tail = nil)
+        expect(http).to receive(:request).with(having_attributes(path:)) do |request, &read_response|
+          expect(request['Range']).to eq('bytes=0-')
+          response = Net::HTTPPartialContent.new('1.1', '206', 'Partial Content')
+          allow(response).to receive(:read_body) do |&read_chunk|
+            read_chunk.call(head)
+            started << true if started
+            release.pop
+            read_chunk.call(tail) if tail
+          end
+          read_response.call(response)
+        end
       end
 
       [true, false].each do |verbose|
@@ -264,7 +345,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
             watcher.send(:update_actions)
             watcher.send(:update_build)
             watcher.stop('failed')
-          end.to output(verbose ? "successful log\nfailed log\nfailed tail\n" : "failed log\nfailed tail\n").to_stdout
+          end.to output(verbose ? a_string_matching(/\A(?:successful log\nfailed log|failed log\nsuccessful log)\nfailed tail\n\z/) : "failed log\nfailed tail\n").to_stdout
         ensure
           watcher.close
         end
@@ -282,7 +363,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         expect_output_response(6, path: second_path)
 
         watcher.send(:update_build)
-        expect { watcher.send(:update_actions) }.to output("abcd\nother\n").to_stdout
+        expect { watcher.send(:update_actions) }.to output(/\A(?:abcd\nother|other\nabcd)\n\z/).to_stdout
         expect { watcher.send(:update_build) }.to output("éf\n").to_stdout
       ensure
         watcher.close
@@ -385,7 +466,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
         expect do
           watch_until(polled, 'success')
-        end.to output("first\nsecond\n\nfirst tail\nsecond live\nsecond tail\n").to_stdout
+        end.to output(/\A(?:first\nsecond|second\nfirst)\n\nfirst tail\nsecond live\nsecond tail\n\z/).to_stdout
       end
     end
 
@@ -451,13 +532,15 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:initial_steps) { [] }
     let(:reponame) { 'Repo <%= "metadata" %>' }
 
-    it 'propagates the final detail timeout after two attempts without reporting completion' do
-      watcher = described_class.new(build)
-      error = Net::ReadTimeout.new
-      expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', reponame, 1234).twice.and_raise(error)
-      expect(watcher).not_to receive(:puts)
+    [Net::ReadTimeout, SocketError].each do |error_class|
+      it "propagates #{error_class} after two final detail attempts without reporting completion" do
+        watcher = described_class.new(build)
+        error = error_class.new
+        expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', reponame, 1234).twice.and_raise(error)
+        expect(watcher).not_to receive(:puts)
 
-      expect { watcher.stop('success') }.to raise_error(Net::ReadTimeout) { |raised| expect(raised).to equal(error) }
+        expect { watcher.stop('success') }.to raise_error(error_class) { |raised| expect(raised).to equal(error) }
+      end
     end
 
     it 'does not fetch details again if final step processing times out' do
@@ -787,6 +870,12 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
           expect do
             2.times { watcher.send(:update_build) }
           end.to output("\e[1A\e[2K\r\e[0;90;49mDeploy\e[0m\n").to_stdout
+        end
+
+        it 'appends the gray status when line rewrites are disabled' do
+          watcher.disable_step_line_rewrites
+
+          expect { watcher.send(:update_build) }.to output("\e[0;90;49mDeploy\e[0m\n").to_stdout
         end
       end
     end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'circleci/cli/command/watch_command/action_output'
+require 'circleci/cli/command/watch_command/request_errors'
 require 'circleci/cli/command/watch_command/step_log'
 
 module CircleCI
@@ -18,11 +19,8 @@ module CircleCI
         }.freeze
 
         INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
-        TRANSIENT_POLL_ERRORS = [
-          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-          Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
-        ].freeze
         FINAL_DETAIL_ATTEMPTS = 2
+        MAX_CONCURRENT_LOG_READS = 4
 
         attr_reader :build
 
@@ -52,6 +50,10 @@ module CircleCI
           @state_lock.synchronize { @poll_error }
         end
 
+        def disable_step_line_rewrites
+          @state_lock.synchronize { @step_line_rewrites_disabled = true }
+        end
+
         def stop(status)
           @stop_requested.close
           (@build_thread ||= poll_build).join
@@ -69,7 +71,7 @@ module CircleCI
           @messages.each_value(&:close)
           @messages.clear
           @retained_log_bytes = 0
-          @log_session.close
+          @log_sessions.each(&:close)
         end
 
         private
@@ -77,7 +79,8 @@ module CircleCI
         def initialize_polling
           @stop_requested = Queue.new
           @state_lock = Mutex.new
-          @log_session = Networking::HTTPClient::Session.new
+          @output_lock = Mutex.new
+          @log_sessions = Array.new(MAX_CONCURRENT_LOG_READS) { Networking::HTTPClient::Session.new }
         end
 
         def stop_polling
@@ -95,7 +98,7 @@ module CircleCI
           rescue StandardError => e
             @state_lock.synchronize { @poll_error = e }
           ensure
-            @log_session.close
+            @log_sessions.each(&:close)
           end
         end
 
@@ -119,7 +122,7 @@ module CircleCI
 
         def poll_safely
           yield
-        rescue *TRANSIENT_POLL_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           # Resume on the next poll with the last consumed byte offset.
         end
 
@@ -130,7 +133,7 @@ module CircleCI
           status = step.status
           return puts name if status == 'running'
 
-          puts "\e[2K\r#{Printer.colorize_by_status(name, status)}"
+          print_step_status(Printer.colorize_by_status(name, status))
         end
 
         def on_new_step_status(step)
@@ -140,7 +143,14 @@ module CircleCI
           return if status == 'running'
 
           name = Printer.escape_controls(step.name)
-          puts "\e[1A\e[2K\r#{Printer.colorize_by_status(name, status)}"
+          print_step_status(Printer.colorize_by_status(name, status), move_up: true)
+        end
+
+        def print_step_status(text, move_up: false)
+          @state_lock.synchronize do
+            prefix = move_up ? "\e[1A\e[2K\r" : "\e[2K\r"
+            puts(@step_line_rewrites_disabled ? text : "#{prefix}#{text}")
+          end
         end
 
         def finish_action_logs(step)
@@ -174,7 +184,7 @@ module CircleCI
 
         def fetch_detail(attempts:)
           Response::Build.get(@build.username, @build.reponame, @build.build_number)
-        rescue *TRANSIENT_POLL_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           attempts -= 1
           retry if attempts.positive?
           raise
@@ -220,7 +230,7 @@ module CircleCI
         def new_output(identity)
           project = [@build.username, @build.reponame, @build.build_number].join('/')
           url = "https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}"
-          ActionOutput.new(url, @log_session)
+          ActionOutput.new(url, @log_sessions.first)
         end
 
         def notify_step_changes(steps, next_step:, stopping:)
@@ -281,16 +291,56 @@ module CircleCI
         def update_actions
           return unless @current_step
 
-          @action_outputs.each { |identity, output| output&.read { |chunk| write_output(identity, chunk) } }
+          actions = @action_outputs.compact
+          return if actions.empty?
+          return read_action(*actions.first, @log_sessions.first) if actions.one?
+
+          read_actions_concurrently(actions)
+        end
+
+        def read_actions_concurrently(actions)
+          workers = []
+          pending = Queue.new
+          actions.each { |entry| pending << entry }
+          pending.close
+          start_log_workers(workers, pending, actions.size)
+          workers.each(&:value)
+        ensure
+          stop_log_workers(workers)
+        end
+
+        def start_log_workers(workers, pending, count)
+          Thread.handle_interrupt(Object => :never) do
+            @log_sessions.take(count).each do |session|
+              workers << Thread.new { read_pending_actions(pending, session) }
+            end
+          end
+        end
+
+        def stop_log_workers(workers)
+          workers.each(&:kill)
+          workers.each { |worker| worker.join if worker.alive? }
+        end
+
+        def read_pending_actions(pending, session)
+          while (entry = pending.pop)
+            read_action(*entry, session)
+          end
+        end
+
+        def read_action(identity, output, session)
+          output.read(session:) { |chunk| write_output(identity, chunk) }
         end
 
         def write_output(identity, chunk)
-          if @verbose
-            print_output(chunk)
-          else
-            # Defer thread termination until any spill file is registered for cleanup.
-            Thread.handle_interrupt(Object => :never) do
-              retain_output(identity, chunk)
+          @output_lock.synchronize do
+            if @verbose
+              print_output(chunk)
+            else
+              # Defer thread termination until any spill file is registered for cleanup.
+              Thread.handle_interrupt(Object => :never) do
+                retain_output(identity, chunk)
+              end
             end
           end
         end
