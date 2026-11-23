@@ -17,10 +17,18 @@ module CircleCI
         end
 
         def status
+          actions = self.actions
           return 'running' if actions.any?(&:running?)
           return 'failed' if actions.any?(&:failed?)
+          return 'not_run' if all_skipped?(actions)
 
           'success'
+        end
+
+        private
+
+        def all_skipped?(actions)
+          !actions.empty? && actions.all?(&:skipped?)
         end
       end
     end
