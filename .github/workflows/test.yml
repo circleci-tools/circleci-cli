@@ -36,11 +36,11 @@ jobs:
         env:
           COVERAGE: true
         run: bundle exec rspec
+      - name: Report coverage
+        run: |
+          ruby -rjson -e '
+            lines = JSON.parse(File.read("coverage/coverage.json")).fetch("total").fetch("lines")
+            printf "Line coverage: %.2f%% (%d/%d lines)\n", lines.fetch("percent"), lines.fetch("covered"), lines.fetch("total")
+          ' >> "$GITHUB_STEP_SUMMARY"
       - name: Build gem
         run: bundle exec rake build
-      - name: Upload coverage to Codecov
-        if: matrix.ruby == '4.0.10' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: codecov/codecov-action@v7
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/.resultset.json
