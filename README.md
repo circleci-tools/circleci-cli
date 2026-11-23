@@ -62,7 +62,9 @@ steps, for example `circleci-cli build -p user/project -n 42`.
 Use `circleci-cli run RUN_ID --failed-tests` to include failed tests from jobs
 that failed, grouped by workflow and job. Jobs must upload test results with
 `store_test_results` for test details to appear. Each reported failure is
-shown, including repeats from parallel executions.
+shown in order, including repeats from parallel executions, within the output
+limits. Records over 256 KiB are skipped, and the failed-test section is
+limited to 1 MiB per run. The section reports when details were omitted.
 
 #### Watch your project
 ```
