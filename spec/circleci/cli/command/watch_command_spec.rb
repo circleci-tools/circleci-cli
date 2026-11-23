@@ -707,6 +707,48 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         end).to_stdout
     end
 
+    def partial_log_response
+      Net::HTTPOK.new('1.1', '200', 'OK').tap do |response|
+        allow(response).to receive(:read_body) do |&read_chunk|
+          read_chunk.call(JSON.generate([{ 'message' => 'test log <%= "log" %>' }]).delete_suffix(']'))
+          raise Net::ReadTimeout
+        end
+      end
+    end
+
+    it 'prints the header, action, and log once after a timeout with partial data' do
+      http = CircleCI::CLI::Networking::HTTPClient
+      expect(http).to receive(:get_raw).with('https://circleci.com/output/test').ordered
+        .and_yield(partial_log_response)
+      expect(http).to receive(:get_raw).with('https://circleci.com/output/test').ordered
+        .and_yield(log_response('test log <%= "log" %>'))
+
+      expect { session.send(:show_interrupted_build_results, builds, { 42 => response_build }) }
+        .to output(satisfy do |output|
+          ['header output', 'Test', 'test log <%= "log" %>'].all? { |text| output.scan(text).size == 1 }
+        end).to_stdout
+    end
+
+    it 'reports an exhausted log and continues reporting completed builds' do
+      next_build = instance_double(CircleCI::CLI::Response::Build, finished?: true, build_number: 43,
+                                                                  project_name: 'user/repo')
+      next_detail = instance_double(CircleCI::CLI::Response::Build, steps: [])
+      expect(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with('https://circleci.com/output/test')
+        .twice.and_yield(partial_log_response)
+      expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
+        .with(next_build, a_string_including('Result of user/repo #43 completed in background'))
+        .and_return('next build header')
+      expect(repository).to receive(:mark_as_shown).with(43)
+
+      expect do
+        session.send(:show_interrupted_build_results, [finished_build, next_build],
+                     { 42 => response_build, 43 => next_detail })
+      end.to output("Warning: Could not download log for Test.\n").to_stderr
+        .and output(satisfy do |output|
+          output.match?(/header output.*Test.*next build header/m) && !output.include?('test log')
+        end).to_stdout
+    end
+
     context 'with verbose enabled' do
       let(:verbose) { true }
 
