@@ -542,8 +542,8 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     shared_examples 'retrying a background detail request' do
-      it 'starts the live build and reports other completions while retrying the timed-out build' do
-        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
+      it 'starts the live build and reports other completions while retrying a failed detail request' do
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(SocketError)
         expect(response).to receive(:get).with('user', 'repo', 3).once.ordered.and_return(later_completed)
         expect(watcher_class).to receive(:new).with(live, verbose: true).ordered.and_return(watcher)
         expect(watcher).to receive(:start).ordered

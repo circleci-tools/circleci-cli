@@ -138,17 +138,19 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       watcher.close
     end
 
-    it 'retries a timed-out build detail request on the next poll' do
-      polled = pause_after_polls(2)
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(Net::ReadTimeout)
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
-      expect_completed_outputs
-      expect_output_response(0, "recovered output\n")
-      expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
-      expect_output_response("recovered output\n".bytesize)
+    [Net::ReadTimeout, SocketError].each do |error_class|
+      it "retries a build detail request after #{error_class} on the next poll" do
+        polled = pause_after_polls(2)
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_raise(error_class)
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+        expect_completed_outputs
+        expect_output_response(0, "recovered output\n")
+        expect(CircleCI::CLI::Response::Build).to receive(:get).ordered.and_return(updated_build)
+        expect_output_response("recovered output\n".bytesize)
 
-      expect { watch_until(polled, 'success') }.to output(a_string_including("recovered output\n")).to_stdout
-      expect(watcher.poll_error).to be_nil
+        expect { watch_until(polled, 'success') }.to output(a_string_including("recovered output\n")).to_stdout
+        expect(watcher.poll_error).to be_nil
+      end
     end
 
     it 'preserves the fatal polling error if completion is detected at the same time' do
@@ -529,13 +531,15 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:initial_steps) { [] }
     let(:reponame) { 'Repo <%= "metadata" %>' }
 
-    it 'propagates the final detail timeout after two attempts without reporting completion' do
-      watcher = described_class.new(build)
-      error = Net::ReadTimeout.new
-      expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', reponame, 1234).twice.and_raise(error)
-      expect(watcher).not_to receive(:puts)
+    [Net::ReadTimeout, SocketError].each do |error_class|
+      it "propagates #{error_class} after two final detail attempts without reporting completion" do
+        watcher = described_class.new(build)
+        error = error_class.new
+        expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', reponame, 1234).twice.and_raise(error)
+        expect(watcher).not_to receive(:puts)
 
-      expect { watcher.stop('success') }.to raise_error(Net::ReadTimeout) { |raised| expect(raised).to equal(error) }
+        expect { watcher.stop('success') }.to raise_error(error_class) { |raised| expect(raised).to equal(error) }
+      end
     end
 
     it 'does not fetch details again if final step processing times out' do
