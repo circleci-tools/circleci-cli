@@ -91,6 +91,15 @@ describe CircleCI::CLI::Runner do
   end
 
   describe 'the executable' do
+    it 'reports a missing run ID and exits unsuccessfully' do
+      root = File.expand_path('../../..', __dir__)
+      output, error, status = Open3.capture3(RbConfig.ruby, "-I#{root}/lib", "#{root}/exe/circleci-cli", 'run')
+
+      expect(status.exitstatus).to eq(1)
+      expect(output).to be_empty
+      expect(error).to include('run RUN_ID')
+    end
+
     [false, true].each do |git_checkout|
       location = git_checkout ? 'a repository without origin' : 'outside Git'
 

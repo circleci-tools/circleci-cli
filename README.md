@@ -1,7 +1,6 @@
 # circleci-cli
 [![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
 [![Gem Version](https://badge.fury.io/rb/circleci-cli.svg)](https://badge.fury.io/rb/circleci-cli)
-[![codecov](https://codecov.io/gh/circleci-tools/circleci-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/circleci-tools/circleci-cli)
 [![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/circleci-tools/circleci-cli.svg)](https://libraries.io/github/circleci-tools/circleci-cli)
 ![](http://ruby-gem-downloads-badge.herokuapp.com/circleci-cli?type=total)
 ![GitHub](https://img.shields.io/github/license/circleci-tools/circleci-cli.svg)
@@ -9,6 +8,13 @@
 circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/circleci-tools/circleci-cli/raw/master/movie/rec.gif)
+
+## Features
+
+- List followed projects and filter recent builds by branch.
+- Inspect build steps and logs, or watch running builds in real time.
+- Summarize a run's workflows and jobs, including uploaded test failures on request.
+- Retry or cancel builds and open project or build pages in your browser.
 
 ## Installation
 

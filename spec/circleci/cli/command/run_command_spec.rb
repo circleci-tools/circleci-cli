@@ -18,9 +18,9 @@ describe CircleCI::CLI::Runner, 'run' do
     allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
   end
 
-  def stub_get(path, body, response_class: Net::HTTPOK, code: '200', raw: false)
+  def stub_get(path, body, response_class: Net::HTTPOK, code: '200')
     response = response_class.new('1.1', code, '')
-    allow(response).to receive(:body).and_return(raw ? body : JSON.generate(body))
+    allow(response).to receive(:body).and_return(JSON.generate(body))
     allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/#{path}", headers).and_return(response)
   end
 
@@ -106,6 +106,17 @@ describe CircleCI::CLI::Runner, 'run' do
       { 'id' => id, 'attributes' => { 'name' => name, 'outcome' => 'failed' } }
     end
 
+    def stub_test_response(id, response)
+      allow(session).to receive(:get_raw).with("https://circleci.com/api/v3/jobs/#{id}/tests", headers)
+                                        .and_yield(response).and_return(response)
+    end
+
+    def stub_test_chunks(id, chunks, response: Net::HTTPOK.new('1.1', '200', ''))
+      expect(response).not_to receive(:body)
+      allow(response).to receive(:read_body) { |&read_chunk| chunks.each(&read_chunk) }
+      stub_test_response(id, response)
+    end
+
     it 'groups failures across workflow pages and distinguishes empty and passing results' do
       lint = fixtures.fetch('checks_jobs').fetch('data').last
       stub_workflow_page('first', [failed_job(unit_id, 'unit'), failed_job(integration_id, 'integration'), lint])
@@ -113,13 +124,13 @@ describe CircleCI::CLI::Runner, 'run' do
       stub_workflow_page('last', deploy_jobs, cursor: '&page%5Bcursor%5D=cursor%2B%2F%3D')
       failure = { 'name' => 'rejects an expired token', 'result' => 'failure',
                   'file' => 'spec/token_spec.rb', 'message' => "Expected rejection\nReceived \e success" }
-      fileless_failure = { 'name' => 'rejects empty input', 'result' => 'failure', 'message' => 'Expected an error' }
+      fileless_failure = { 'name' => 'rejects the café token', 'result' => 'failure', 'message' => 'Expected an error' }
       passing = { 'name' => 'accepts an active token', 'result' => 'success' }
-      records = [failure, passing, failure].map { |record| JSON.generate(record) }.join("\n")
-      stub_get("jobs/#{unit_id}/tests", records, raw: true)
-      stub_get("jobs/#{integration_id}/tests", nil, response_class: Net::HTTPNoContent, code: '204', raw: true)
-      stub_get("jobs/#{system_id}/tests", JSON.generate(fileless_failure), raw: true)
-      stub_get("jobs/#{smoke_id}/tests", JSON.generate(passing), raw: true)
+      records = [failure, passing, failure].map { |record| JSON.generate(record) }.join("\r\n")
+      stub_test_chunks(unit_id, [records[0, 10], records[10..]])
+      stub_test_chunks(integration_id, [], response: Net::HTTPNoContent.new('1.1', '204', ''))
+      stub_test_chunks(system_id, JSON.generate(fileless_failure).each_byte.lazy.map(&:chr))
+      stub_test_chunks(smoke_id, [" \r\n\t", "\n#{JSON.generate(passing)}\n"])
 
       expected = <<~'SUMMARY'
         Failed tests
@@ -137,7 +148,7 @@ describe CircleCI::CLI::Runner, 'run' do
 
         deploy
           system
-            - rejects empty input
+            - rejects the café token
               Expected an error
           smoke
             No failures in uploaded test results.
@@ -146,7 +157,31 @@ describe CircleCI::CLI::Runner, 'run' do
       expect(session).to have_received(:get_raw).with(%r{/jobs\?filter%5Bworkflow_id%5D=}, headers).twice
     end
 
-    it 'overlaps up to four test requests, reuses connections, and preserves workflow and job order' do
+    it 'passes only failures from a large streamed result set to the printer' do
+      fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+      stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      passing_chunk = "{\"result\":\"success\"}\n" * 100
+      failure = { 'name' => 'fails after passing tests', 'result' => 'failure' }
+      chunks = Enumerator.new do |stream|
+        1000.times { stream << passing_chunk }
+        stream << JSON.generate(failure)
+      end
+      stub_test_chunks(unit_id, chunks)
+      printer = CircleCI::CLI::Printer::FailedTestsPrinter
+      expect(printer).to receive(:render).with('unit', failures: [failure], records_received: true).and_call_original
+
+      expect { described_class.start(args) }.to output(/  unit\n    - fails after passing tests\n\z/).to_stdout
+    end
+
+    it 'reports whitespace-only results as no uploaded tests' do
+      fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+      stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      stub_test_chunks(unit_id, [" \r", "\n\t"])
+
+      expect { described_class.start(args) }.to output(/No uploaded test results\./).to_stdout
+    end
+
+    it 'overlaps up to four test requests, reuses connections, and preserves order after retrying a partial response' do
       server = TCPServer.new('127.0.0.1', 0)
       sockets = []
       allow(client::Session).to receive(:new).with(max_retries: 1).and_call_original
@@ -180,8 +215,17 @@ describe CircleCI::CLI::Runner, 'run' do
         reused = workers.fetch('jobs/4/tests')
         write_response(reused, { 'name' => 'failure-4', 'result' => 'failure' })
         expect(read_request(reused)).to eq('jobs/5/tests')
+        interrupted = "{\"name\":\"interrupted failure\",\"result\":\"failure\"}\n{\"result\":"
+        reused.write("HTTP/1.1 200 OK\r\nContent-Length: #{interrupted.bytesize + 1}\r\n\r\n#{interrupted}")
+        reused.close
+
+        sockets << server.accept
+        retried = sockets.last
+        expect(read_request(retried)).to eq('jobs/5/tests')
+        workers.delete('jobs/4/tests')
+        workers['jobs/5/tests'] = retried
         workers.each do |path, socket|
-          id = socket == reused ? '5' : path.split('/')[1]
+          id = path.split('/')[1]
           write_response(socket, { 'name' => "failure-#{id}", 'result' => 'failure' })
         end
         workers.each_value { |socket| expect(socket.read).to eq('') }
@@ -212,8 +256,10 @@ describe CircleCI::CLI::Runner, 'run' do
       end
 
       it 'reports the failed request and job on stderr and exits unsuccessfully' do
-        stub_get("jobs/#{unit_id}/tests", { 'error' => { 'detail' => 'Access denied' } },
-                 response_class: Net::HTTPForbidden, code: '403')
+        response = Net::HTTPForbidden.new('1.1', '403', 'Forbidden')
+        allow(response).to receive(:body).and_return('{"error":{"detail":"Access denied"}}')
+        expect(response).not_to receive(:read_body)
+        stub_test_response(unit_id, response)
 
         expect do
           expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
@@ -221,13 +267,31 @@ describe CircleCI::CLI::Runner, 'run' do
                       "CircleCI API error (HTTP 403): Access denied\n").to_stderr
       end
 
-      it 'reports an invalid JSON Lines response' do
-        stub_get("jobs/#{unit_id}/tests", "[]\n", raw: true)
+      { 'a non-object' => "[]\n", 'invalid JSON' => '{"result":' }.each do |description, line|
+        it "reports #{description} in a JSON Lines response" do
+          stub_test_chunks(unit_id, ["{\"result\":\"failure\"}\n", line])
+
+          expect do
+            expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+          end.to output("Unable to load test results for job unit (#{unit_id}): " \
+                        "CircleCI API returned invalid JSON Lines.\n").to_stderr
+        end
+      end
+
+      it 'reports a timeout while reading the response body' do
+        url = "https://circleci.com/api/v3/jobs/#{unit_id}/tests"
+        timeout = Net::ReadTimeout.new('test results timed out')
+        chunks = Enumerator.new do |stream|
+          stream << "{\"result\":\"success\"}\n"
+          raise timeout
+        end
+        stub_test_chunks(unit_id, chunks)
 
         expect do
           expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
         end.to output("Unable to load test results for job unit (#{unit_id}): " \
-                      "CircleCI API returned invalid JSON Lines.\n").to_stderr
+                      "CircleCI API request failed (GET #{url}): #{timeout.message}\n").to_stderr
+        expect(session).to have_received(:get_raw).with(url, headers).twice
       end
     end
   end

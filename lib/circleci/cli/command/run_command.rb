@@ -7,6 +7,10 @@ module CircleCI
   module CLI
     module Command
       class RunCommand < RunLookup
+        TEST_READ_ERRORS = [
+          Net::ReadTimeout, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+        ].freeze
+
         def self.run(run_id, failed_tests: false)
           raise Thor::Error, 'Run ID must be a UUID.' unless UUID.match?(run_id)
 
@@ -22,11 +26,24 @@ module CircleCI
                                       rows: summary_rows(groups)).to_s
           return table unless failed_tests
 
-          tests = FailedTestsSummary.new { |session, job_id| request("jobs/#{job_id}/tests", client: session) }
+          tests = FailedTestsSummary.new(&method(:fetch_test_results))
           [table, tests.render(groups)].join("\n\n")
         end
 
         private
+
+        def fetch_test_results(session, job_id)
+          # Net::HTTP stops retrying once it yields response headers to a streaming caller.
+          read_started = false
+          2.times do |attempt|
+            return request("jobs/#{job_id}/tests", client: session) do |response|
+              read_started = response.is_a?(Net::HTTPSuccess)
+              yield response
+            end
+          rescue Thor::Error => e
+            raise unless attempt.zero? && read_started && TEST_READ_ERRORS.any? { |type| e.cause.is_a?(type) }
+          end
+        end
 
         def run_title(session, run_id)
           run = get(session, "runs/#{run_id}").fetch('data').fetch('attributes')
