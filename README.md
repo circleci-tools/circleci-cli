@@ -72,6 +72,19 @@ shown in order, including repeats from parallel executions, within the output
 limits. Records over 256 KiB are skipped, and the failed-test section is
 limited to 1 MiB per run. The section reports when details were omitted.
 
+#### List and download artifacts from a run
+
+```sh
+circleci-cli artifacts RUN_ID
+circleci-cli artifacts RUN_ID --download 'screenshots/**/*.png' --destination ./artifacts
+```
+
+The list shows each artifact's workflow, job name, job UUID, execution index,
+and path. Downloads require both a path glob and a destination. Quote the glob
+to match against the paths shown in the list. Files are saved under
+`DESTINATION/JOB_UUID/EXECUTION/PATH`, so parallel executions can keep the same
+artifact path. A completed download replaces any existing file at that path.
+
 #### Watch your project
 ```
 $ circleci-cli watch
