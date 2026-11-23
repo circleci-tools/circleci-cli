@@ -10,6 +10,13 @@ circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 
 ![sample.gif](https://github.com/circleci-tools/circleci-cli/raw/master/movie/rec.gif)
 
+## Features
+
+- List followed projects and filter recent builds by branch.
+- Inspect build steps and logs, or watch running builds in real time.
+- Summarize a run's workflows and jobs, including uploaded test failures on request.
+- Retry or cancel builds and open project or build pages in your browser.
+
 ## Installation
 
 ```sh
