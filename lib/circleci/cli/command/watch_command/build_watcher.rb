@@ -52,6 +52,10 @@ module CircleCI
           @state_lock.synchronize { @poll_error }
         end
 
+        def disable_step_line_rewrites
+          @state_lock.synchronize { @step_line_rewrites_disabled = true }
+        end
+
         def stop(status)
           @stop_requested.close
           (@build_thread ||= poll_build).join
@@ -128,8 +132,8 @@ module CircleCI
           return print_bordered(name) if @verbose
 
           case step.status
-          when 'success' then puts "\e[2K\r#{Printer.colorize_green(name)}"
-          when 'failed' then puts "\e[2K\r#{Printer.colorize_red(name)}"
+          when 'success' then print_step_status(Printer.colorize_green(name))
+          when 'failed' then print_step_status(Printer.colorize_red(name))
           else puts name
           end
         end
@@ -141,9 +145,16 @@ module CircleCI
           status = step.status
           case status
           when 'success'
-            puts "\e[1A\e[2K\r#{Printer.colorize_green(name)}"
+            print_step_status(Printer.colorize_green(name), move_up: true)
           when 'failed'
-            puts "\e[1A\e[2K\r#{Printer.colorize_red(name)}"
+            print_step_status(Printer.colorize_red(name), move_up: true)
+          end
+        end
+
+        def print_step_status(text, move_up: false)
+          @state_lock.synchronize do
+            prefix = move_up ? "\e[1A\e[2K\r" : "\e[2K\r"
+            puts(@step_line_rewrites_disabled ? text : "#{prefix}#{text}")
           end
         end
 

@@ -713,6 +713,28 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         end).to_stdout
     end
 
+    it 'preserves the background result when a live step completes afterward' do
+      attributes = { 'username' => 'user', 'reponame' => 'repo', 'build_num' => 43 }
+      build_class = CircleCI::CLI::Response::Build
+      watcher = CircleCI::CLI::Command::BuildWatcher.new(build_class.new(attributes))
+      session.instance_variable_set(:@build_watcher, watcher)
+      running = { 'name' => 'Live test', 'actions' => [{ 'status' => 'running' }] }
+      completed = running.merge('actions' => [{ 'status' => 'success', 'end_time' => '2024-01-01T00:00:00Z' }])
+      allow(build_class).to receive(:get).with('user', 'repo', 43).and_return(
+        build_class.new(attributes.merge('steps' => [running])),
+        build_class.new(attributes.merge('steps' => [completed]))
+      )
+      completed_line = CircleCI::CLI::Printer.colorize_green('Live test')
+
+      expect do
+        watcher.send(:update_build)
+        session.send(:show_interrupted_build_results, builds, { 42 => response_build })
+        watcher.send(:update_build)
+      end.to output(/\ALive test\n.*test log <%= "log" %>\n.*\n#{Regexp.escape(completed_line)}\n\z/m).to_stdout
+    ensure
+      watcher&.close
+    end
+
     context 'with verbose enabled' do
       let(:verbose) { true }
 

@@ -126,6 +126,7 @@ module CircleCI
 
         def show_background_result(build, detail)
           title = "✅ Result of #{build.project_name} ##{build.build_number} completed in background"
+          @build_watcher&.disable_step_line_rewrites unless @options.verbose
           puts Printer::BuildPrinter.header_for(build, title)
           verbose = @options.verbose
           Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
