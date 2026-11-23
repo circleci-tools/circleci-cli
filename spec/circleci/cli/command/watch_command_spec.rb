@@ -542,7 +542,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
     shared_examples 'retrying a background detail request' do
       it 'reports the completion once and starts the live build after retrying on the next iteration' do
-        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(SocketError)
         expect(session).to receive(:sleep).with(1).ordered
         expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
         expect(watcher_class).to receive(:new).with(live, verbose: true).ordered.and_return(watcher)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'circleci/cli/command/watch_command/action_output'
+require 'circleci/cli/command/watch_command/request_errors'
 require 'circleci/cli/command/watch_command/step_log'
 
 module CircleCI
@@ -18,10 +19,6 @@ module CircleCI
         }.freeze
 
         INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
-        TRANSIENT_POLL_ERRORS = [
-          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
-          Errno::ECONNRESET, Errno::ECONNREFUSED, Errno::EPIPE, EOFError
-        ].freeze
         FINAL_DETAIL_ATTEMPTS = 2
 
         attr_reader :build
@@ -119,7 +116,7 @@ module CircleCI
 
         def poll_safely
           yield
-        rescue *TRANSIENT_POLL_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           # Resume on the next poll with the last consumed byte offset.
         end
 
@@ -178,7 +175,7 @@ module CircleCI
 
         def fetch_detail(attempts:)
           Response::Build.get(@build.username, @build.reponame, @build.build_number)
-        rescue *TRANSIENT_POLL_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           attempts -= 1
           retry if attempts.positive?
           raise

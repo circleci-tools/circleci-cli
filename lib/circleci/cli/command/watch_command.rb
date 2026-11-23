@@ -2,16 +2,12 @@
 
 require 'circleci/cli/command/watch_command/build_repository'
 require 'circleci/cli/command/watch_command/build_watcher'
+require 'circleci/cli/command/watch_command/request_errors'
 
 module CircleCI
   module CLI
     module Command
       class WatchCommand < BaseCommand # rubocop:disable Metrics/ClassLength
-        TRANSIENT_REQUEST_ERRORS = [
-          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
-          Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
-        ].freeze
-
         def self.run(options)
           token = setup_token
           username, reponame = project_target(options)
@@ -74,7 +70,7 @@ module CircleCI
             pending_refresh
           end
           @repository.update if pending
-        rescue *TRANSIENT_REQUEST_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           @refresh_lock.synchronize { @refresh_pending = true }
         end
 
@@ -136,7 +132,7 @@ module CircleCI
 
         def fetch_background_details
           yield
-        rescue *TRANSIENT_REQUEST_ERRORS
+        rescue *WatchRequestErrors::TRANSIENT
           nil
         end
       end
