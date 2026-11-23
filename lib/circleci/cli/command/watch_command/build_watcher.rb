@@ -130,24 +130,20 @@ module CircleCI
           name = Printer.escape_controls(step.name)
           return print_bordered(name) if @verbose
 
-          case step.status
-          when 'success' then print_step_status(Printer.colorize_green(name))
-          when 'failed' then print_step_status(Printer.colorize_red(name))
-          else puts name
-          end
+          status = step.status
+          return puts name if status == 'running'
+
+          print_step_status(Printer.colorize_by_status(name, status))
         end
 
         def on_new_step_status(step)
           return if @verbose
 
-          name = Printer.escape_controls(step.name)
           status = step.status
-          case status
-          when 'success'
-            print_step_status(Printer.colorize_green(name), move_up: true)
-          when 'failed'
-            print_step_status(Printer.colorize_red(name), move_up: true)
-          end
+          return if status == 'running'
+
+          name = Printer.escape_controls(step.name)
+          print_step_status(Printer.colorize_by_status(name, status), move_up: true)
         end
 
         def print_step_status(text, move_up: false)
