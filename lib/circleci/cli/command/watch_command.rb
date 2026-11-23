@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'json'
+require 'tempfile'
 require 'circleci/cli/command/watch_command/build_repository'
 require 'circleci/cli/command/watch_command/build_watcher'
 require 'circleci/cli/command/watch_command/request_errors'
@@ -8,6 +10,8 @@ module CircleCI
   module CLI
     module Command
       class WatchCommand < BaseCommand # rubocop:disable Metrics/ClassLength
+        BACKGROUND_LOG_ATTEMPTS = 2
+
         def self.run(options)
           token = setup_token
           username, reponame = project_target(options)
@@ -125,8 +129,31 @@ module CircleCI
           @build_watcher&.disable_step_line_rewrites unless @options.verbose
           puts Printer::BuildPrinter.header_for(build, title)
           verbose = @options.verbose
-          Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose).write_to($stdout)
+          Printer::StepPrinter.new(detail.steps, pretty: verbose, verbose: verbose,
+                                                 log_reader: method(:read_background_log)).write_to($stdout)
           @repository.mark_as_shown(build.build_number)
+        end
+
+        def read_background_log(action)
+          Tempfile.create('circleci-watch-log', binmode: true) do |file|
+            next unless download_background_log(action, file)
+
+            file.rewind
+            file.each_line { |line| yield JSON.parse(line) }
+          end
+        end
+
+        def download_background_log(action, file, attempts: BACKGROUND_LOG_ATTEMPTS)
+          action.each_log_chunk { |chunk| file.puts(JSON.generate(chunk)) }
+          true
+        rescue *WatchRequestErrors::TRANSIENT
+          file.rewind
+          file.truncate(0)
+          attempts -= 1
+          retry if attempts.positive?
+
+          warn "Warning: Could not download log for #{Printer.escape_controls(action.name)}."
+          false
         end
 
         def fetch_background_details

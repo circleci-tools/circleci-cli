@@ -8,10 +8,11 @@ module CircleCI
   module CLI
     module Printer
       class StepPrinter
-        def initialize(steps, pretty: true, verbose: false)
+        def initialize(steps, pretty: true, verbose: false, log_reader: nil)
           @groups = steps.map(&:actions).reject(&:empty?).group_by { |actions| actions.first.type }
           @pretty = pretty
           @verbose = verbose
+          @log_reader = log_reader || ->(action, &block) { action.each_log_chunk(&block) }
         end
 
         def write_to(output)
@@ -104,7 +105,7 @@ module CircleCI
 
         def each_escaped_chunk(action)
           suffix = ''
-          action.each_log_chunk do |chunk|
+          @log_reader.call(action) do |chunk|
             next if chunk.empty?
 
             text = suffix + chunk
