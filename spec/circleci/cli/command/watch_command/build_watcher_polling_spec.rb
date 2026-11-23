@@ -397,6 +397,7 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
           expect { watch_until(polled, 'failed') }.to output("first output\nsecond output\nfailure tail\n").to_stdout
           expect(watcher.latest_detail.steps.first.status).to eq('failed')
+          expect(watcher).to have_received(:puts).with("\e[1A\e[2K\r\e[0;31;49mTest\e[0m").once
         end
 
         it 'skips an already successful action and replays the failed live action once' do
@@ -843,6 +844,41 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
     let(:initial_steps) { [step_hash.call(name: 'Build', type: 'build', status: 'success')] }
     let(:watcher) { described_class.new(build, verbose: false) }
     let(:updated_build) { build_response.call([step_hash.call(name: 'Build', type: 'build', status: 'failed')]) }
+
+    context 'when a step is fully skipped' do
+      let(:initial_steps) { [] }
+      let(:skipped_step) { step_hash.call(name: 'Deploy', type: 'deploy', status: 'not_run') }
+      let(:updated_build) { build_response.call([skipped_step]) }
+
+      before do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(updated_build)
+      end
+
+      after { watcher.close }
+
+      it 'shows a newly observed skipped step in gray' do
+        skipped_step['actions'] << skipped_step['actions'].first.merge('index' => 1)
+
+        expect { watcher.send(:update_build) }.to output("\e[2K\r\e[0;90;49mDeploy\e[0m\n").to_stdout
+        expect(watcher.latest_detail.steps.first.status).to eq('not_run')
+      end
+
+      context 'when the step was running' do
+        let(:initial_steps) { [step_hash.call(name: 'Deploy', type: 'deploy', status: 'running')] }
+
+        it 'repaints the step in gray once' do
+          expect do
+            2.times { watcher.send(:update_build) }
+          end.to output("\e[1A\e[2K\r\e[0;90;49mDeploy\e[0m\n").to_stdout
+        end
+
+        it 'appends the gray status when line rewrites are disabled' do
+          watcher.disable_step_line_rewrites
+
+          expect { watcher.send(:update_build) }.to output("\e[0;90;49mDeploy\e[0m\n").to_stdout
+        end
+      end
+    end
 
     context 'with many unchanged steps' do
       let(:initial_steps) do
