@@ -47,13 +47,14 @@ module CircleCI
           @mutex.synchronize { @builds.select { |build| pending?(build) }.sort_by(&:build_number) }
         end
 
-        def refresh_evicted_builds
+        def refresh_evicted_builds(&fetch_detail)
+          fetch_detail ||= Response::Build.method(:get)
           @mutex.synchronize do
             details = @builds.select { |build| evicted_pending?(build) }.to_h do |build|
               number = build.build_number
-              [number, Response::Build.get(@username, @reponame, number)]
+              [number, fetch_detail.call(@username, @reponame, number)]
             end
-            @builds.map! { |build| details.fetch(build.build_number, build) }
+            @builds.map! { |build| details[build.build_number] || build }
             details
           end
         end

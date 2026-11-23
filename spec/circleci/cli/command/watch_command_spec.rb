@@ -528,6 +528,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     let(:background) { response.new(attributes.merge('build_num' => 1, 'status' => 'not_running')) }
     let(:completed) { response.new(attributes.merge('build_num' => 1, 'status' => 'success')) }
     let(:live) { response.new(attributes.merge('build_num' => 2, 'status' => 'running')) }
+    let(:later_completed) { response.new(attributes.merge('build_num' => 3, 'status' => 'success')) }
     let(:repository) { CircleCI::CLI::Command::BuildRepository.new('user', 'repo') }
     let(:client) { double('client', connect: nil, poll_connection_error: nil, unsubscribe: nil, disconnect: nil) }
     let(:watcher_class) { CircleCI::CLI::Command::BuildWatcher }
@@ -541,19 +542,24 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     shared_examples 'retrying a background detail request' do
-      it 'reports the completion once and starts the live build after retrying on the next iteration' do
+      it 'starts the live build and reports other completions while retrying the timed-out build' do
         expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
-        expect(session).to receive(:sleep).with(1).ordered
-        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
+        expect(response).to receive(:get).with('user', 'repo', 3).once.ordered.and_return(later_completed)
         expect(watcher_class).to receive(:new).with(live, verbose: true).ordered.and_return(watcher)
         expect(watcher).to receive(:start).ordered
         expect(session).to receive(:sleep).with(1).ordered
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_raise(Net::ReadTimeout)
+        expect(session).to receive(:sleep).with(1).ordered
+        expect(response).to receive(:get).with('user', 'repo', 1).ordered.and_return(completed)
+        expect(session).to receive(:sleep).with(1).ordered
         expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
 
-        result = 'Result of user/repo #1 completed in background'
+        results = satisfy('print each background result once in completion order') do |output|
+          output.scan(%r{Result of user/repo #(\d+) completed in background}).flatten == %w[3 1]
+        end
         expect do
           expect { session.run('token') }.to raise_error(Interrupt)
-        end.to output(satisfy { |output| output.scan(result).size == 1 }).to_stdout
+        end.to output(results).to_stdout
       end
 
       it 'surfaces a permanent detail failure' do
@@ -566,13 +572,13 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     context 'when the background build has dropped out of the recent list' do
-      let(:recent_builds) { [live] }
+      let(:recent_builds) { [live, later_completed] }
 
       include_examples 'retrying a background detail request'
     end
 
     context 'when the background build finished in the recent list' do
-      let(:recent_builds) { [completed, live] }
+      let(:recent_builds) { [completed, live, later_completed] }
 
       include_examples 'retrying a background detail request'
     end
