@@ -32,13 +32,13 @@ module CircleCI
         private
 
         def collect(groups)
-          Networking::HTTPClient::Session.open(max_retries: 1) do |session|
-            groups.flat_map do |workflow, jobs|
-              jobs.reject { _1.fetch('attributes')['type'] == 'approval' }.flat_map do |job|
-                job_artifacts(session, workflow, job)
-              end
-            end
+          job_list = groups.flat_map do |workflow, jobs|
+            jobs.reject { _1.fetch('attributes')['type'] == 'approval' }.map { [workflow, _1] }
           end
+          results = RunRequestPool.fetch(job_list) do |session, (workflow, job)|
+            job_artifacts(session, workflow, job)
+          end
+          results.flatten(1)
         end
 
         def job_artifacts(session, workflow, job)
