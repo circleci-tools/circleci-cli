@@ -105,7 +105,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
       expect { described_class.start(download_args(destination)) }.to output(/Downloaded 1 artifact/).to_stdout
       expect(File.binread(File.join(destination, job_id, '0', path))).to eq('downloaded')
       expect(client::Session).to have_received(:new).with(max_retries: 0).twice
-      expect(download_session).to have_received(:close)
+      expect(download_session).to have_received(:close).twice
     end
   end
 
