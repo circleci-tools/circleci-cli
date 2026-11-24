@@ -39,6 +39,8 @@ module CircleCI
           end
 
           def parse_artifact_uri(url)
+            raise URI::InvalidURIError unless well_formed_uri?(url)
+
             URI(url)
           rescue URI::Error
             raise Thor::Error, 'Invalid artifact URL.'
@@ -90,9 +92,15 @@ module CircleCI
           end
 
           def merge_redirect_uri(uri, location)
+            raise URI::InvalidURIError unless well_formed_uri?(location)
+
             uri.merge(location)
           rescue URI::Error
             raise Thor::Error, 'Invalid artifact redirect URL.'
+          end
+
+          def well_formed_uri?(value)
+            !value.match?(/[[:space:]]|[[:cntrl:]]/)
           end
 
           def read_response(response, file)
