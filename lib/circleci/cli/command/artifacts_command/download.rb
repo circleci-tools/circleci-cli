@@ -8,11 +8,9 @@ module CircleCI
     module Command
       class ArtifactsCommand
         class Download
-          MAX_REDIRECTS = 5
-
           def initialize(destination, headers)
             @destination = destination
-            @headers = headers
+            @stream = ArtifactStream.new(headers)
           end
 
           def save(artifact)
@@ -50,19 +48,11 @@ module CircleCI
           def write_artifact(directory, name, url)
             Dir.fchdir(directory.fileno) do
               Tempfile.create('.artifact-', '.', binmode: true) do |file|
-                stream(parse_artifact_uri(url), file)
+                @stream.fetch(url, file)
                 file.close
                 File.rename(file.path, name)
               end
             end
-          end
-
-          def parse_artifact_uri(url)
-            raise URI::InvalidURIError unless well_formed_uri?(url)
-
-            URI(url)
-          rescue URI::Error
-            raise Thor::Error, 'Invalid artifact URL.'
           end
 
           def path_components(artifact)
@@ -90,53 +80,6 @@ module CircleCI
             Dir.mkdir(name)
           rescue Errno::EEXIST
             raise Thor::Error, 'Artifact directory is a symlink or a file.' unless File.lstat(name).directory?
-          end
-
-          def stream(uri, file, redirects = MAX_REDIRECTS)
-            raise Thor::Error, 'Invalid HTTPS artifact URL.' unless uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo
-
-            location = nil
-            Networking::HTTPClient.get_raw(uri.to_s, headers_for(uri)) do |response|
-              location = read_response(response, file)
-            end
-            return unless location
-
-            raise Thor::Error, 'Too many artifact redirects.' if redirects.zero?
-
-            stream(merge_redirect_uri(uri, location), file, redirects - 1)
-          end
-
-          def merge_redirect_uri(uri, location)
-            raise URI::InvalidURIError unless well_formed_uri?(location)
-
-            uri.merge(location)
-          rescue URI::Error
-            raise Thor::Error, 'Invalid artifact redirect URL.'
-          end
-
-          def well_formed_uri?(value)
-            !value.match?(/[[:space:]]|[[:cntrl:]]/)
-          end
-
-          def read_response(response, file)
-            case response
-            when Net::HTTPOK
-              response.ignore_eof = false
-              response.read_body(file)
-              nil
-            when Net::HTTPRedirection
-              response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
-            else
-              raise Thor::Error, "HTTP #{response.code}"
-            end
-          end
-
-          def headers_for(uri)
-            host = uri.host.downcase
-            return {} unless uri.port == 443
-            return @headers if host == 'circleci.com' || host.end_with?('.circleci.com', '.circle-artifacts.com')
-
-            {}
           end
         end
       end
