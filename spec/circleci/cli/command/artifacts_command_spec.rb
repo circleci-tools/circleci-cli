@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 require 'tmpdir'
 
 describe CircleCI::CLI::Runner, 'artifacts' do
@@ -62,6 +63,58 @@ describe CircleCI::CLI::Runner, 'artifacts' do
 
     expect { described_class.start(args) }.to output(/checks.*browser-tests.*0.*failure\.png.*1.*failure\.png/m)
       .to_stdout
+  end
+
+  it 'overlaps job artifact requests up to four at a time and preserves job order after a held-open response' do
+    jobs = (1..8).map { |n| { 'id' => "job-#{n}", 'attributes' => { 'name' => "job-#{n}" } } }
+    stub_api("jobs?filter%5Bworkflow_id%5D=#{workflow_id}", jobs)
+
+    responses = (1..8).map do |n|
+      response = Net::HTTPOK.new('1.1', '200', 'OK')
+      allow(response).to receive(:body).and_return(JSON.generate('data' => [artifact(0, path: "job-#{n}.png")]))
+      response
+    end
+
+    started = Queue.new
+    finished = Queue.new
+    first_request = Queue.new
+    other_requests = Queue.new
+    mutex = Mutex.new
+    active = peak = 0
+    allow(session).to receive(:get_raw) do |request_url, request_headers|
+      raise "unexpected headers #{request_headers}" unless request_headers == headers
+
+      index = request_url[%r{jobs/job-(\d+)/artifacts\z}, 1]&.to_i
+      raise "unexpected request #{request_url}" unless index
+
+      mutex.synchronize do
+        active += 1
+        peak = [peak, active].max
+      end
+      started << index
+      (index == 1 ? first_request : other_requests).pop
+      mutex.synchronize { active -= 1 }
+      finished << index
+      responses[index - 1]
+    end
+
+    command = CircleCI::CLI::Command::ArtifactsCommand.new('test-token')
+    result = nil
+    worker = Thread.new { result = command.artifacts(run_id, download: nil, destination: nil) }
+    Timeout.timeout(5) do
+      4.times { started.pop }
+      7.times { other_requests << true }
+      7.times { finished.pop }
+    end
+    first_request << true
+    worker.join
+
+    expect(result.scan(/job-\d+\.png/)).to eq((1..8).map { |n| "job-#{n}.png" })
+    expect(peak).to eq(4)
+  ensure
+    first_request&.close
+    other_requests&.close
+    worker&.join
   end
 
   it 'streams matching paths into separate directories for parallel executions' do
