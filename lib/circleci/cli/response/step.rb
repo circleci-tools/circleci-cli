@@ -20,6 +20,7 @@ module CircleCI
           actions = self.actions
           return 'running' if actions.any?(&:running?)
           return 'failed' if actions.any?(&:failed?)
+          return 'canceled' if actions.any?(&:canceled?)
           return 'not_run' if all_skipped?(actions)
 
           'success'
