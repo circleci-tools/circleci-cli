@@ -17,16 +17,18 @@ module CircleCI
         end
 
         def status
-          actions = self.actions
-          return 'running' if actions.any?(&:running?)
-          return 'failed' if actions.any?(&:failed?)
-          return 'canceled' if actions.any?(&:canceled?)
-          return 'not_run' if all_skipped?(actions)
-
-          'success'
+          acts = actions
+          precedence_status(acts) || (all_skipped?(acts) ? 'not_run' : 'success')
         end
 
+        PRECEDENCE = [[:running?, 'running'], [:failed?, 'failed'], [:canceled?, 'canceled']].freeze
+
         private
+
+        def precedence_status(acts)
+          _, value = PRECEDENCE.find { |predicate, _| acts.any?(&predicate) }
+          value
+        end
 
         def all_skipped?(actions)
           !actions.empty? && actions.all?(&:skipped?)
