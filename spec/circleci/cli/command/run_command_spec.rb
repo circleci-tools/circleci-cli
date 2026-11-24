@@ -178,12 +178,16 @@ describe CircleCI::CLI::Runner, 'run' do
       summary = CircleCI::CLI::Command::FailedTestsSummary
       fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
       stub_workflow_page('first', [failed_job(unit_id, 'unit')])
-      kept_message = 'a' * 700_000
-      dropped_message = 'b' * 700_000
+      # Each message stays under TestResultLines::MAX_RECORD_BYTES so every record is parsed;
+      # the fillers exist only to push the cumulative output past MAX_OUTPUT_BYTES at "kept".
+      kept_message = 'a' * 250_000
+      dropped_message = 'b' * 250_000
+      filler_message = 'f' * 250_000
+      fillers = Array.new(3) { |i| JSON.generate('name' => "filler#{i}", 'result' => 'failure', 'message' => filler_message) }
       kept = JSON.generate('name' => 'kept', 'result' => 'failure', 'message' => kept_message)
       dropped = JSON.generate('name' => 'dropped', 'result' => 'failure', 'message' => dropped_message)
       chunks = Enumerator.new do |stream|
-        stream << "#{kept}\n#{dropped}\n"
+        stream << "#{(fillers + [kept, dropped]).join("\n")}\n"
         raise 'test results should not be read past the output budget'
       end
       stub_test_chunks(unit_id, chunks)
