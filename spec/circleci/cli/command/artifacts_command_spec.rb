@@ -81,11 +81,8 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     other_requests = Queue.new
     mutex = Mutex.new
     active = peak = 0
-    allow(session).to receive(:get_raw) do |request_url, request_headers|
-      raise "unexpected headers #{request_headers}" unless request_headers == headers
-
-      index = request_url[%r{jobs/job-(\d+)/artifacts\z}, 1]&.to_i
-      raise "unexpected request #{request_url}" unless index
+    allow(session).to receive(:get_raw).with(a_string_matching(%r{/jobs/job-\d+/artifacts\z}), headers) do |request_url|
+      index = request_url[%r{jobs/job-(\d+)/artifacts\z}, 1].to_i
 
       mutex.synchronize do
         active += 1
