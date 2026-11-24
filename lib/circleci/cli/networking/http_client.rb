@@ -44,6 +44,47 @@ module CircleCI
           end
         end
 
+        # One Session per origin, kept alive for the pool's lifetime; a long redirect chain
+        # across many origins evicts the least recently used session instead of growing unbounded.
+        class SessionPool
+          LIMIT = 4
+
+          def self.open(max_retries: 0, limit: LIMIT)
+            pool = new(max_retries:, limit:)
+            yield pool
+          ensure
+            pool&.close
+          end
+
+          def initialize(max_retries: 0, limit: LIMIT)
+            @max_retries = max_retries
+            @limit = limit
+            @sessions = {}
+          end
+
+          def get_raw(url, headers = {}, &)
+            session_for(URI(url)).get_raw(url, headers, &)
+          end
+
+          def close
+            @sessions.each_value(&:close)
+          ensure
+            @sessions.clear
+          end
+
+          private
+
+          def session_for(uri)
+            origin = uri.origin
+            @sessions[origin] = @sessions.delete(origin) || new_session
+          end
+
+          def new_session
+            @sessions.shift.last.close if @sessions.size >= @limit
+            Session.new(max_retries: @max_retries)
+          end
+        end
+
         def self.get(url, headers = {})
           JSON.parse(get_raw(url, headers).body)
         end

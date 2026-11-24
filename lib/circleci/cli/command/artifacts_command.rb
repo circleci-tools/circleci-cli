@@ -24,12 +24,18 @@ module CircleCI
           matches = entries.select { File.fnmatch?(download, _1.path, File::FNM_PATHNAME | File::FNM_DOTMATCH) }
           return 'No artifacts matched the download filter.' if matches.empty?
 
-          downloader = Download.new(destination, @headers)
-          matches.each { downloader.save(_1) }
+          download_matches(matches, destination)
           "Downloaded #{matches.size} #{matches.size == 1 ? 'artifact' : 'artifacts'}.\n#{render(matches)}"
         end
 
         private
+
+        def download_matches(matches, destination)
+          Networking::HTTPClient::SessionPool.open do |sessions|
+            downloader = Download.new(destination, @headers, sessions)
+            matches.each { downloader.save(_1) }
+          end
+        end
 
         def collect(groups)
           Networking::HTTPClient::Session.open(max_retries: 1) do |session|

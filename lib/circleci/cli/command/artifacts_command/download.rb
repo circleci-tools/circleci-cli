@@ -10,9 +10,10 @@ module CircleCI
         class Download
           MAX_REDIRECTS = 5
 
-          def initialize(destination, headers)
+          def initialize(destination, headers, sessions)
             @destination = destination
             @headers = headers
+            @sessions = sessions
           end
 
           def save(artifact)
@@ -88,7 +89,7 @@ module CircleCI
             raise Thor::Error, 'Invalid HTTPS artifact URL.' unless uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo
 
             location = nil
-            Networking::HTTPClient.get_raw(uri.to_s, headers_for(uri)) do |response|
+            @sessions.get_raw(uri.to_s, headers_for(uri)) do |response|
               location = read_response(response, file)
             end
             return unless location
