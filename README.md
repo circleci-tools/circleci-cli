@@ -1,4 +1,5 @@
 # circleci-cli
+[![test](https://github.com/circleci-tools/circleci-cli/actions/workflows/test.yml/badge.svg)](https://github.com/circleci-tools/circleci-cli/actions/workflows/test.yml)
 [![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
 [![Gem Version](https://badge.fury.io/rb/circleci-cli.svg)](https://badge.fury.io/rb/circleci-cli)
 [![Libraries.io dependency status for GitHub repo](https://img.shields.io/librariesio/github/circleci-tools/circleci-cli.svg)](https://libraries.io/github/circleci-tools/circleci-cli)
