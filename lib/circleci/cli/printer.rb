@@ -8,6 +8,11 @@ require 'circleci/cli/printer/failed_tests_printer'
 module CircleCI
   module CLI
     module Printer
+      # Unicode bidirectional formatting controls (not covered by [[:cntrl:]]) that can be used
+      # to visually disguise a filename's real extension, e.g. U+202E RIGHT-TO-LEFT OVERRIDE.
+      BIDI_CONTROL_CODEPOINTS = [0x200E, 0x200F, *(0x202A..0x202E), *(0x2066..0x2069)].freeze
+      BIDI_CONTROLS = Regexp.union(BIDI_CONTROL_CODEPOINTS.map { |point| point.chr(Encoding::UTF_8) }).freeze
+
       class << self
         def colorize_red(string)
           colorize(string, '0;31;49')
@@ -30,7 +35,7 @@ module CircleCI
 
           text = value.encoding == Encoding::BINARY ? decode_binary_text(value) : value
           text = text.gsub("\r\n", "\n") if multiline
-          controls = multiline ? /[[:cntrl:]&&[^\n]]/ : /[[:cntrl:]]/
+          controls = multiline ? /[[:cntrl:]&&[^\n]]|#{BIDI_CONTROLS}/ : /[[:cntrl:]]|#{BIDI_CONTROLS}/
           text.gsub(controls) { |character| format('\\x%02X', character.ord) }
         end
 
