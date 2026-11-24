@@ -17,8 +17,9 @@ module CircleCI
 
           def save(artifact)
             parts = path_components(artifact)
-            directory = parts[0...-1].reduce(destination_root) { |parent, part| create_directory(parent, part) }
-            write_artifact(directory, parts.last, artifact.url)
+            File.open(destination_root, File::RDONLY) do |root|
+              with_directory(root, parts[0...-1]) { |directory| write_artifact(directory, parts.last, artifact.url) }
+            end
           rescue Thor::Error, SystemCallError, IOError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError,
                  URI::Error, Net::ProtocolError => e
             raise Thor::Error, "Could not download #{artifact_label(artifact)}: #{Printer.escape_controls(e.message)}"
@@ -30,11 +31,29 @@ module CircleCI
             Printer.escape_controls("#{artifact.path} (job #{artifact.job_id}, execution #{artifact.execution})")
           end
 
+          # Each step below resolves a single path component relative to the already-opened
+          # parent directory (via fchdir), so a symlink swapped in after a parent was
+          # validated cannot redirect the next mkdir/open/rename onto a different path.
+          def with_directory(parent, parts, &block)
+            return block.call(parent) if parts.empty?
+
+            open_child_directory(parent, parts.first) { |child| with_directory(child, parts[1..], &block) }
+          end
+
+          def open_child_directory(parent, name, &)
+            Dir.fchdir(parent.fileno) do
+              create_directory(name)
+              File.open(name, File::RDONLY | File::NOFOLLOW, &)
+            end
+          end
+
           def write_artifact(directory, name, url)
-            Tempfile.create('.artifact-', directory, binmode: true) do |file|
-              stream(URI(url), file)
-              file.close
-              File.rename(file.path, File.join(directory, name))
+            Dir.fchdir(directory.fileno) do
+              Tempfile.create('.artifact-', '.', binmode: true) do |file|
+                stream(URI(url), file)
+                file.close
+                File.rename(file.path, name)
+              end
             end
           end
 
@@ -59,14 +78,10 @@ module CircleCI
             end
           end
 
-          def create_directory(parent, part)
-            path = File.join(parent, part)
-            begin
-              Dir.mkdir(path)
-            rescue Errno::EEXIST
-              raise Thor::Error, 'Artifact directory is a symlink or a file.' unless File.lstat(path).directory?
-            end
-            path
+          def create_directory(name)
+            Dir.mkdir(name)
+          rescue Errno::EEXIST
+            raise Thor::Error, 'Artifact directory is a symlink or a file.' unless File.lstat(name).directory?
           end
 
           def stream(uri, file, redirects = MAX_REDIRECTS)
