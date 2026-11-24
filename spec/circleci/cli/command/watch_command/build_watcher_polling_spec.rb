@@ -351,6 +351,60 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         end
       end
 
+      it 'resumes a finished action log on a later refresh after its immediate reads time out' do
+        watcher = described_class.new(build)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+          multi_action_build('running', 'running'),
+          multi_action_build('failed', 'running'),
+          multi_action_build('failed', 'running'),
+          multi_action_build('failed', 'success')
+        )
+        allow(watcher).to receive(:puts)
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, "failed log\n")
+        expect_output_response(0, "second log\n", path: second_path)
+        expect_output_response(11, path: second_path)
+
+        expect do
+          watcher.send(:update_build)
+          watcher.send(:update_build)
+          watcher.send(:update_build)
+          watcher.send(:update_actions)
+          watcher.send(:update_build)
+        end.to output("failed log\n").to_stdout.and output('').to_stderr
+      ensure
+        watcher.close
+      end
+
+      it 'keeps retrying a finished action across refreshes and warns if still incomplete at shutdown' do
+        watcher = described_class.new(build)
+        allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+          multi_action_build('running', 'running'),
+          multi_action_build('failed', 'running'),
+          multi_action_build('failed', 'failed')
+        )
+        allow(watcher).to receive(:puts)
+
+        second_path = output_path.sub(%r{/1/2$}, '/2/2')
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, error: Net::ReadTimeout)
+        expect_output_response(0, "second log\n", path: second_path)
+
+        expect do
+          watcher.send(:update_build)
+          watcher.send(:update_build)
+          watcher.stop('failed')
+        end.to output(a_string_including("second log\n")).to_stdout
+           .and output("Warning: Step log output may be incomplete.\n").to_stderr
+      ensure
+        watcher.close
+      end
+
       it 'ends oversized fragments before emitting another action and preserves split UTF-8' do
         stub_const('CircleCI::CLI::Command::ActionOutput::LINE_BUFFER_LIMIT', 5)
         allow(watcher).to receive(:puts)
