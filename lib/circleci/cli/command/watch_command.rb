@@ -152,6 +152,14 @@ module CircleCI
           attempts -= 1
           retry if attempts.positive?
 
+          warn_background_log_failure(action)
+        rescue Thor::Error
+          file.rewind
+          file.truncate(0)
+          warn_background_log_failure(action)
+        end
+
+        def warn_background_log_failure(action)
           warn "Warning: Could not download log for #{Printer.escape_controls(action.name)}."
           false
         end
