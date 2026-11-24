@@ -50,6 +50,15 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     args + ['--download', filter, '--destination', destination]
   end
 
+  def capture_stderr
+    original = $stderr
+    $stderr = StringIO.new
+    yield
+    $stderr.string
+  ensure
+    $stderr = original
+  end
+
   it 'shows an empty result when no jobs have artifacts' do
     stub_artifacts
 
@@ -100,6 +109,40 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     Dir.mktmpdir do |destination|
       expect { described_class.start(download_args(destination)) }.to output(/Downloaded 1 artifact/).to_stdout
       expect(File.binread(File.join(destination, job_id, '0', path))).to eq('downloaded')
+    end
+  end
+
+  it 'reports a malformed artifact URL without exposing the URL or its signing parameters' do
+    bad_url = 'https://output.circle-artifacts.com/0/failure.png?X-Amz-Signature=dummy secret'
+    stub_artifacts(artifact(0, url: bad_url))
+    expect(client).not_to receive(:get_raw)
+
+    Dir.mktmpdir do |destination|
+      stderr = capture_stderr do
+        expect { described_class.start(download_args(destination)) }
+          .to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end
+      expect(stderr).to match(/Could not download .*Invalid artifact URL/)
+      expect(stderr).not_to match(/dummy|secret|X-Amz-Signature|circle-artifacts\.com/)
+      expect(Dir.children(File.join(destination, job_id, '0', 'screenshots'))).to be_empty
+    end
+  end
+
+  it 'reports a malformed redirect target without exposing the URL or its signing parameters' do
+    stub_artifacts(artifact(0))
+    bad_location = 'https://storage.example.com/signed-download?X-Amz-Signature=dummy secret'
+    response = Net::HTTPFound.new('1.1', '302', 'Found')
+    response['Location'] = bad_location
+    allow(client).to receive(:get_raw).with(url, headers).and_yield(response)
+
+    Dir.mktmpdir do |destination|
+      stderr = capture_stderr do
+        expect { described_class.start(download_args(destination)) }
+          .to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      end
+      expect(stderr).to match(/Could not download .*Invalid artifact redirect URL/)
+      expect(stderr).not_to match(/dummy|secret|X-Amz-Signature|storage\.example\.com/)
+      expect(Dir.children(File.join(destination, job_id, '0', 'screenshots'))).to be_empty
     end
   end
 

@@ -32,10 +32,16 @@ module CircleCI
 
           def write_artifact(directory, name, url)
             Tempfile.create('.artifact-', directory, binmode: true) do |file|
-              stream(URI(url), file)
+              stream(parse_artifact_uri(url), file)
               file.close
               File.rename(file.path, File.join(directory, name))
             end
+          end
+
+          def parse_artifact_uri(url)
+            URI(url)
+          rescue URI::Error
+            raise Thor::Error, 'Invalid artifact URL.'
           end
 
           def path_components(artifact)
@@ -80,7 +86,13 @@ module CircleCI
 
             raise Thor::Error, 'Too many artifact redirects.' if redirects.zero?
 
-            stream(uri.merge(location), file, redirects - 1)
+            stream(merge_redirect_uri(uri, location), file, redirects - 1)
+          end
+
+          def merge_redirect_uri(uri, location)
+            uri.merge(location)
+          rescue URI::Error
+            raise Thor::Error, 'Invalid artifact redirect URL.'
           end
 
           def read_response(response, file)
