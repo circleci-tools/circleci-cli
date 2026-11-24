@@ -178,6 +178,27 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     end
   end
 
+  it 'keeps a download inside the opened directory when it is swapped for a symlink mid-transfer' do
+    stub_artifacts(artifact(0))
+    response = stub_download(url, '')
+
+    Dir.mktmpdir do |destination|
+      Dir.mktmpdir do |outside|
+        screenshots_dir = File.join(destination, job_id, '0', 'screenshots')
+        saved_dir = "#{screenshots_dir}.saved"
+        allow(response).to receive(:read_body) do |file|
+          File.rename(screenshots_dir, saved_dir)
+          File.symlink(outside, screenshots_dir)
+          file << 'downloaded'
+        end
+
+        expect { described_class.start(download_args(destination)) }.to output(/Downloaded 1 artifact/).to_stdout
+        expect(File.binread(File.join(saved_dir, 'failure.png'))).to eq('downloaded')
+        expect(Dir.children(outside)).to be_empty
+      end
+    end
+  end
+
   it 'requires a filter and destination together before prompting for a token' do
     expect(CircleCI::CLI::Command::ArtifactsCommand).not_to receive(:setup_token)
 
