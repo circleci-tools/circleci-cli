@@ -173,6 +173,45 @@ describe CircleCI::CLI::Runner, 'run' do
       expect { described_class.start(args) }.to output(/  unit\n    - fails after passing tests\n\z/).to_stdout
     end
 
+    it 'stops reading the response once the output budget is full and closes the connection' do
+      command = CircleCI::CLI::Command::RunCommand.new('test-token')
+      summary = CircleCI::CLI::Command::FailedTestsSummary
+      fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+      stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      kept_message = 'a' * 700_000
+      dropped_message = 'b' * 700_000
+      kept = JSON.generate('name' => 'kept', 'result' => 'failure', 'message' => kept_message)
+      dropped = JSON.generate('name' => 'dropped', 'result' => 'failure', 'message' => dropped_message)
+      chunks = Enumerator.new do |stream|
+        stream << "#{kept}\n#{dropped}\n"
+        raise 'test results should not be read past the output budget'
+      end
+      stub_test_chunks(unit_id, chunks)
+
+      report = command.summary(run_id, failed_tests: true)
+
+      expect(report).to end_with("- kept\n      #{kept_message}#{summary::TRUNCATION_NOTICE}")
+      expect(report).not_to include('dropped')
+      # One extra close beyond the baseline 3 (title/workflows, workflow jobs, test session) for the
+      # abandoned connection, on top of the worker's own close once its queue is drained.
+      expect(session).to have_received(:close).exactly(4).times
+    end
+
+    it 'reads the full response when the report stays within the output budget' do
+      fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+      stub_workflow_page('first', [failed_job(unit_id, 'unit')])
+      first = JSON.generate('name' => 'first', 'result' => 'failure')
+      last = JSON.generate('name' => 'last', 'result' => 'failure')
+      chunks = Enumerator.new do |stream|
+        stream << "#{first}\n"
+        stream << "#{last}\n"
+      end
+      stub_test_chunks(unit_id, chunks)
+
+      expect { described_class.start(args) }.to output(/  unit\n    - first\n    - last\n\z/).to_stdout
+      expect(session).to have_received(:close).exactly(3).times
+    end
+
     it 'skips oversized records split across chunks and resumes at the next record' do
       limit = CircleCI::CLI::Command::TestResultLines::MAX_RECORD_BYTES
       fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
