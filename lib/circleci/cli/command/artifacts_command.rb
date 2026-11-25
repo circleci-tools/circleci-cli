@@ -33,7 +33,7 @@ module CircleCI
         def download_matches(matches, destination)
           Networking::HTTPClient::SessionPool.open do |sessions|
             downloader = Download.new(destination, @headers, sessions)
-            matches.each { downloader.save(_1) }
+            RunRequestPool.fetch(matches) { |_session, artifact| downloader.save(artifact) }
           end
         end
 
