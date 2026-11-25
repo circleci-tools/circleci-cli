@@ -13,20 +13,20 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
   describe '#to_s' do
     subject { described_class.new(steps, pretty: pretty).to_s }
 
-    let(:http) { instance_double(Net::HTTP) }
+    let(:session_class) { CircleCI::CLI::Networking::HTTPClient::Session }
+    let(:session) { instance_double(session_class, close: nil) }
 
     before do
-      allow(http).to receive(:max_retries=).with(0)
-      allow(Net::HTTP).to receive(:start).with('circleci.com', 443, use_ssl: true).and_yield(http)
-      allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path: '/output/123')))
+      allow(session_class).to receive(:new).and_return(session)
+      allow(session).to receive(:get_raw).with('https://circleci.com/output/123')
         .and_yield(successful_log_response('[{"message":"action log"}]'))
-      allow(http).to receive(:request).with(have_attributes(path: '/output/456'))
+      allow(session).to receive(:get_raw).with('https://circleci.com/output/456')
         .and_yield(successful_log_response('[{"message":"successful action log"}]'))
     end
 
     after do
-      expect(http).to have_received(:request).with(have_attributes(path: '/output/123')).once
-      expect(http).not_to have_received(:request).with(have_attributes(path: '/output/456'))
+      expect(session).to have_received(:get_raw).with('https://circleci.com/output/123').once
+      expect(session).not_to have_received(:get_raw).with('https://circleci.com/output/456')
     end
 
     let(:steps) do
@@ -79,7 +79,7 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
       end
 
       it 'escapes the action name and log while preserving colors and log line breaks' do
-        allow(http).to receive(:request).with(have_attributes(path: '/output/123'))
+        allow(session).to receive(:get_raw).with('https://circleci.com/output/123')
           .and_yield(successful_log_response(JSON.generate([{ message: "first\r\nsecond\e[2K" }])))
 
         expect(subject).to eq("\e[0;31;49mTest\\x0D\\x1B[2K\e[0m\nfirst\nsecond\\x1B[2K\n")
