@@ -690,10 +690,13 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       end
     end
 
+    let(:log_session) { instance_double(CircleCI::CLI::Networking::HTTPClient::Session, close: nil) }
+
     before do
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw)
+      allow(CircleCI::CLI::Networking::HTTPClient::Session).to receive(:new).and_return(log_session)
+      allow(log_session).to receive(:get_raw)
         .with('https://circleci.com/output/setup').and_yield(log_response("setup log\e[2K"))
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw)
+      allow(log_session).to receive(:get_raw)
         .with('https://circleci.com/output/test').and_yield(log_response('test log <%= "log" %>'))
 
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
@@ -704,7 +707,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
 
     it 'prints only failed action logs by default' do
       expect(CircleCI::CLI::Response::Build).to receive(:get).with('user', 'repo', 42).and_return(response_build)
-      expect(CircleCI::CLI::Networking::HTTPClient).not_to receive(:get_raw).with('https://circleci.com/output/setup')
+      expect(log_session).not_to receive(:get_raw).with('https://circleci.com/output/setup')
 
       expect { session.send(:show_interrupted_build_results, builds, {}) }
         .to output(satisfy do |output|
@@ -723,10 +726,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
 
     it 'prints the header, action, and log once after a timeout with partial data' do
-      http = CircleCI::CLI::Networking::HTTPClient
-      expect(http).to receive(:get_raw).with('https://circleci.com/output/test').ordered
+      expect(log_session).to receive(:get_raw).with('https://circleci.com/output/test').ordered
         .and_yield(partial_log_response)
-      expect(http).to receive(:get_raw).with('https://circleci.com/output/test').ordered
+      expect(log_session).to receive(:get_raw).with('https://circleci.com/output/test').ordered
         .and_yield(log_response('test log <%= "log" %>'))
 
       expect { session.send(:show_interrupted_build_results, builds, { 42 => response_build }) }
@@ -739,7 +741,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       next_build = instance_double(CircleCI::CLI::Response::Build, finished?: true, build_number: 43,
                                                                   project_name: 'user/repo')
       next_detail = instance_double(CircleCI::CLI::Response::Build, steps: [])
-      expect(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with('https://circleci.com/output/test')
+      expect(log_session).to receive(:get_raw).with('https://circleci.com/output/test')
         .twice.and_yield(partial_log_response)
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
         .with(next_build, a_string_including('Result of user/repo #43 completed in background'))

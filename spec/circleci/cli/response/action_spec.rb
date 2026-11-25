@@ -27,7 +27,8 @@ describe CircleCI::CLI::Response::Action do
         response_body.bytes.each { |byte| read.call(byte.chr) }
       end
       allow(http).to receive(:max_retries=).with(0)
-      allow(Net::HTTP).to receive(:start).with('storage.example.test', 443, use_ssl: true).and_yield(http)
+      allow(http).to receive(:finish)
+      allow(Net::HTTP).to receive(:start).with('storage.example.test', 443, use_ssl: true).and_return(http)
       path = '/output/123?signature=a%2Bb%2Fc%3D&expires=60'
       allow(http).to receive(:request).with(an_instance_of(Net::HTTP::Get).and(have_attributes(path:))).and_yield(response)
     end

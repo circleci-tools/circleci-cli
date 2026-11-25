@@ -85,10 +85,6 @@ module CircleCI
           end
         end
 
-        def self.get(url, headers = {})
-          JSON.parse(get_raw(url, headers).body)
-        end
-
         def self.get_raw(url, headers = {}, &read_response)
           uri = URI(url)
           req = get_request(uri, headers)

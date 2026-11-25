@@ -183,10 +183,12 @@ describe CircleCI::CLI::Printer::StepPrinter, type: :printer do
     [true, false].each do |pretty|
       it "releases large log chunks and preserves action and record order with pretty=#{pretty}" do
         printer = printer_class.new(steps, pretty:)
-        client = CircleCI::CLI::Networking::HTTPClient
+        session_class = CircleCI::CLI::Networking::HTTPClient::Session
+        session = instance_double(session_class, close: nil)
+        allow(session_class).to receive(:new).and_return(session)
 
         Tempfile.create('step-output', encoding: Encoding::UTF_8) do |output|
-          expect(client).to receive(:get_raw).exactly(3).times do |url, &read|
+          expect(session).to receive(:get_raw).exactly(3).times do |url, &read|
             index = url.split('/').last.to_i
             GC.start
             expect(printer.log_chunks.none?(&:weakref_alive?)).to be(true)
