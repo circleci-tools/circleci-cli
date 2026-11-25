@@ -2,14 +2,16 @@
 
 require 'circleci/cli/command/run_lookup'
 require 'circleci/cli/command/run_command/failed_tests_summary'
+require 'circleci/cli/command/watch_command/request_errors'
 
 module CircleCI
   module CLI
     module Command
       class RunCommand < RunLookup
-        TEST_READ_ERRORS = [
-          Net::ReadTimeout, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
-        ].freeze
+        # Only errors that can occur once the response headers have already arrived (read_started),
+        # since Net::OpenTimeout/Net::WriteTimeout/SocketError/Errno::ECONNREFUSED happen earlier.
+        TEST_READ_ERRORS = (WatchRequestErrors::TRANSIENT -
+          [Net::OpenTimeout, Net::WriteTimeout, SocketError, Errno::ECONNREFUSED]).freeze
 
         def self.run(run_id, failed_tests: false)
           raise Thor::Error, 'Run ID must be a UUID.' unless UUID.match?(run_id)
