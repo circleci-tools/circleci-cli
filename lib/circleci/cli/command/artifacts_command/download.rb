@@ -21,19 +21,23 @@ module CircleCI
 
             def store(parts)
               directory, file = open_destination(parts)
+              commit(directory, file, parts.last) { yield file }
+            end
+
+            private
+
+            def commit(directory, file, name)
               committed = false
               begin
-                yield file
+                yield
                 file.close
-                rename(directory, file, parts.last)
+                rename(directory, file, name)
                 committed = true
               ensure
                 cleanup_tempfile(directory, file) unless committed
                 directory.close
               end
             end
-
-            private
 
             def rename(directory, file, name)
               @mutex.synchronize { Dir.fchdir(directory.fileno) { File.rename(file.path, name) } }
