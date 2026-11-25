@@ -46,6 +46,13 @@ module CircleCI
 
         # One Session per origin, kept alive for the pool's lifetime; a long redirect chain
         # across many origins evicts the least recently used session instead of growing unbounded.
+        #
+        # Safe to share across worker threads: checkout (picking/creating a session) is
+        # serialized by a pool-wide mutex, and each origin additionally gets its own mutex so
+        # concurrent requests to the *same* origin are serialized onto its one connection while
+        # different origins still proceed in parallel. Checkout always marks an origin as most
+        # recently used, so eviction can only ever hit an idle origin as long as the number of
+        # concurrent callers never exceeds LIMIT.
         class SessionPool
           LIMIT = 4
 
@@ -60,28 +67,42 @@ module CircleCI
             @max_retries = max_retries
             @limit = limit
             @sessions = {}
+            @locks = {}
+            @mutex = Mutex.new
           end
 
           def get_raw(url, headers = {}, &)
-            session_for(URI(url)).get_raw(url, headers, &)
+            session, lock = checkout(URI(url))
+            lock.synchronize { session.get_raw(url, headers, &) }
           end
 
           def close
-            @sessions.each_value(&:close)
-          ensure
-            @sessions.clear
+            @mutex.synchronize do
+              @sessions.each_value(&:close)
+              @sessions.clear
+              @locks.clear
+            end
           end
 
           private
 
-          def session_for(uri)
+          def checkout(uri)
             origin = uri.origin
-            @sessions[origin] = @sessions.delete(origin) || new_session
+            @mutex.synchronize do
+              @sessions[origin] = @sessions.delete(origin) || new_session
+              [@sessions[origin], @locks[origin] ||= Mutex.new]
+            end
           end
 
           def new_session
-            @sessions.shift.last.close if @sessions.size >= @limit
+            evict_oldest if @sessions.size >= @limit
             Session.new(max_retries: @max_retries)
+          end
+
+          def evict_oldest
+            origin, session = @sessions.shift
+            @locks.delete(origin)
+            session.close
           end
         end
 

@@ -116,6 +116,51 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     worker&.join
   end
 
+  it 'overlaps artifact downloads up to four at a time' do
+    artifacts = (1..8).map do |n|
+      artifact(0, path: "screenshots/file-#{n}.png", url: "https://host-#{n}.example.com/file-#{n}.png")
+    end
+    stub_artifacts(*artifacts)
+
+    started = Queue.new
+    release = Queue.new
+    mutex = Mutex.new
+    active = peak = 0
+    allow(download_session).to receive(:get_raw) do |request_url, _headers, &block|
+      mutex.synchronize do
+        active += 1
+        peak = [peak, active].max
+      end
+      started << true
+      release.pop
+      response = Net::HTTPOK.new('1.1', '200', 'OK')
+      allow(response).to receive(:read_body) { |file| file << request_url }
+      block.call(response)
+      mutex.synchronize { active -= 1 }
+    end
+
+    command = CircleCI::CLI::Command::ArtifactsCommand.new('test-token')
+    result = nil
+    worker = nil
+    Dir.mktmpdir do |destination|
+      worker = Thread.new { result = command.artifacts(run_id, download: 'screenshots/*.png', destination:) }
+      Timeout.timeout(5) { 4.times { started.pop } }
+      8.times { release << true }
+      worker.join
+
+      expect(peak).to eq(4)
+      expect(result).to match(/Downloaded 8 artifacts/)
+      (1..8).each do |n|
+        expect(File.binread(File.join(destination, job_id, '0', 'screenshots', "file-#{n}.png")))
+          .to eq("https://host-#{n}.example.com/file-#{n}.png")
+      end
+    end
+  ensure
+    started&.close
+    release&.close
+    worker&.join
+  end
+
   it 'reuses one HTTPS session for two files served from the same origin' do
     other_url = url.sub('/0/', '/1/')
     stub_artifacts(artifact(0), artifact(1, url: other_url), artifact(0, path: 'report.xml'))
