@@ -9,6 +9,7 @@ module CircleCI
       class FailedTestsSummary
         MAX_OUTPUT_BYTES = 1024 * 1024
         TRUNCATION_NOTICE = "\n\nFailed test output truncated. Some uploaded test results were omitted."
+        BUDGET_EXHAUSTED = :failed_tests_summary_budget_exhausted
 
         def initialize(&fetch_results)
           @fetch_results = fetch_results
@@ -72,21 +73,27 @@ module CircleCI
 
         def test_results(session, job_id)
           results = nil
-          @fetch_results.call(session, job_id) do |response|
-            results = collect_results(response) if response.is_a?(Net::HTTPSuccess)
+          exhausted = catch(BUDGET_EXHAUSTED) do
+            @fetch_results.call(session, job_id) do |response|
+              results = collect_results(response) if response.is_a?(Net::HTTPSuccess)
+            end
+            nil
           end
-          results
+          return results unless exhausted
+
+          # The response body was left unread; the connection can't be reused for the next request.
+          session.close
+          exhausted
         end
 
         def collect_results(response)
           entries = []
           bytes = 0
           status = each_failure(response) do |record|
-            next if bytes > MAX_OUTPUT_BYTES
-
             entry = "\n#{Printer::FailedTestsPrinter.format_failure(record)}"
             bytes += entry.bytesize
             entries << entry if bytes <= MAX_OUTPUT_BYTES
+            throw BUDGET_EXHAUSTED, [entries, :received, true] if bytes > MAX_OUTPUT_BYTES
           end
           [entries, status, bytes > MAX_OUTPUT_BYTES]
         end
