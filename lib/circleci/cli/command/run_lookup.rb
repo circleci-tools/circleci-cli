@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'circleci/cli/command/run_command/run_request_pool'
+require 'circleci/cli/command/watch_command/request_errors'
 
 module CircleCI
   module CLI
@@ -56,8 +57,7 @@ module CircleCI
           return response if response.is_a?(Net::HTTPSuccess)
 
           raise Thor::Error, api_error(response)
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
-               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE => e
+        rescue *WatchRequestErrors::TRANSIENT => e
           raise Thor::Error, "CircleCI API request failed (GET #{url}): #{e.message}"
         end
 
