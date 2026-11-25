@@ -1,13 +1,12 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/networking/http_client'
+
 module CircleCI
   module CLI
     module Command
       class ActionOutput
-        OUTPUT_READ_ERRORS = [
-          EOFError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, Errno::ECONNRESET,
-          Errno::ECONNABORTED, Errno::EPIPE, Errno::ETIMEDOUT, Errno::ECONNREFUSED
-        ].freeze
+        OUTPUT_READ_ERRORS = Networking::HTTPClient::TRANSIENT_ERRORS
         LINE_BUFFER_LIMIT = 64 * 1024
         OUTPUT_SUFFIX = /(?:\r|[\xC2-\xDF]|[\xE0-\xEF][\x80-\xBF]?|[\xF0-\xF4][\x80-\xBF]{0,2})\z/n
         CONTENT_RANGE = %r{\Abytes (\d+)-(\d+)/(\d+|\*)\z}i

@@ -1,15 +1,13 @@
 # frozen_string_literal: true
 
 require 'net/http'
+require 'circleci/cli/networking/http_client'
 
 module CircleCI
   module CLI
     module Command
       module WatchRequestErrors
-        TRANSIENT = [
-          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
-          Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
-        ].freeze
+        TRANSIENT = Networking::HTTPClient::TRANSIENT_ERRORS
       end
     end
   end

@@ -7,6 +7,11 @@ module CircleCI
   module CLI
     module Networking
       module HTTPClient
+        TRANSIENT_ERRORS = [
+          Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
+          Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
+        ].freeze
+
         class Session
           def self.open(max_retries: 0)
             session = new(max_retries:)

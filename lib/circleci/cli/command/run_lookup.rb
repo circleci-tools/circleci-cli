@@ -56,8 +56,7 @@ module CircleCI
           return response if response.is_a?(Net::HTTPSuccess)
 
           raise Thor::Error, api_error(response)
-        rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout, SocketError, EOFError,
-               Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE => e
+        rescue *Networking::HTTPClient::TRANSIENT_ERRORS => e
           raise Thor::Error, "CircleCI API request failed (GET #{url}): #{e.message}"
         end
 

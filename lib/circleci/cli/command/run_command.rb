@@ -2,14 +2,15 @@
 
 require 'circleci/cli/command/run_lookup'
 require 'circleci/cli/command/run_command/failed_tests_summary'
+require 'circleci/cli/networking/http_client'
 
 module CircleCI
   module CLI
     module Command
       class RunCommand < RunLookup
-        TEST_READ_ERRORS = [
-          Net::ReadTimeout, EOFError, Errno::ECONNRESET, Errno::ECONNABORTED, Errno::ETIMEDOUT, Errno::EPIPE
-        ].freeze
+        # Connection-phase errors can't occur once a response has started streaming.
+        TEST_READ_ERRORS = Networking::HTTPClient::TRANSIENT_ERRORS -
+                            [Net::OpenTimeout, Net::WriteTimeout, SocketError, Errno::ECONNREFUSED]
 
         def self.run(run_id, failed_tests: false)
           raise Thor::Error, 'Run ID must be a UUID.' unless UUID.match?(run_id)
