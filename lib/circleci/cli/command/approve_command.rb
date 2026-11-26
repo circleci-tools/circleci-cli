@@ -61,7 +61,7 @@ module CircleCI
             name = approval.job.fetch('attributes').fetch('name')
             [approval.workflow_name, name].map { |cell| Printer.escape_controls(cell) }
           end
-          Terminal::Table.new(headings: ['Workflow', 'Job'], rows:).to_s
+          Terminal::Table.new(headings: %w[Workflow Job], rows:).to_s
         end
       end
     end

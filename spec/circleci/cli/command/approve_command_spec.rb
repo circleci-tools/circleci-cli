@@ -87,7 +87,7 @@ describe CircleCI::CLI::Runner, 'approve' do
 
   it 'escapes control characters in the approval confirmation message' do
     stub_jobs(checks_id, [])
-    stub_jobs(deploy_id, [approval_job('approve', request_id: 'req-123')])
+    stub_jobs(deploy_id, [approval_job("appro\eve", request_id: 'req-123')])
     stub_post("workflow/#{deploy_id}/approve/req-123")
 
     expect { described_class.start(['approve', run_id, '--job', "appro\eve"]) }
