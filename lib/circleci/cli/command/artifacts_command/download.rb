@@ -147,16 +147,27 @@ module CircleCI
           end
 
           def read_response(response, file)
+            response.ignore_eof = false
             case response
             when Net::HTTPOK
-              response.ignore_eof = false
               response.read_body(file)
               nil
-            when Net::HTTPRedirection
-              response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
             else
-              raise Thor::Error, "HTTP #{response.code}"
+              non_ok_response(response)
             end
+          end
+
+          def non_ok_response(response)
+            drain(response)
+            raise Thor::Error, "HTTP #{response.code}" unless response.is_a?(Net::HTTPRedirection)
+
+            response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
+          end
+
+          # Net::HTTP leaves the body on the socket until it's read; a response left unread
+          # here would corrupt the next request on the same pooled connection.
+          def drain(response)
+            response.body
           end
 
           def headers_for(uri)
