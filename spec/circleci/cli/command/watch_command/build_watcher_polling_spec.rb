@@ -1047,6 +1047,23 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
         "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green(escaped_step_name)}"
       )
     end
+
+    it 'replaces a running step with a canceled status line' do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+        build_response.call([step_hash.call(name: step_name, type: 'build', status: 'canceled')])
+      )
+      allow(watcher).to receive(:puts)
+
+      watcher.instance_variable_set(
+        :@steps,
+        [build_response.call([step_hash.call(name: step_name, type: 'build', status: 'running')]).steps.first]
+      )
+      watcher.send(:update_build)
+
+      expect(watcher).to have_received(:puts).with(
+        "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_yellow(escaped_step_name)}"
+      )
+    end
   end
 
   describe '#update_actions' do
