@@ -152,13 +152,16 @@ module CircleCI
             when Net::HTTPOK
               response.read_body(file)
               nil
-            when Net::HTTPRedirection
-              drain(response)
-              response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
             else
-              drain(response)
-              raise Thor::Error, "HTTP #{response.code}"
+              non_ok_response(response)
             end
+          end
+
+          def non_ok_response(response)
+            drain(response)
+            raise Thor::Error, "HTTP #{response.code}" unless response.is_a?(Net::HTTPRedirection)
+
+            response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
           end
 
           # Net::HTTP leaves the body on the socket until it's read; a response left unread

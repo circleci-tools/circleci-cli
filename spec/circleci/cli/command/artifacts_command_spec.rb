@@ -184,10 +184,14 @@ describe CircleCI::CLI::Runner, 'artifacts' do
       Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
     end
 
-    socket = nil
+    # Net::HTTP closes its socket whenever the block passed to #request raises (see
+    # Net::HTTP#transport_request), so the 403 response forces a reconnect before the
+    # second artifact's request; the responder accepts a fresh connection each time.
+    sockets = []
     responder = Thread.new do
-      socket = server.accept
       2.times do
+        socket = server.accept
+        sockets << socket
         request_line = socket.gets
         socket.each_line.take_while { |line| line != "\r\n" }
         if request_line.include?('err.png')
@@ -217,7 +221,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     end
   ensure
     responder&.join
-    socket&.close
+    sockets&.each(&:close)
     server&.close
   end
 
