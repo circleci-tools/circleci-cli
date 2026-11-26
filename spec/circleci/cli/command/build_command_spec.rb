@@ -37,8 +37,10 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       build_hash['steps'].last['actions'].first.merge!(
         'name' => action_name, 'status' => 'failed', 'output_url' => output_url
       )
-      http_client = CircleCI::CLI::Networking::HTTPClient
-      allow(http_client).to receive(:get_raw).with(output_url).and_yield(response)
+      session_class = CircleCI::CLI::Networking::HTTPClient::Session
+      log_session = instance_double(session_class, close: nil)
+      allow(session_class).to receive(:new).and_return(log_session)
+      allow(log_session).to receive(:get_raw).with(output_url).and_yield(response)
       allow(response).to receive(:read_body).and_yield(response_body)
     end
 
@@ -135,7 +137,10 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
       build_hash['steps'].last['actions'].first.merge!('status' => 'failed', 'output_url' => output_url)
       response = Net::HTTPOK.new('1.1', '200', 'OK')
       allow(response).to receive(:read_body).and_yield(JSON.generate([{ 'message' => "before\n\nafter\e[2K\n#{long_line}\n" }]))
-      allow(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with(output_url).and_yield(response)
+      session_class = CircleCI::CLI::Networking::HTTPClient::Session
+      log_session = instance_double(session_class, close: nil)
+      allow(session_class).to receive(:new).and_return(log_session)
+      allow(log_session).to receive(:get_raw).with(output_url).and_yield(response)
     end
 
     context 'with table output' do
