@@ -31,9 +31,28 @@ tracks recent builds and which results have been shown.
 [BuildWatcher](../lib/circleci/cli/command/watch_command/build_watcher.rb)
 polls build details and action output for the active build.
 
+## Artifact downloads
+
+[ArtifactsCommand](../lib/circleci/cli/command/artifacts_command.rb) lists and
+downloads a run's artifacts through the CircleCI v3 API, using the same
+[RunLookup](../lib/circleci/cli/command/run_lookup.rb) workflow/job lookup as
+`run`. Listing artifacts and downloading them both fan out across jobs through
+[RunRequestPool](../lib/circleci/cli/command/run_command/run_request_pool.rb),
+which runs up to `LIMIT` worker threads over a shared queue. Downloads share a
+[SessionPool](../lib/circleci/cli/networking/http_client.rb) that keeps one
+HTTPS connection alive per origin so redirected artifact URLs on the same host
+don't reconnect for every file.
+[Download](../lib/circleci/cli/command/artifacts_command/download.rb) streams
+each artifact into a temp file and only renames it into place once the
+download finishes, walking the destination path through already-opened
+directory descriptors so a symlink swapped in mid-download can't redirect the
+write.
+
 ## Where to start with tests
 
 For command dispatch and Git defaults, see the
 [runner specs](../spec/circleci/cli/cli_spec.rb). For the build-listing example
 above, see the [builds command specs](../spec/circleci/cli/command/builds_command_spec.rb).
+For the concurrent fetch and download path, see the
+[artifacts command specs](../spec/circleci/cli/command/artifacts_command_spec.rb).
 The [contributing guide](../CONTRIBUTING.md) covers development setup and checks.
