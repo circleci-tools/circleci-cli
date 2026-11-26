@@ -994,6 +994,47 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
       end
     end
 
+    context 'when another step has been printed since this step last ran' do
+      let(:compile_running) { step_hash.call(name: 'Compile', type: 'build', status: 'running', step: 1) }
+      let(:test_running) { step_hash.call(name: 'Test', type: 'test', status: 'running', index: 1, step: 2) }
+      let(:compile_success) { step_hash.call(name: 'Compile', type: 'build', status: 'success', step: 1) }
+
+      it "appends the status instead of rewriting the other step's line" do
+        compile = build_response.call([compile_running]).steps.first
+        test = build_response.call([test_running]).steps.first
+        compile_done = build_response.call([compile_success]).steps.first
+        allow(watcher).to receive(:puts)
+
+        watcher.send(:on_new_step, compile)
+        watcher.send(:on_new_step, test)
+        watcher.send(:on_new_step_status, compile_done)
+
+        expect(watcher).to have_received(:puts).with('Compile').once
+        expect(watcher).to have_received(:puts).with('Test').once
+        expect(watcher).to have_received(:puts).with(
+          "\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Compile')}"
+        ).once
+        expect(watcher).not_to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Compile')}"
+        )
+      end
+
+      it 'still rewrites the status of the most recently printed step' do
+        test = build_response.call([test_running]).steps.first
+        test_done = build_response.call(
+          [step_hash.call(name: 'Test', type: 'test', status: 'success', index: 1, step: 2)]
+        ).steps.first
+        allow(watcher).to receive(:puts)
+
+        watcher.send(:on_new_step, test)
+        watcher.send(:on_new_step_status, test_done)
+
+        expect(watcher).to have_received(:puts).with(
+          "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Test')}"
+        ).once
+      end
+    end
+
     it 'prints failed statuses and replays buffered output' do
       log_text = "captured output <%= \"log\" %>\n"
       watcher.send(:retain_output, build.steps.first.actions.first.identity, log_text)
@@ -1045,6 +1086,23 @@ describe CircleCI::CLI::Command::BuildWatcher, type: :command do
 
       expect(watcher).to have_received(:puts).with(
         "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green(escaped_step_name)}"
+      )
+    end
+
+    it 'replaces a running step with a canceled status line' do
+      allow(CircleCI::CLI::Response::Build).to receive(:get).and_return(
+        build_response.call([step_hash.call(name: step_name, type: 'build', status: 'canceled')])
+      )
+      allow(watcher).to receive(:puts)
+
+      watcher.instance_variable_set(
+        :@steps,
+        [build_response.call([step_hash.call(name: step_name, type: 'build', status: 'running')]).steps.first]
+      )
+      watcher.send(:update_build)
+
+      expect(watcher).to have_received(:puts).with(
+        "\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_yellow(escaped_step_name)}"
       )
     end
   end

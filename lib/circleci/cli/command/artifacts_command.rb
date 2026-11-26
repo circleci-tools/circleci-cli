@@ -71,4 +71,5 @@ module CircleCI
   end
 end
 
+require 'circleci/cli/command/artifacts_command/artifact_stream'
 require 'circleci/cli/command/artifacts_command/download'
