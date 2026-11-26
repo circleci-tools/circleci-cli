@@ -9,6 +9,7 @@ module CircleCI
       class RunLookup < BaseCommand
         API_URL = 'https://circleci.com/api/v3'
         UUID = /\A[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\z/i
+        MAX_WORKFLOW_PAGES = 100
 
         def initialize(token)
           super()
@@ -29,7 +30,7 @@ module CircleCI
         def workflows(session, run_id)
           query = { 'filter[run_id]' => run_id }
           results = []
-          loop do
+          MAX_WORKFLOW_PAGES.times do
             page = get(session, 'workflows', query)
             results.concat(page.fetch('data'))
             cursor = page.fetch('page').fetch('next')
@@ -37,6 +38,7 @@ module CircleCI
 
             query['page[cursor]'] = cursor
           end
+          raise Thor::Error, 'Too many workflow pages.'
         end
 
         def workflow_jobs(session, workflow)
