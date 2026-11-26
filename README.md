@@ -16,6 +16,7 @@ circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 - Inspect build steps and logs, or watch running builds in real time.
 - Summarize a run's workflows and jobs, including uploaded test failures on request.
 - Retry or cancel builds and open project or build pages in your browser.
+- List and approve pending workflow approval jobs from a run.
 
 ## Installation
 
@@ -85,6 +86,17 @@ and path. Downloads require both a path glob and a destination. Quote the glob
 to match against the paths shown in the list. Files are saved under
 `DESTINATION/JOB_UUID/EXECUTION/PATH`, so parallel executions can keep the same
 artifact path. A completed download replaces any existing file at that path.
+
+#### Approve a pending workflow approval job
+
+```sh
+circleci-cli approve RUN_ID
+circleci-cli approve RUN_ID --job deploy-approval
+```
+
+Without `--job`, the command lists pending approval jobs grouped by workflow.
+With `--job NAME`, it approves the pending job with that name; the command
+fails if no pending job, or more than one, matches the name.
 
 #### Watch your project
 ```

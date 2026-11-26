@@ -25,6 +25,12 @@ module CircleCI
             connection_for(uri).request(request, &)
           end
 
+          def post_raw(url, headers = {}, &)
+            uri = URI(url)
+            request = HTTPClient.post_request(uri, headers)
+            connection_for(uri).request(request, &)
+          end
+
           def close
             @http&.finish
           ensure
@@ -117,6 +123,12 @@ module CircleCI
 
         def self.get_request(uri, headers)
           Net::HTTP::Get.new(uri).tap do |request|
+            headers.each { |key, value| request[key] = value }
+          end
+        end
+
+        def self.post_request(uri, headers)
+          Net::HTTP::Post.new(uri).tap do |request|
             headers.each { |key, value| request[key] = value }
           end
         end
