@@ -760,6 +760,27 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         end).to_stdout
     end
 
+    it 'reports an action denied with HTTP 403 and continues reporting completed builds' do
+      next_build = instance_double(CircleCI::CLI::Response::Build, finished?: true, build_number: 43,
+                                                                  project_name: 'user/repo')
+      next_detail = instance_double(CircleCI::CLI::Response::Build, steps: [])
+      forbidden_response = Net::HTTPForbidden.new('1.1', '403', 'Forbidden')
+      expect(log_session).to receive(:get_raw).with('https://circleci.com/output/test')
+        .once.and_yield(forbidden_response)
+      expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
+        .with(next_build, a_string_including('Result of user/repo #43 completed in background'))
+        .and_return('next build header')
+      expect(repository).to receive(:mark_as_shown).with(43)
+
+      expect do
+        session.send(:show_interrupted_build_results, [finished_build, next_build],
+                     { 42 => response_build, 43 => next_detail })
+      end.to output("Warning: Could not download log for Test.\n").to_stderr
+        .and output(satisfy do |output|
+          output.match?(/header output.*Test.*next build header/m) && !output.include?('test log')
+        end).to_stdout
+    end
+
     it 'preserves the background result when a live step completes afterward' do
       attributes = { 'username' => 'user', 'reponame' => 'repo', 'build_num' => 43 }
       build_class = CircleCI::CLI::Response::Build
