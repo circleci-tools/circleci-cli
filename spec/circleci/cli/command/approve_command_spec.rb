@@ -108,6 +108,7 @@ describe CircleCI::CLI::Runner, 'approve' do
   it 'reports an error when several pending approval jobs share the given name' do
     stub_jobs(checks_id, [approval_job('approve', request_id: 'req-1')])
     stub_jobs(deploy_id, [approval_job('approve', request_id: 'req-2')])
+    allow(session).to receive(:post_raw)
 
     expect do
       expect { described_class.start(['approve', run_id, '--job', 'approve']) }.to raise_error(SystemExit) { |error|
