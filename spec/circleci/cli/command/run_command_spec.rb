@@ -84,6 +84,23 @@ describe CircleCI::CLI::Runner, 'run' do
     expect { described_class.start(['run', run_id]) }.to output(/No workflows found/).to_stdout
   end
 
+  it 'gives up and reports an error when the workflows cursor never terminates' do
+    max_pages = CircleCI::CLI::Command::RunLookup::MAX_WORKFLOW_PAGES
+    stub_get("runs/#{run_id}", fixtures.fetch('run'))
+    stub_get(workflows_path, { 'data' => [], 'page' => { 'next' => 'same-cursor' } })
+    stub_get("#{workflows_path}&page%5Bcursor%5D=same-cursor", { 'data' => [], 'page' => { 'next' => 'same-cursor' } })
+
+    expect do
+      expect { described_class.start(['run', run_id]) }.to raise_error(SystemExit) { |error|
+        expect(error.status).not_to be_zero
+      }
+    end.to output("Too many workflow pages.\n").to_stderr
+    expect(session).to have_received(:get_raw).with("https://circleci.com/api/v3/#{workflows_path}", headers).once
+    expect(session).to have_received(:get_raw)
+      .with("https://circleci.com/api/v3/#{workflows_path}&page%5Bcursor%5D=same-cursor", headers)
+      .exactly(max_pages - 1).times
+  end
+
   context 'with --failed-tests' do
     let(:args) { ['run', run_id, '--failed-tests'] }
     let(:unit_id) { '123e4567-e89b-12d3-a456-426614174010' }
