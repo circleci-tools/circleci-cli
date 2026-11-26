@@ -12,6 +12,7 @@ the options for one command.
 | `cancel` | Cancel a build. | `-p, --project OWNER/REPO`, `-n, --build NUMBER` |
 | `retry` | Retry a build. | `-p, --project OWNER/REPO`, `-n, --build NUMBER`, `-l, --last` |
 | `run RUN_ID` | Show the workflows and jobs for a CircleCI run. Use the run UUID. | `--failed-tests` |
+| `artifacts RUN_ID` | List or download artifacts from a run. Use the run UUID. | `--download PATH`, `--destination DIRECTORY` |
 | `watch` | Watch builds in real time. | `-p, --project OWNER/REPO`, `-b, --branch BRANCH`, `-a, --all`, `-u, --user USER`, `-v, --verbose` |
 | `version` | Show the installed gem version. | |
 
@@ -38,6 +39,10 @@ include builds across branches.
   available logs from successful build actions.
 - `run --failed-tests` adds failures grouped by workflow and job when failed
   jobs have uploaded test results with `store_test_results`.
+- `artifacts RUN_ID` lists every artifact's workflow, job name, job UUID,
+  execution index, and path. Provide both `--download PATH` and
+  `--destination DIRECTORY` together to download artifacts whose path matches
+  the `PATH` glob into `DIRECTORY` instead of listing them.
 
 ## Authentication
 

@@ -1,6 +1,6 @@
 {
   "projectName": "circleci-cli",
-  "projectOwner": "unhappychoice",
+  "projectOwner": "circleci-tools",
   "repoType": "github",
   "repoHost": "https://github.com",
   "files": [
