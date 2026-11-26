@@ -4,6 +4,8 @@ module CircleCI
   module CLI
     module Command
       class BuildRepository
+        EVICTED_REFRESH_INTERVAL = 5
+
         def initialize(username, reponame, branch: nil, user: nil)
           @username = username
           @user = user
@@ -13,6 +15,8 @@ module CircleCI
           @builds = fetch_builds
           @recent_build_numbers = @builds.to_set(&:build_number)
           @build_numbers_shown = @builds.select(&:finished?).to_set(&:build_number)
+          @evicted_refresh_tick = 0
+          @evicted_build_cache = {}
         end
 
         def update
@@ -50,10 +54,11 @@ module CircleCI
         def refresh_evicted_builds(&fetch_detail)
           fetch_detail ||= Response::Build.method(:get)
           @mutex.synchronize do
+            @evicted_refresh_tick += 1
             details = @builds.select { |build| evicted_pending?(build) }.to_h do |build|
-              number = build.build_number
-              [number, fetch_detail.call(@username, @reponame, number)]
+              [build.build_number, refresh_evicted_build(build.build_number, fetch_detail)]
             end
+            @evicted_build_cache.keep_if { |number, _| details.key?(number) }
             @builds.map! { |build| details[build.build_number] || build }
             details
           end
@@ -87,6 +92,17 @@ module CircleCI
 
         def evicted_pending?(build)
           !@recent_build_numbers.include?(build.build_number) && pending?(build)
+        end
+
+        # Mirrors BuildWatcher's 5-poll backoff so unwatched evicted builds aren't re-fetched every tick.
+        def refresh_evicted_build(number, fetch_detail)
+          cache = (@evicted_build_cache[number] ||= { due: 0, detail: nil })
+          return cache[:detail] if @evicted_refresh_tick < cache[:due]
+
+          detail = fetch_detail.call(@username, @reponame, number)
+          cache[:due] = detail ? @evicted_refresh_tick + EVICTED_REFRESH_INTERVAL : @evicted_refresh_tick
+          cache[:detail] = detail if detail
+          cache[:detail]
         end
 
         def find_build(build_number)
