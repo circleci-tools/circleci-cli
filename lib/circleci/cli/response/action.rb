@@ -60,6 +60,10 @@ module CircleCI
           @status == 'timedout' || @status == 'failed'
         end
 
+        def canceled?
+          @status == 'canceled'
+        end
+
         private
 
         def read_log_records(&read_record)
