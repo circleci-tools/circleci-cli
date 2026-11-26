@@ -4,6 +4,7 @@ require 'circleci/cli/printer/project_printer'
 require 'circleci/cli/printer/build_printer'
 require 'circleci/cli/printer/step_printer'
 require 'circleci/cli/printer/failed_tests_printer'
+require 'circleci/cli/printer/env_var_printer'
 
 module CircleCI
   module CLI

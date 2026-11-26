@@ -16,6 +16,7 @@ circleci-cli is a CLI tool for [Circle CI](https://circleci.com).
 - Inspect build steps and logs, or watch running builds in real time.
 - Summarize a run's workflows and jobs, including uploaded test failures on request.
 - Retry or cancel builds and open project or build pages in your browser.
+- List, set, and delete a project's environment variables.
 
 ## Installation
 

@@ -14,6 +14,9 @@ the options for one command.
 | `run RUN_ID` | Show the workflows and jobs for a CircleCI run. Use the run UUID. | `--failed-tests` |
 | `artifacts RUN_ID` | List or download artifacts from a run. Use the run UUID. | `--download PATH`, `--destination DIRECTORY` |
 | `watch` | Watch builds in real time. | `-p, --project OWNER/REPO`, `-b, --branch BRANCH`, `-a, --all`, `-u, --user USER`, `-v, --verbose` |
+| `env list` | List a project's environment variables (values are masked by the API). | `-p, --project OWNER/REPO`, `--no-pretty` |
+| `env set NAME VALUE` | Set a project's environment variable. | `-p, --project OWNER/REPO` |
+| `env delete NAME` | Delete a project's environment variable. | `-p, --project OWNER/REPO` |
 | `version` | Show the installed gem version. | |
 
 ## Project and branch selection
@@ -43,6 +46,9 @@ include builds across branches.
   execution index, and path. Provide both `--download PATH` and
   `--destination DIRECTORY` together to download artifacts whose path matches
   the `PATH` glob into `DIRECTORY` instead of listing them.
+- `env list` uses formatted output by default; pass `--no-pretty` for compact
+  `NAME=VALUE` output. The CircleCI API masks environment variable values, so
+  `env list` and `env set` only ever show a masked value.
 
 ## Authentication
 
