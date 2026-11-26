@@ -64,15 +64,19 @@ module CircleCI
 
         def read_log_records(&read_record)
           records = LogRecords.new
-          Networking::HTTPClient.get_raw(validated_log_url) do |response|
-            unless response.is_a?(Net::HTTPSuccess)
-              raise Thor::Error, "Action log download failed (HTTP #{response.code})"
-            end
-
-            response.ignore_eof = false
-            response.read_body { |chunk| records.read(chunk, &read_record) }
+          Networking::HTTPClient::Session.open do |session|
+            session.get_raw(validated_log_url) { |response| read_log_response(response, records, &read_record) }
           end
           records.finish
+        end
+
+        def read_log_response(response, records, &read_record)
+          unless response.is_a?(Net::HTTPSuccess)
+            raise Thor::Error, "Action log download failed (HTTP #{response.code})"
+          end
+
+          response.ignore_eof = false
+          response.read_body { |chunk| records.read(chunk, &read_record) }
         end
 
         def validated_log_url
