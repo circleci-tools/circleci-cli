@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'socket'
 require 'spec_helper'
 require 'timeout'
 require 'tmpdir'
@@ -176,6 +177,50 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     end
   end
 
+  it 'drains an unread error response body so a later download on the reused connection is not corrupted' do
+    allow(client::Session).to receive(:new).with(max_retries: 0).and_call_original
+    server = TCPServer.new('127.0.0.1', 0)
+    allow(Net::HTTP).to receive(:start).with('output.circle-artifacts.com', 443, use_ssl: true) do
+      Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+    end
+
+    socket = nil
+    responder = Thread.new do
+      socket = server.accept
+      2.times do
+        request_line = socket.gets
+        socket.each_line.take_while { |line| line != "\r\n" }
+        if request_line.include?('err.png')
+          body = 'x' * 50
+          socket.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+        else
+          socket.write("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nok-content")
+        end
+      end
+    end
+
+    Dir.mktmpdir do |destination|
+      Timeout.timeout(5) do
+        client::SessionPool.open do |sessions|
+          downloader = CircleCI::CLI::Command::ArtifactsCommand::Download.new(destination, {}, sessions)
+          artifact_class = CircleCI::CLI::Command::ArtifactsCommand::Artifact
+          err = artifact_class.new('checks', 'job', job_id, 0, 'err.png',
+                                    'https://output.circle-artifacts.com/0/err.png')
+          ok = artifact_class.new('checks', 'job', job_id, 0, 'ok.png',
+                                   'https://output.circle-artifacts.com/0/ok.png')
+
+          expect { downloader.save(err) }.to raise_error(Thor::Error, /Could not download .*HTTP 403/)
+          downloader.save(ok)
+        end
+      end
+      expect(File.binread(File.join(destination, job_id, '0', 'ok.png'))).to eq('ok-content')
+    end
+  ensure
+    responder&.join
+    socket&.close
+    server&.close
+  end
+
   it 'reports an unmatched download filter without creating the destination' do
     stub_artifacts(artifact(0))
     expect(client::Session).not_to receive(:new).with(max_retries: 0)
@@ -193,6 +238,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     storage_url = 'https://storage.example.com/signed-download'
     response = Net::HTTPFound.new('1.1', '302', 'Found')
     response['Location'] = storage_url
+    allow(response).to receive(:body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
     stub_download(storage_url, 'downloaded', request_headers: {})
 
@@ -207,6 +253,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
   it 'reports HTTP download errors, leaves no file, and closes the session' do
     stub_artifacts(artifact(0))
     response = Net::HTTPForbidden.new('1.1', '403', 'Forbidden')
+    allow(response).to receive(:body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
     expect(download_session).to receive(:close)
 
