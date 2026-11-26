@@ -24,21 +24,27 @@ module CircleCI
           matches = entries.select { File.fnmatch?(download, _1.path, File::FNM_PATHNAME | File::FNM_DOTMATCH) }
           return 'No artifacts matched the download filter.' if matches.empty?
 
-          downloader = Download.new(destination, @headers)
-          matches.each { downloader.save(_1) }
+          download_matches(matches, destination)
           "Downloaded #{matches.size} #{matches.size == 1 ? 'artifact' : 'artifacts'}.\n#{render(matches)}"
         end
 
         private
 
-        def collect(groups)
-          Networking::HTTPClient::Session.open(max_retries: 1) do |session|
-            groups.flat_map do |workflow, jobs|
-              jobs.reject { _1.fetch('attributes')['type'] == 'approval' }.flat_map do |job|
-                job_artifacts(session, workflow, job)
-              end
-            end
+        def download_matches(matches, destination)
+          Networking::HTTPClient::SessionPool.open do |sessions|
+            downloader = Download.new(destination, @headers, sessions)
+            RunRequestPool.fetch(matches) { |_session, artifact| downloader.save(artifact) }
           end
+        end
+
+        def collect(groups)
+          job_list = groups.flat_map do |workflow, jobs|
+            jobs.reject { _1.fetch('attributes')['type'] == 'approval' }.map { [workflow, _1] }
+          end
+          results = RunRequestPool.fetch(job_list) do |session, (workflow, job)|
+            job_artifacts(session, workflow, job)
+          end
+          results.flatten(1)
         end
 
         def job_artifacts(session, workflow, job)
