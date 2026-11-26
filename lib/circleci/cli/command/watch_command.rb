@@ -147,11 +147,22 @@ module CircleCI
           action.each_log_chunk { |chunk| file.puts(JSON.generate(chunk)) }
           true
         rescue *WatchRequestErrors::TRANSIENT
-          file.rewind
-          file.truncate(0)
+          reset_log_file(file)
           attempts -= 1
           retry if attempts.positive?
 
+          warn_background_log_failure?(action)
+        rescue Thor::Error
+          reset_log_file(file)
+          warn_background_log_failure?(action)
+        end
+
+        def reset_log_file(file)
+          file.rewind
+          file.truncate(0)
+        end
+
+        def warn_background_log_failure?(action)
           warn "Warning: Could not download log for #{Printer.escape_controls(action.name)}."
           false
         end
