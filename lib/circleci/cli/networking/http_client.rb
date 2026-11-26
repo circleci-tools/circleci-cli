@@ -106,15 +106,6 @@ module CircleCI
           end
         end
 
-        def self.get_raw(url, headers = {}, &read_response)
-          uri = URI(url)
-          req = get_request(uri, headers)
-          Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
-            http.max_retries = 0 if read_response
-            http.request(req, &read_response)
-          end
-        end
-
         def self.post_form(url, params = {}, headers = {})
           uri = URI(url)
           req = Net::HTTP::Post.new(uri, headers)
