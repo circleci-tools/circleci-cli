@@ -205,7 +205,7 @@ module CircleCI
 
         def update_steps(steps, stopping:)
           next_step = steps.find { |step| step.status == 'running' } unless stopping
-          continuing = refresh_current_step(steps, next_step) if @current_step
+          continuing = refresh_current_step(steps, next_step, stopping:) if @current_step
 
           notify_step_changes(steps, next_step:, stopping:)
           @steps = steps
@@ -215,19 +215,19 @@ module CircleCI
           refresh_action_outputs(next_step.actions, continuing: true)
         end
 
-        def refresh_current_step(steps, next_step)
+        def refresh_current_step(steps, next_step, stopping:)
           key = @current_step.identity
           continuing = next_step && next_step.identity == key
           updated_step = continuing ? next_step : steps.find { |step| step.identity == key }
-          refresh_action_outputs(updated_step&.actions || [], continuing:)
+          refresh_action_outputs(updated_step&.actions || [], continuing:, stopping:)
           @action_outputs.clear unless continuing
           continuing
         end
 
-        def refresh_action_outputs(actions, continuing:)
+        def refresh_action_outputs(actions, continuing:, stopping: false)
           track_actions(actions.reject(&:skipped?))
           running = continuing ? actions.select(&:running?).map(&:identity) : []
-          finish_outputs(running)
+          finish_outputs(running, stopping:)
         end
 
         def track_actions(actions)
@@ -289,16 +289,26 @@ module CircleCI
           warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
         end
 
-        def finish_outputs(running)
+        def finish_outputs(running, stopping: false)
           failed = @action_outputs.except(*running).filter_map do |identity, output|
             next unless output
 
             complete = output.finish_output? { |chunk| write_output(identity, chunk) }
-            @action_outputs[identity] = nil
-            @completed_outputs[identity] = nil
+            resolve_finished_output(identity, output, complete:, stopping:)
             identity unless complete
           end
-          warn INCOMPLETE_OUTPUT_WARNING if failed.any?
+          warn INCOMPLETE_OUTPUT_WARNING if stopping && failed.any?
+        end
+
+        def resolve_finished_output(identity, output, complete:, stopping:)
+          if complete || stopping
+            @action_outputs[identity] = nil
+            @completed_outputs[identity] = nil
+          else
+            # Keep the reader so the next refresh or shutdown can resume from its byte offset.
+            @action_outputs.delete(identity)
+            @completed_outputs[identity] = output
+          end
         end
 
         def update_actions
