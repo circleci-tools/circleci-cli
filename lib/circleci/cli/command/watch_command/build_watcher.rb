@@ -35,6 +35,7 @@ module CircleCI
           @current_step = nil
           @action_outputs = {}
           @completed_outputs = {}
+          @last_printed_step = nil
         end
 
         def start
@@ -131,9 +132,9 @@ module CircleCI
           return print_bordered(name) if @verbose
 
           status = step.status
-          return puts name if status == 'running'
+          return print_running_step(step, name) if status == 'running'
 
-          print_step_status(Printer.colorize_by_status(name, status))
+          print_step_status(step, Printer.colorize_by_status(name, status), eligible_for_rewrite: false)
         end
 
         def on_new_step_status(step)
@@ -143,13 +144,25 @@ module CircleCI
           return if status == 'running'
 
           name = Printer.escape_controls(step.name)
-          print_step_status(Printer.colorize_by_status(name, status), move_up: true)
+          print_step_status(step, Printer.colorize_by_status(name, status), eligible_for_rewrite: true)
         end
 
-        def print_step_status(text, move_up: false)
+        def print_running_step(step, name)
           @state_lock.synchronize do
-            prefix = move_up ? "\e[1A\e[2K\r" : "\e[2K\r"
+            puts name
+            @last_printed_step = step.identity
+          end
+        end
+
+        # Rewriting the previous line is only safe when that line still belongs to this step: once
+        # another step's line has been printed in between, rewrite in place would erase it, so the
+        # status update is appended as a new line instead.
+        def print_step_status(step, text, eligible_for_rewrite:)
+          @state_lock.synchronize do
+            rewrite = eligible_for_rewrite && (@last_printed_step.nil? || @last_printed_step == step.identity)
+            prefix = rewrite ? "\e[1A\e[2K\r" : "\e[2K\r"
             puts(@step_line_rewrites_disabled ? text : "#{prefix}#{text}")
+            @last_printed_step = step.identity
           end
         end
 
