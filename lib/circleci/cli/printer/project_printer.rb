@@ -4,8 +4,6 @@ module CircleCI
   module CLI
     module Printer
       class ProjectPrinter
-        attr_accessor :compact
-
         def initialize(projects, pretty: true)
           @projects = projects
           @pretty = pretty

@@ -36,4 +36,10 @@ describe CircleCI::CLI::Command::ActionOutput do
     expect(action_output.finish_output?(&write_output)).to be(true)
     expect(output).to eq("é\nnext\n")
   end
+
+  it 'retries on a SocketError raised while reading the response' do
+    expect(session).to receive(:get_raw).with(url, { 'Range' => 'bytes=0-' }).and_raise(SocketError)
+
+    expect(action_output.read(&write_output)).to eq(:retry)
+  end
 end

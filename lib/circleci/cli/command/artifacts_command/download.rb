@@ -8,18 +8,105 @@ module CircleCI
     module Command
       class ArtifactsCommand
         class Download
+          # The directory walk and tempfile creation below are fast and rely on Dir.fchdir,
+          # which mutates the process-wide working directory, so they stay serialized across
+          # worker threads under @mutex. The slow part - the HTTPS GET and read_body - runs
+          # outside the mutex against the already-open tempfile handle, so multiple downloads
+          # can overlap their network transfers.
+          class DestinationDirectory
+            def initialize(destination)
+              @destination = destination
+              @mutex = Mutex.new
+            end
+
+            def store(parts)
+              directory, file = open_destination(parts)
+              commit(directory, file, parts.last) { yield file }
+            end
+
+            private
+
+            def commit(directory, file, name)
+              committed = false
+              begin
+                yield
+                file.close
+                rename(directory, file, name)
+                committed = true
+              ensure
+                cleanup_tempfile(directory, file) unless committed
+                directory.close
+              end
+            end
+
+            def rename(directory, file, name)
+              @mutex.synchronize { Dir.fchdir(directory.fileno) { File.rename(file.path, name) } }
+            end
+
+            def open_destination(parts)
+              @mutex.synchronize do
+                directory = open_leaf_directory(parts[0...-1])
+                begin
+                  [directory, create_tempfile(directory)]
+                rescue StandardError
+                  directory.close
+                  raise
+                end
+              end
+            end
+
+            # Each step below resolves a single path component relative to the already-opened
+            # parent directory (via fchdir), so a symlink swapped in after a parent was
+            # validated cannot redirect the next mkdir/open onto a different path. The leaf
+            # directory's descriptor is duplicated so it survives the enclosing File.open blocks
+            # closing their own descriptors as they unwind.
+            def open_leaf_directory(parts)
+              File.open(destination_root, File::RDONLY) { |root| descend(root, parts) }
+            end
+
+            def descend(parent, parts)
+              return parent.dup if parts.empty?
+
+              Dir.fchdir(parent.fileno) do
+                create_directory(parts.first)
+                File.open(parts.first, File::RDONLY | File::NOFOLLOW) { |child| descend(child, parts[1..]) }
+              end
+            end
+
+            def create_tempfile(directory)
+              Dir.fchdir(directory.fileno) { Tempfile.create('.artifact-', '.', binmode: true) }
+            end
+
+            def cleanup_tempfile(directory, file)
+              file.close unless file.closed?
+              @mutex.synchronize { Dir.fchdir(directory.fileno) { File.delete(file.path) } }
+            end
+
+            def destination_root
+              @destination_root ||= begin
+                FileUtils.mkdir_p(@destination)
+                File.realpath(@destination)
+              end
+            end
+
+            def create_directory(name)
+              Dir.mkdir(name)
+            rescue Errno::EEXIST
+              raise Thor::Error, 'Artifact directory is a symlink or a file.' unless File.lstat(name).directory?
+            end
+          end
+
           MAX_REDIRECTS = 5
 
-          def initialize(destination, headers)
-            @destination = destination
+          def initialize(destination, headers, sessions)
+            @directory = DestinationDirectory.new(destination)
             @headers = headers
+            @sessions = sessions
           end
 
           def save(artifact)
             parts = path_components(artifact)
-            File.open(destination_root, File::RDONLY) do |root|
-              with_directory(root, parts[0...-1]) { |directory| write_artifact(directory, parts.last, artifact.url) }
-            end
+            @directory.store(parts) { |file| stream(URI(artifact.url), file) }
           rescue Thor::Error, SystemCallError, IOError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError,
                  URI::Error, Net::ProtocolError => e
             raise Thor::Error, "Could not download #{artifact_label(artifact)}: #{Printer.escape_controls(e.message)}"
@@ -29,32 +116,6 @@ module CircleCI
 
           def artifact_label(artifact)
             Printer.escape_controls("#{artifact.path} (job #{artifact.job_id}, execution #{artifact.execution})")
-          end
-
-          # Each step below resolves a single path component relative to the already-opened
-          # parent directory (via fchdir), so a symlink swapped in after a parent was
-          # validated cannot redirect the next mkdir/open/rename onto a different path.
-          def with_directory(parent, parts, &block)
-            return block.call(parent) if parts.empty?
-
-            open_child_directory(parent, parts.first) { |child| with_directory(child, parts[1..], &block) }
-          end
-
-          def open_child_directory(parent, name, &)
-            Dir.fchdir(parent.fileno) do
-              create_directory(name)
-              File.open(name, File::RDONLY | File::NOFOLLOW, &)
-            end
-          end
-
-          def write_artifact(directory, name, url)
-            Dir.fchdir(directory.fileno) do
-              Tempfile.create('.artifact-', '.', binmode: true) do |file|
-                stream(URI(url), file)
-                file.close
-                File.rename(file.path, name)
-              end
-            end
           end
 
           def path_components(artifact)
@@ -71,24 +132,11 @@ module CircleCI
             !part.empty? && !%w[. ..].include?(part) && !part.match?(/[[:cntrl:]\\:]/)
           end
 
-          def destination_root
-            @destination_root ||= begin
-              FileUtils.mkdir_p(@destination)
-              File.realpath(@destination)
-            end
-          end
-
-          def create_directory(name)
-            Dir.mkdir(name)
-          rescue Errno::EEXIST
-            raise Thor::Error, 'Artifact directory is a symlink or a file.' unless File.lstat(name).directory?
-          end
-
           def stream(uri, file, redirects = MAX_REDIRECTS)
             raise Thor::Error, 'Invalid HTTPS artifact URL.' unless uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo
 
             location = nil
-            Networking::HTTPClient.get_raw(uri.to_s, headers_for(uri)) do |response|
+            @sessions.get_raw(uri.to_s, headers_for(uri)) do |response|
               location = read_response(response, file)
             end
             return unless location
@@ -99,16 +147,27 @@ module CircleCI
           end
 
           def read_response(response, file)
+            response.ignore_eof = false
             case response
             when Net::HTTPOK
-              response.ignore_eof = false
               response.read_body(file)
               nil
-            when Net::HTTPRedirection
-              response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
             else
-              raise Thor::Error, "HTTP #{response.code}"
+              non_ok_response(response)
             end
+          end
+
+          def non_ok_response(response)
+            drain(response)
+            raise Thor::Error, "HTTP #{response.code}" unless response.is_a?(Net::HTTPRedirection)
+
+            response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
+          end
+
+          # Net::HTTP leaves the body on the socket until it's read; a response left unread
+          # here would corrupt the next request on the same pooled connection.
+          def drain(response)
+            response.body
           end
 
           def headers_for(uri)
