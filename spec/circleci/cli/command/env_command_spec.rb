@@ -21,7 +21,7 @@ describe CircleCI::CLI::Command::EnvCommand, type: :command do
 
   describe 'set' do
     it 'sets the environment variable and confirms it' do
-      response = circleci_response('name' => 'FOO', 'value' => 'xxxx1234')
+      response = circleci_response({ 'name' => 'FOO', 'value' => 'xxxx1234' })
       expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
         .with(name: 'FOO', value: 'bar').and_return(response)
 
@@ -32,7 +32,7 @@ describe CircleCI::CLI::Command::EnvCommand, type: :command do
 
   describe 'delete' do
     it 'deletes the environment variable and confirms it' do
-      response = circleci_response('message' => 'ok')
+      response = circleci_response({ 'message' => 'ok' })
       expect_any_instance_of(CircleCi::Project).to receive(:delete_envvar).with('FOO').and_return(response)
 
       expect { runner.start(%w[env delete FOO -p owner/repo]) }
