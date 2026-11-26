@@ -130,6 +130,49 @@ describe CircleCI::CLI::Command::BuildRepository do
     it { is_expected.to match_array [build] }
   end
 
+  describe '#refresh_evicted_builds' do
+    let(:repository) { described_class.new(build.username, build.reponame) }
+
+    before do
+      allow(CircleCI::CLI::Response::Build).to receive(:all).and_return([build], [])
+      repository.update
+    end
+
+    it 'throttles re-fetching an evicted-pending build to the refresh interval' do
+      calls = 0
+      fetch_detail = lambda do |_username, _reponame, _number|
+        calls += 1
+        build
+      end
+
+      (described_class::EVICTED_REFRESH_INTERVAL + 1).times { repository.refresh_evicted_builds(&fetch_detail) }
+
+      expect(calls).to eq(2)
+    end
+
+    it 'retries on the very next tick after a transient failure instead of waiting out the interval' do
+      calls = 0
+      fetch_detail = lambda do |_username, _reponame, _number|
+        calls += 1
+        calls == 1 ? nil : build
+      end
+
+      2.times { repository.refresh_evicted_builds(&fetch_detail) }
+
+      expect(calls).to eq(2)
+    end
+
+    it 'returns the cached detail while the build is still within the refresh interval' do
+      fetch_detail = ->(_username, _reponame, _number) { build }
+
+      first = repository.refresh_evicted_builds(&fetch_detail)
+      second = repository.refresh_evicted_builds(&fetch_detail)
+
+      expect(first).to eq({ build.build_number => build })
+      expect(second).to eq({ build.build_number => build })
+    end
+  end
+
   describe '#build_for' do
     subject do
       CircleCI::CLI::Command::BuildRepository.new(build.username, build.reponame).build_for(build.build_number)

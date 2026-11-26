@@ -507,15 +507,18 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     context 'when the build is initially waiting' do
       let(:initial_status) { 'not_running' }
 
-      it 'checks again on the next iteration and watches the build when it starts running' do
+      it 'waits out the evicted-refresh interval before noticing the build has started running' do
         running = response.new(attributes.merge('build_num' => 2, 'status' => 'running'))
         watcher = instance_double(watcher_class)
+        interval = CircleCI::CLI::Command::BuildRepository::EVICTED_REFRESH_INTERVAL
         expect(response).to receive(:get).with('user', 'repo', 2).twice.and_return(background, running)
         expect(watcher_class).to receive(:new).with(running, verbose: true).and_return(watcher)
         expect(watcher).to receive(:start)
 
-        session.send(:start_watcher_if_needed)
-        expect(session.instance_variable_get(:@build_watcher)).to be_nil
+        interval.times do
+          session.send(:start_watcher_if_needed)
+          expect(session.instance_variable_get(:@build_watcher)).to be_nil
+        end
         session.send(:start_watcher_if_needed)
         expect(session.instance_variable_get(:@build_watcher)).to eq(watcher)
       end
