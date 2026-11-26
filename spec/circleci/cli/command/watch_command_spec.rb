@@ -765,7 +765,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
                                                                   project_name: 'user/repo')
       next_detail = instance_double(CircleCI::CLI::Response::Build, steps: [])
       forbidden_response = Net::HTTPForbidden.new('1.1', '403', 'Forbidden')
-      expect(CircleCI::CLI::Networking::HTTPClient).to receive(:get_raw).with('https://circleci.com/output/test')
+      expect(log_session).to receive(:get_raw).with('https://circleci.com/output/test')
         .once.and_yield(forbidden_response)
       expect(CircleCI::CLI::Printer::BuildPrinter).to receive(:header_for)
         .with(next_build, a_string_including('Result of user/repo #43 completed in background'))
