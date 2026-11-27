@@ -1,24 +1,16 @@
 # frozen_string_literal: true
 
+require 'circleci/cli/command/watch_command/action_log_tracker'
 require 'circleci/cli/command/watch_command/action_output'
+require 'circleci/cli/command/watch_command/build_announcer'
 require 'circleci/cli/command/watch_command/request_errors'
 require 'circleci/cli/command/watch_command/step_log'
+require 'circleci/cli/command/watch_command/step_notifier'
 
 module CircleCI
   module CLI
     module Command
       class BuildWatcher # rubocop:disable Metrics/ClassLength
-        COMPLETION_MESSAGES = {
-          'success' => '🎉 %<build>s has succeeded!',
-          'fixed' => '🎉 %<build>s has been fixed!',
-          'failed' => '😥 %<build>s has failed...',
-          'timedout' => '%<build>s timed out.',
-          'infrastructure_fail' => '%<build>s failed due to an infrastructure error.',
-          'canceled' => '%<build>s was canceled.',
-          'no_tests' => '%<build>s ran no tests.'
-        }.freeze
-
-        INCOMPLETE_OUTPUT_WARNING = 'Warning: Step log output may be incomplete.'
         FINAL_DETAIL_ATTEMPTS = 2
         MAX_CONCURRENT_LOG_READS = 4
 
@@ -27,15 +19,11 @@ module CircleCI
         def initialize(build, verbose: false)
           @build = build
           @verbose = verbose
-          @messages = {}
-          @retained_log_bytes = 0
-
-          initialize_polling
           @steps = build.steps
           @current_step = nil
-          @action_outputs = {}
-          @completed_outputs = {}
-          @last_printed_step = nil
+
+          initialize_polling
+          initialize_collaborators
         end
 
         def start
@@ -52,7 +40,7 @@ module CircleCI
         end
 
         def disable_step_line_rewrites
-          @state_lock.synchronize { @step_line_rewrites_disabled = true }
+          @step_notifier.disable_step_line_rewrites
         end
 
         def stop(status)
@@ -61,7 +49,7 @@ module CircleCI
           error = poll_error
           raise error if error
 
-          notify_stopped(status)
+          @announcer.notify_stopped(status)
         ensure
           close
         end
@@ -69,9 +57,7 @@ module CircleCI
         def close
           stop_polling
         ensure
-          @messages.each_value(&:close)
-          @messages.clear
-          @retained_log_bytes = 0
+          @action_log_tracker.close
           @log_sessions.each(&:close)
         end
 
@@ -80,8 +66,41 @@ module CircleCI
         def initialize_polling
           @stop_requested = Queue.new
           @state_lock = Mutex.new
-          @output_lock = Mutex.new
           @log_sessions = Array.new(MAX_CONCURRENT_LOG_READS) { Networking::HTTPClient::Session.new }
+          @messages = {}
+        end
+
+        def initialize_collaborators
+          @step_notifier = build_step_notifier
+          @action_log_tracker = build_action_log_tracker
+          @announcer = build_announcer
+        end
+
+        def build_step_notifier
+          StepNotifier.new(
+            verbose: @verbose,
+            puts: ->(text) { puts(text) },
+            bordered: ->(text) { print_bordered(text) }
+          )
+        end
+
+        def build_action_log_tracker
+          ActionLogTracker.new(
+            @build,
+            verbose: @verbose,
+            log_sessions: @log_sessions,
+            messages: @messages,
+            output: ->(chunk) { print_output(chunk) }
+          )
+        end
+
+        def build_announcer
+          BuildAnnouncer.new(
+            @build,
+            verbose: @verbose,
+            puts: ->(text) { puts(text) },
+            bordered: ->(text) { print_bordered(text) }
+          )
         end
 
         def stop_polling
@@ -128,65 +147,11 @@ module CircleCI
         end
 
         def on_new_step(step)
-          name = Printer.escape_controls(step.name)
-          return print_bordered(name) if @verbose
-
-          status = step.status
-          return print_running_step(step, name) if status == 'running'
-
-          print_step_status(step, Printer.colorize_by_status(name, status), eligible_for_rewrite: false)
+          @step_notifier.on_new_step(step)
         end
 
         def on_new_step_status(step)
-          return if @verbose
-
-          status = step.status
-          return if status == 'running'
-
-          name = Printer.escape_controls(step.name)
-          print_step_status(step, Printer.colorize_by_status(name, status), eligible_for_rewrite: true)
-        end
-
-        def print_running_step(step, name)
-          @state_lock.synchronize do
-            puts name
-            @last_printed_step = step.identity
-          end
-        end
-
-        # Rewriting the previous line is only safe when that line still belongs to this step: once
-        # another step's line has been printed in between, rewrite in place would erase it, so the
-        # status update is appended as a new line instead.
-        def print_step_status(step, text, eligible_for_rewrite:)
-          @state_lock.synchronize do
-            rewrite = eligible_for_rewrite && (@last_printed_step.nil? || @last_printed_step == step.identity)
-            prefix = rewrite ? "\e[1A\e[2K\r" : "\e[2K\r"
-            puts(@step_line_rewrites_disabled ? text : "#{prefix}#{text}")
-            @last_printed_step = step.identity
-          end
-        end
-
-        def finish_action_logs(step)
-          return if @messages.empty?
-
-          running = step.status == 'running'
-          step.actions.each do |action|
-            next if action.end_time.nil? || (running && action.failed?)
-
-            finish_action_log(action)
-          end
-        end
-
-        def finish_action_log(action)
-          log = @messages.delete(action.identity)
-          return unless log
-
-          log.write_to($stdout) if action.failed?
-        ensure
-          if log
-            log.close
-            @retained_log_bytes -= log.bytesize
-          end
+          @step_notifier.on_new_step_status(step)
         end
 
         def update_build(stopping: false)
@@ -212,160 +177,37 @@ module CircleCI
           @current_step = next_step
           return unless next_step && !continuing
 
-          refresh_action_outputs(next_step.actions, continuing: true)
+          @action_log_tracker.refresh_action_outputs(next_step.actions, continuing: true)
         end
 
         def refresh_current_step(steps, next_step, stopping:)
           key = @current_step.identity
           continuing = next_step && next_step.identity == key
           updated_step = continuing ? next_step : steps.find { |step| step.identity == key }
-          refresh_action_outputs(updated_step&.actions || [], continuing:, stopping:)
-          @action_outputs.clear unless continuing
+          @action_log_tracker.refresh_action_outputs(updated_step&.actions || [], continuing:, stopping:)
+          @action_log_tracker.clear_actions unless continuing
           continuing
-        end
-
-        def refresh_action_outputs(actions, continuing:, stopping: false)
-          track_actions(actions.reject(&:skipped?))
-          running = continuing ? actions.select(&:running?).map(&:identity) : []
-          finish_outputs(running, stopping:)
-        end
-
-        def track_actions(actions)
-          actions.each do |action|
-            next if action.identity.include?(nil) || (action.end_time && !show_action_log?(action))
-
-            @action_outputs.fetch(action.identity) do |identity|
-              @action_outputs[identity] = @completed_outputs.fetch(identity) { new_output(identity) }
-            end
-          end
-        end
-
-        def new_output(identity)
-          project = [@build.username, @build.reponame, @build.build_number].join('/')
-          url = "https://circleci.com/api/private/output/raw/github/#{project}/output/#{identity.join('/')}"
-          ActionOutput.new(url, @log_sessions.first)
         end
 
         def notify_step_changes(steps, next_step:, stopping:)
           previous_statuses = @steps.to_h { |step| [step.identity, step.status] }
           steps.each do |step|
-            notify_step_change(step, previous_statuses[step.identity])
-            finish_action_logs(step)
+            @step_notifier.notify_step_change(step, previous_statuses[step.identity])
+            @action_log_tracker.finish_action_logs(step)
             next if step == next_step || (!@verbose && step.status == 'running')
 
-            print_completed_outputs(step, stopping:)
-          end
-        end
-
-        def notify_step_change(step, previous_status)
-          return on_new_step(step) unless previous_status
-
-          on_new_step_status(step) unless previous_status == step.status
-        end
-
-        def show_action_log?(action)
-          @verbose || action.failed?
-        end
-
-        def completed_log_actions(step)
-          step.actions.select { |action| action.end_time && show_action_log?(action) }
-        end
-
-        def print_completed_outputs(step, stopping:)
-          completed_log_actions(step).each do |action|
-            identity = action.identity
-            next if identity.include?(nil) || @action_outputs.key?(identity)
-
-            output = @completed_outputs.fetch(identity) { @completed_outputs[identity] = new_output(identity) }
-            next unless output
-
-            read_completed_output(output, identity, stopping:)
-          end
-        end
-
-        def read_completed_output(output, identity, stopping:)
-          complete = output.finish_output?(final: stopping) { |chunk| print_output(chunk) }
-          @completed_outputs[identity] = nil if complete || stopping
-          warn INCOMPLETE_OUTPUT_WARNING if stopping && !complete
-        end
-
-        def finish_outputs(running, stopping: false)
-          failed = @action_outputs.except(*running).filter_map do |identity, output|
-            next unless output
-
-            complete = output.finish_output? { |chunk| write_output(identity, chunk) }
-            resolve_finished_output(identity, output, complete:, stopping:)
-            identity unless complete
-          end
-          warn INCOMPLETE_OUTPUT_WARNING if stopping && failed.any?
-        end
-
-        def resolve_finished_output(identity, output, complete:, stopping:)
-          if complete || stopping
-            @action_outputs[identity] = nil
-            @completed_outputs[identity] = nil
-          else
-            # Keep the reader so the next refresh or shutdown can resume from its byte offset.
-            @action_outputs.delete(identity)
-            @completed_outputs[identity] = output
+            @action_log_tracker.print_completed_outputs(step, stopping:)
           end
         end
 
         def update_actions
           return unless @current_step
 
-          actions = @action_outputs.compact
-          return if actions.empty?
-          return read_action(*actions.first, @log_sessions.first) if actions.one?
-
-          read_actions_concurrently(actions)
+          @action_log_tracker.update_actions
         end
 
-        def read_actions_concurrently(actions)
-          workers = []
-          pending = Queue.new
-          actions.each { |entry| pending << entry }
-          pending.close
-          start_log_workers(workers, pending, actions.size)
-          workers.each(&:value)
-        ensure
-          stop_log_workers(workers)
-        end
-
-        def start_log_workers(workers, pending, count)
-          Thread.handle_interrupt(Object => :never) do
-            @log_sessions.take(count).each do |session|
-              workers << Thread.new { read_pending_actions(pending, session) }
-            end
-          end
-        end
-
-        def stop_log_workers(workers)
-          workers.each(&:kill)
-          workers.each { |worker| worker.join if worker.alive? }
-        end
-
-        def read_pending_actions(pending, session)
-          while (entry = pending.pop)
-            read_action(*entry, session)
-          end
-        end
-
-        def read_action(identity, output, session)
-          output.read(session:) { |chunk| write_output(identity, chunk) }
-        end
-
-        def write_output(identity, chunk)
-          @output_lock.synchronize do
-            if @verbose
-              print_output(chunk)
-            else
-              # Defer thread termination until any spill file is registered for cleanup.
-              Thread.handle_interrupt(Object => :never) do
-                retain_output(identity, chunk)
-              end
-            end
-          end
+        def retain_output(identity, chunk)
+          @action_log_tracker.retain_output(identity, chunk)
         end
 
         def print_output(chunk)
@@ -373,30 +215,11 @@ module CircleCI
           $stdout.flush
         end
 
-        def retain_output(identity, chunk)
-          log = (@messages[identity] ||= StepLog.new)
-          remaining = StepLog::RETENTION_LIMIT - @retained_log_bytes
-          @retained_log_bytes += log.append(chunk, remaining:)
-        end
-
         def notify_started
           puts Printer::BuildPrinter.header_for(
             @build,
             "👀 Start watching #{@build.project_name} ##{@build.build_number}"
           )
-        end
-
-        def notify_stopped(status)
-          build_name = Printer.escape_controls("#{@build.project_name} ##{@build.build_number}")
-          text = completion_message(status, build_name)
-          @verbose ? print_bordered(text) : puts(text)
-        end
-
-        def completion_message(status, build_name)
-          template = COMPLETION_MESSAGES.fetch(status) do
-            return "#{build_name} finished (status: #{Printer.escape_controls(status || 'unknown')})."
-          end
-          Printer.colorize_by_status(format(template, build: build_name), status)
         end
 
         def print_bordered(text)
