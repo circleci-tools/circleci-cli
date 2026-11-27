@@ -9,7 +9,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
   let(:session) { instance_double(CircleCI::CLI::Networking::HTTPClient::Session) }
   let(:log_sessions) { [session] }
   let(:messages) { {} }
-  let(:output) { +'' }
+  let(:captured_output) { +'' }
   let(:verbose) { false }
   let(:tracker) do
     described_class.new(
@@ -17,7 +17,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
       verbose:,
       log_sessions:,
       messages:,
-      output: ->(chunk) { output << chunk }
+      output: ->(chunk) { captured_output << chunk }
     )
   end
 
@@ -102,7 +102,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
         tracker.refresh_action_outputs([action(index: 0, step: 1, status: 'running')], continuing: true)
         tracker.update_actions
 
-        expect(output).to eq("hello\n")
+        expect(captured_output).to eq("hello\n")
       end
     end
 
@@ -113,7 +113,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
         tracker.refresh_action_outputs([action(index: 0, step: 1, status: 'running')], continuing: true)
         tracker.update_actions
 
-        expect(output).to be_empty
+        expect(captured_output).to be_empty
         expect(messages[[0, 1]].bytesize).to eq(6)
       end
     end
@@ -122,7 +122,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
       tracker.refresh_action_outputs([action(index: 0, step: 1, status: 'not_run')], continuing: true)
       tracker.update_actions
 
-      expect(output).to be_empty
+      expect(captured_output).to be_empty
     end
   end
 
@@ -133,7 +133,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
       tracker.clear_actions
       tracker.update_actions
 
-      expect(output).to be_empty
+      expect(captured_output).to be_empty
     end
   end
 
@@ -147,7 +147,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
 
       tracker.print_completed_outputs(step, stopping: false)
 
-      expect(output).to eq("done\n")
+      expect(captured_output).to eq("done\n")
     end
 
     it 'skips a completed action that does not match the log filter' do
@@ -158,7 +158,7 @@ describe CircleCI::CLI::Command::ActionLogTracker do
 
       tracker.print_completed_outputs(step, stopping: false)
 
-      expect(output).to be_empty
+      expect(captured_output).to be_empty
     end
   end
 end

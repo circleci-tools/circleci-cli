@@ -97,7 +97,7 @@ describe CircleCI::CLI::Command::StepNotifier do
     it 'notifies a status transition' do
       notifier.notify_step_change(step(name: 'Build', status: 'success'), 'running')
 
-      expect(puts_calls).to eq(["\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"])
+      expect(puts_calls).to eq(["\e[1A\e[2K\r#{CircleCI::CLI::Printer.colorize_green('Build')}"])
     end
   end
 
