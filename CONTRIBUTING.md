@@ -19,7 +19,7 @@ where to find the corresponding specs.
 Run the same lint and test commands used by the GitHub Actions test workflow:
 
 ```sh
-bundle exec rubocop lib
+bundle exec rubocop lib bin exe
 bundle exec rspec
 ```
 
