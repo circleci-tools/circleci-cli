@@ -348,6 +348,24 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     end
   end
 
+  it 'reports a temporary file creation failure before fetching the artifact' do
+    stub_artifacts(artifact(0))
+    allow(Tempfile).to receive(:create).with('.artifact-', '.', binmode: true).and_raise(Errno::ENOSPC)
+    expect(client::Session).not_to receive(:new).with(max_retries: 0)
+
+    Dir.mktmpdir do |destination|
+      target = File.join(destination, job_id, '0', path)
+      FileUtils.mkdir_p(File.dirname(target))
+      File.binwrite(target, 'previous')
+      message = "Could not download #{path} (job #{job_id}, execution 0): #{Errno::ENOSPC.new.message}\n"
+
+      expect { described_class.start(download_args(destination)) }.to output(message).to_stderr
+        .and raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      expect(File.binread(target)).to eq('previous')
+      expect(Dir.children(File.dirname(target))).to eq([File.basename(target)])
+    end
+  end
+
   it 'cleans up an interrupted transfer, preserves the existing file, and closes the session' do
     stub_artifacts(artifact(0))
     response = stub_download(url, '')
