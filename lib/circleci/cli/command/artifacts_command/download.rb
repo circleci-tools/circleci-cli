@@ -14,7 +14,11 @@ module CircleCI
           # outside the mutex against the already-open tempfile handle, so multiple downloads
           # can overlap their network transfers.
           class DestinationDirectory
+            PLATFORM_ERROR = 'Artifact downloads require Dir.fchdir. Retry on a POSIX system with Dir.fchdir support.'
+
             def initialize(destination)
+              raise Thor::Error, PLATFORM_ERROR unless Dir.respond_to?(:fchdir)
+
               @destination = destination
               @mutex = Mutex.new
             end
@@ -40,7 +44,7 @@ module CircleCI
             end
 
             def rename(directory, file, name)
-              @mutex.synchronize { Dir.fchdir(directory.fileno) { File.rename(file.path, name) } }
+              @mutex.synchronize { in_directory(directory) { File.rename(file.path, name) } }
             end
 
             def open_destination(parts)
@@ -67,19 +71,25 @@ module CircleCI
             def descend(parent, parts)
               return parent.dup if parts.empty?
 
-              Dir.fchdir(parent.fileno) do
+              in_directory(parent) do
                 create_directory(parts.first)
                 File.open(parts.first, File::RDONLY | File::NOFOLLOW) { |child| descend(child, parts[1..]) }
               end
             end
 
             def create_tempfile(directory)
-              Dir.fchdir(directory.fileno) { Tempfile.create('.artifact-', '.', binmode: true) }
+              in_directory(directory) { Tempfile.create('.artifact-', '.', binmode: true) }
             end
 
             def cleanup_tempfile(directory, file)
               file.close unless file.closed?
-              @mutex.synchronize { Dir.fchdir(directory.fileno) { File.delete(file.path) } }
+              @mutex.synchronize { in_directory(directory) { File.delete(file.path) } }
+            end
+
+            def in_directory(directory, &)
+              Dir.fchdir(directory.fileno, &)
+            rescue NotImplementedError
+              raise Thor::Error, PLATFORM_ERROR
             end
 
             def destination_root
