@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'stringio'
 
 describe CircleCI::CLI::Command::EnvCommand, type: :command do
   let(:runner) { CircleCI::CLI::Runner }
@@ -27,6 +28,37 @@ describe CircleCI::CLI::Command::EnvCommand, type: :command do
 
       expect { runner.start(%w[env set FOO bar -p owner/repo]) }
         .to output("FOO is set for owner/repo.\n").to_stdout
+    end
+
+    it 'prompts on a terminal and reads the value with echo disabled' do
+      input = StringIO.new("  secret  \n")
+      allow($stdin).to receive(:tty?).and_return(true)
+      expect($stdin).to receive(:noecho).and_yield(input)
+      expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
+        .with(name: 'FOO', value: '  secret  ').and_return(circleci_response({ 'name' => 'FOO' }))
+
+      expect { runner.start(%w[env set FOO -p owner/repo]) }
+        .to output("Environment variable value: \n").to_stderr
+        .and output("FOO is set for owner/repo.\n").to_stdout
+    end
+
+    it 'reads all of non-terminal standard input without prompting' do
+      value = "first line\nsecond line\n"
+      allow($stdin).to receive(:tty?).and_return(false)
+      allow($stdin).to receive(:read).and_return(value)
+      expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
+        .with(name: 'FOO', value: value).and_return(circleci_response({ 'name' => 'FOO' }))
+
+      expect { runner.start(%w[env set FOO -p owner/repo]) }
+        .to output("FOO is set for owner/repo.\n").to_stdout.and output('').to_stderr
+    end
+
+    it 'rejects empty standard input before calling the API' do
+      allow($stdin).to receive(:tty?).and_return(false)
+      allow($stdin).to receive(:read).and_return('')
+      expect(CircleCi::Project).not_to receive(:new)
+
+      expect_command_failure(%w[env set FOO -p owner/repo], 'No environment variable value provided on standard input.')
     end
   end
 

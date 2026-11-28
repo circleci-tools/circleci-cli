@@ -15,7 +15,7 @@ the options for one command.
 | `artifacts RUN_ID` | List or download artifacts from a run. Use the run UUID. | `--download PATH`, `--destination DIRECTORY` |
 | `watch` | Watch builds in real time. | `-p, --project OWNER/REPO`, `-b, --branch BRANCH`, `-a, --all`, `-u, --user USER`, `-v, --verbose` |
 | `env list` | List a project's environment variables (values are masked by the API). | `-p, --project OWNER/REPO`, `--no-pretty` |
-| `env set NAME VALUE` | Set a project's environment variable. | `-p, --project OWNER/REPO` |
+| `env set NAME [VALUE]` | Set a project's environment variable. Omit `VALUE` for secure input. | `-p, --project OWNER/REPO` |
 | `env delete NAME` | Delete a project's environment variable. | `-p, --project OWNER/REPO` |
 | `version` | Show the installed gem version. | |
 
@@ -47,8 +47,27 @@ include builds across branches.
   `--destination DIRECTORY` together to download artifacts whose path matches
   the `PATH` glob into `DIRECTORY` instead of listing them.
 - `env list` uses formatted output by default; pass `--no-pretty` for compact
-  `NAME=VALUE` output. The CircleCI API masks environment variable values, so
-  `env list` and `env set` only ever show a masked value.
+  `NAME=VALUE` output. The CircleCI API returns masked values for `env list`.
+
+## Setting environment variables
+
+Omit the value to keep it out of shell history and process arguments. In a
+terminal, the command prompts for the value without echoing what you type.
+
+```sh
+circleci-cli env set API_KEY -p owner/repo
+```
+
+With piped or redirected standard input, the command reads the value through
+EOF and preserves trailing newlines. Set `CIRCLE_CI_TOKEN` and supply the
+project when running without a terminal.
+
+```sh
+circleci-cli env set API_KEY -p owner/repo < /path/to/secret-file
+```
+
+The command confirms the variable name and project. A positional value is
+also supported, but can appear in shell history and process listings.
 
 ## Authentication
 
