@@ -1,5 +1,37 @@
 # Changelog
 
+## [v4.0.4](https://github.com/circleci-tools/circleci-cli/tree/v4.0.4) (2026-10-10)
+
+[Full Changelog](https://github.com/circleci-tools/circleci-cli/compare/v4.0.3...v4.0.4)
+
+- Allow `terminal-notifier` 3.1.x to be installed.
+
+## [v4.0.3](https://github.com/circleci-tools/circleci-cli/tree/v4.0.3) (2026-07-25)
+
+[Full Changelog](https://github.com/circleci-tools/circleci-cli/compare/v4.0.2...v4.0.3)
+
+- Raise the minimum Ruby version from 3.1 to 3.3.
+
+## [v4.0.2](https://github.com/circleci-tools/circleci-cli/tree/v4.0.2) (2026-02-03)
+
+[Full Changelog](https://github.com/circleci-tools/circleci-cli/compare/v4.0.1...v4.0.2)
+
+- Use Ruby's `Net::HTTP` for the CLI's HTTP requests and remove its direct Faraday dependency.
+- Allow Thor 1.4.x and 1.5.x to be installed.
+
+## [v4.0.1](https://github.com/circleci-tools/circleci-cli/tree/v4.0.1) (2025-07-12)
+
+[Full Changelog](https://github.com/circleci-tools/circleci-cli/compare/v4.0.0...v4.0.1)
+
+- Fix live step and action log updates in `watch` by polling build details and action output.
+
+## [v4.0.0](https://github.com/circleci-tools/circleci-cli/tree/v4.0.0) (2025-06-21)
+
+[Full Changelog](https://github.com/circleci-tools/circleci-cli/compare/v3.0.0...v4.0.0)
+
+- Raise the minimum Ruby version from 2.5 to 3.1.
+- Require version 2.1.0 or newer of the `circleci` gem.
+
 ## [v3.0.0](https://github.com/unhappychoice/circleci-cli/tree/v3.0.0) (2020-08-29)
 
 [Full Changelog](https://github.com/unhappychoice/circleci-cli/compare/v2.3.0...v3.0.0)
