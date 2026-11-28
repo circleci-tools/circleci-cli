@@ -361,16 +361,23 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       described_class.run(options)
     end
 
-    it 'reports polled completion once after a final detail timeout and starts the next build' do
+    it 'finishes logs and reports polled completion without fetching details again' do
       response = CircleCI::CLI::Response::Build
       attributes = {
         'username' => 'user', 'reponame' => 'repo', 'branch' => 'main', 'user' => { 'login' => 'octocat' }
       }
       first = response.new(attributes.merge('build_num' => 42, 'status' => 'running'))
       second = response.new(attributes.merge('build_num' => 43, 'status' => 'running'))
-      finished = response.new(attributes.merge('build_num' => 42, 'status' => 'success', 'lifecycle' => 'finished'))
+      action = {
+        'name' => 'Test', 'type' => 'shell', 'status' => 'success',
+        'index' => 0, 'step' => 0, 'end_time' => '2024-01-01T00:00:00Z'
+      }
+      finished = response.new(attributes.merge(
+                                'build_num' => 42, 'status' => 'success', 'lifecycle' => 'finished',
+                                'steps' => [{ 'name' => 'Test', 'actions' => [action] }]
+                              ))
       watcher_class = CircleCI::CLI::Command::BuildWatcher
-      first_watcher = watcher_class.new(first)
+      first_watcher = watcher_class.new(first, verbose: true)
       second_watcher = watcher_class.new(second)
       allow(watcher_class).to receive(:new).with(first, verbose: true).and_return(first_watcher)
       allow(watcher_class).to receive(:new).with(second, verbose: true).and_return(second_watcher)
@@ -381,9 +388,12 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       expect(response).to receive(:branch).with('user', 'repo', 'main').once.and_return([first, second])
       allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
       allow(described_class).to receive(:new).with(options, repository).and_return(session)
-      expect(response).to receive(:get).with('user', 'repo', 42).exactly(4).times.and_invoke(
-        ->(*) { first }, ->(*) { finished }, ->(*) { raise Net::ReadTimeout }, ->(*) { finished }
-      )
+      expect(response).to receive(:get).with('user', 'repo', 42).twice.and_return(first, finished)
+      log_reader_class = CircleCI::CLI::Command::ActionOutput
+      log_reader = instance_double(log_reader_class)
+      expect(log_reader_class).to receive(:new).once.and_return(log_reader)
+      expect(log_reader).to receive(:finish_output?).with(final: false).and_return(false)
+      expect(log_reader).to receive(:finish_output?).with(final: true).and_yield("final output\n").and_return(true)
       expect(session).to receive(:sleep).with(1).twice.ordered { first_watcher.send(:update_build) }
       expect(session).to receive(:sleep).with(1).ordered
       expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
@@ -391,7 +401,8 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       result = 'user/repo #42 has succeeded!'
       expected_output = satisfy('report success once before starting the next build') do |output|
         output.scan('Start watching user/repo #42').size == 1 && output.scan(result).size == 1 &&
-          output.match?(%r{Start watching user/repo #42.*#{Regexp.escape(result)}.*Start watching user/repo #43}m)
+          output.scan("final output\n").size == 1 &&
+          output.match?(%r{Start watching user/repo #42.*final output.*#{Regexp.escape(result)}.*Start watching user/repo #43}m)
       end
       expect { described_class.run(options) }.to output(expected_output).to_stdout
     end
@@ -415,7 +426,9 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
           .and_return([first_build], [completed_build, next_build])
           allow(CircleCI::CLI::Command::BuildRepository).to receive(:new).and_return(repository)
           allow(described_class).to receive(:new).with(options, repository).and_return(session)
-        expect(build_response).to receive(:get).with('user', 'repo', 42).once.and_return(completed_build)
+        expect(build_response).to receive(:get).with('user', 'repo', 42).twice.and_invoke(
+          ->(*) { raise Net::ReadTimeout }, ->(*) { completed_build }
+        )
         allow_any_instance_of(CircleCI::CLI::Command::BuildWatcher).to receive(:start) do |build_watcher|
           build_watcher.send(:notify_started)
         end
@@ -441,7 +454,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
         'username' => 'user', 'reponame' => 'repo', 'build_num' => 1, 'status' => 'timedout', 'lifecycle' => 'finished'
       )
       allow(response).to receive(:all).with('user', 'repo').and_return([first], [second])
-      allow(response).to receive(:get).with('user', 'repo', 1).and_return(first, finished)
+      expect(response).to receive(:get).with('user', 'repo', 1).twice.and_return(first, finished)
       repository = CircleCI::CLI::Command::BuildRepository.new('user', 'repo')
       watcher_class = CircleCI::CLI::Command::BuildWatcher
       first_watcher = watcher_class.new(first)

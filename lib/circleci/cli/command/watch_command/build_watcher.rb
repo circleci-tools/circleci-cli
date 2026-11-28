@@ -155,7 +155,8 @@ module CircleCI
         end
 
         def update_build(stopping: false)
-          detail = fetch_detail(attempts: stopping ? FINAL_DETAIL_ATTEMPTS : 1)
+          detail = latest_detail if stopping
+          detail = fetch_detail(attempts: stopping ? FINAL_DETAIL_ATTEMPTS : 1) unless detail&.finished?
           update_steps(detail.steps, stopping:)
           @state_lock.synchronize { @latest_detail = detail }
         end
