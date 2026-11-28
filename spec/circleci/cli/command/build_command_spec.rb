@@ -29,13 +29,15 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
   context 'with a failed action' do
     let(:log) { 'Build log contains <%= "example" %>' }
     let(:action_name) { 'Test <%= "metadata" %>' }
+    let(:action_status) { 'failed' }
     let(:output_url) { 'https://example.test/output' }
     let(:response) { Net::HTTPOK.new('1.1', '200', 'OK') }
     let(:response_body) { JSON.generate([{ 'message' => log }]) }
 
     before do
       build_hash['steps'].last['actions'].first.merge!(
-        'name' => action_name, 'status' => 'failed', 'output_url' => output_url
+        'name' => action_name, 'status' => action_status, 'output_url' => output_url,
+        'end_time' => '2026-11-23T00:00:00Z'
       )
       session_class = CircleCI::CLI::Networking::HTTPClient::Session
       log_session = instance_double(session_class, close: nil)
@@ -64,6 +66,15 @@ describe CircleCI::CLI::Command::BuildCommand, type: :command do
             }
           end.to output("Action log download failed (HTTP 403)\n").to_stderr
         end
+      end
+    end
+
+    context 'when the action failed due to an infrastructure error' do
+      let(:action_status) { 'infrastructure_fail' }
+
+      it 'prints the action log' do
+        options = OpenStruct.new(project: 'user/repo', build: 1234, pretty: true)
+        expect { described_class.run(options) }.to output(a_string_including(action_name, log)).to_stdout
       end
     end
   end
