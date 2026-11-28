@@ -214,6 +214,9 @@ module CircleCI
         say CircleCI::CLI::VERSION
       end
 
+      desc 'env SUBCOMMAND ...ARGS', "Manage a project's environment variables"
+      subcommand 'env', Command::EnvCommand
+
       private
 
       def git_options(infer_branch: false)

@@ -1,0 +1,124 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'stringio'
+
+describe CircleCI::CLI::Command::EnvCommand, type: :command do
+  let(:runner) { CircleCI::CLI::Runner }
+
+  before do
+    allow(ENV).to receive(:fetch).with('CIRCLE_CI_TOKEN', nil).and_return('test-token')
+  end
+
+  describe 'list' do
+    it 'prints the masked environment variables for the project' do
+      allow_any_instance_of(CircleCi::Project).to receive(:envvar)
+        .and_return(circleci_response([{ 'name' => 'FOO', 'value' => 'xxxx1234' }]))
+
+      expect { runner.start(%w[env list -p owner/repo]) }
+        .to output(a_string_including('FOO', 'xxxx1234')).to_stdout
+    end
+  end
+
+  describe 'set' do
+    it 'sets the environment variable and confirms it' do
+      response = circleci_response({ 'name' => 'FOO', 'value' => 'xxxx1234' })
+      expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
+        .with(name: 'FOO', value: 'bar').and_return(response)
+
+      expect { runner.start(%w[env set FOO bar -p owner/repo]) }
+        .to output("FOO is set for owner/repo.\n").to_stdout
+    end
+
+    it 'prompts on a terminal and reads the value with echo disabled' do
+      input = StringIO.new("  secret  \n")
+      allow($stdin).to receive(:tty?).and_return(true)
+      expect($stdin).to receive(:noecho).and_yield(input)
+      expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
+        .with(name: 'FOO', value: '  secret  ').and_return(circleci_response({ 'name' => 'FOO' }))
+
+      expect { runner.start(%w[env set FOO -p owner/repo]) }
+        .to output("Environment variable value: \n").to_stderr
+        .and output("FOO is set for owner/repo.\n").to_stdout
+    end
+
+    it 'reads all of non-terminal standard input without prompting' do
+      value = "first line\nsecond line\n"
+      allow($stdin).to receive(:tty?).and_return(false)
+      allow($stdin).to receive(:read).and_return(value)
+      expect_any_instance_of(CircleCi::Project).to receive(:add_envvar)
+        .with(name: 'FOO', value: value).and_return(circleci_response({ 'name' => 'FOO' }))
+
+      expect { runner.start(%w[env set FOO -p owner/repo]) }
+        .to output("FOO is set for owner/repo.\n").to_stdout.and output('').to_stderr
+    end
+
+    it 'rejects empty standard input before calling the API' do
+      allow($stdin).to receive(:tty?).and_return(false)
+      allow($stdin).to receive(:read).and_return('')
+      expect(CircleCi::Project).not_to receive(:new)
+
+      expect_command_failure(%w[env set FOO -p owner/repo], 'No environment variable value provided on standard input.')
+    end
+  end
+
+  describe 'delete' do
+    ['FOO BAR', 'FOO/BAR', '1FOO', '', "FOO\n"].each do |name|
+      it "rejects #{name.inspect} before calling the API" do
+        expect(CircleCi::Project).not_to receive(:new)
+
+        expect_command_failure(
+          ['env', 'delete', name, '-p', 'owner/repo'],
+          'Invalid environment variable name. Use letters, digits, and underscores, ' \
+          'starting with a letter or underscore.'
+        )
+      end
+    end
+
+    it 'deletes the environment variable and confirms it' do
+      response = circleci_response({ 'message' => 'ok' })
+      expect_any_instance_of(CircleCi::Project).to receive(:delete_envvar).with('_Foo2').and_return(response)
+
+      expect { runner.start(%w[env delete _Foo2 -p owner/repo]) }
+        .to output("_Foo2 is deleted for owner/repo.\n").to_stdout
+    end
+  end
+
+  context 'when the project is omitted' do
+    it 'infers the project from the git origin remote' do
+      body = [{ 'name' => 'FOO', 'value' => 'xxxx1234' }]
+      allow_any_instance_of(CircleCi::Project).to receive(:envvar).and_return(circleci_response(body))
+      expect(CircleCi::Project).to receive(:new)
+        .with('user', 'local-repository-from-rugged', 'github').and_call_original
+
+      runner.start(%w[env list])
+    end
+  end
+
+  context 'when the project is malformed' do
+    it 'raises before calling the API' do
+      expect(CircleCi::Project).not_to receive(:new)
+
+      expect_command_failure(%w[env list -p owner/repo/extra], 'Project must be in owner/repo format.')
+    end
+  end
+
+  context 'when the API request fails' do
+    it 'reports the API error' do
+      allow_any_instance_of(CircleCi::Project).to receive(:envvar)
+        .and_return(circleci_response({ 'message' => 'Not Found' }, status: '404'))
+
+      expect_command_failure(%w[env list -p owner/repo], 'CircleCI API error (HTTP 404): Not Found')
+    end
+  end
+
+  def circleci_response(body, status: '200')
+    CircleCi::Response.new(double('HTTP response', code: status, body: JSON.generate(body)))
+  end
+
+  def expect_command_failure(arguments, message)
+    expect do
+      expect { runner.start(arguments) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+    end.to output("#{message}\n").to_stderr
+  end
+end

@@ -5,6 +5,7 @@ require 'circleci/cli/response/project'
 require 'circleci/cli/response/build'
 require 'circleci/cli/response/step'
 require 'circleci/cli/response/action'
+require 'circleci/cli/response/env_var'
 
 module CircleCI
   module CLI

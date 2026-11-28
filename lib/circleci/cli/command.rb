@@ -10,6 +10,7 @@ require 'circleci/cli/command/browse_command'
 require 'circleci/cli/command/watch_command'
 require 'circleci/cli/command/retry_command'
 require 'circleci/cli/command/cancel_command'
+require 'circleci/cli/command/env_command'
 
 module CircleCI
   module CLI
