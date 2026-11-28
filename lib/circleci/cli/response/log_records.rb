@@ -4,6 +4,7 @@ module CircleCI
   module CLI
     module Response
       class LogRecords
+        MAX_RECORD_BYTES = 1024 * 1024
         TOKENS = /["\\{}\[\],]|[^"\\{}\[\],]+/
         WHITESPACE = /\A[ \t\r\n]*\z/
 
@@ -48,6 +49,10 @@ module CircleCI
         end
 
         def read_record(token)
+          if @record.bytesize + token.bytesize > MAX_RECORD_BYTES
+            raise Thor::Error, "Action log record exceeds #{MAX_RECORD_BYTES} bytes"
+          end
+
           @record << token
           advance_record(token)
           return unless @depth.zero?
