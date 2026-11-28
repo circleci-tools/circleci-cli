@@ -186,52 +186,93 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     end
   end
 
-  it 'drains an unread error response body so a later download on the reused connection is not corrupted' do
-    allow(client::Session).to receive(:new).with(max_retries: 0).and_call_original
-    server = TCPServer.new('127.0.0.1', 0)
-    allow(Net::HTTP).to receive(:start).with('output.circle-artifacts.com', 443, use_ssl: true) do
-      Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+  context 'with a persistent HTTP connection' do
+    let(:server) { TCPServer.new('127.0.0.1', 0) }
+    let(:http) { Net::HTTP.new('127.0.0.1', server.addr[1], nil).start }
+    let(:stream_class) { CircleCI::CLI::Command::ArtifactsCommand::ArtifactStream }
+
+    before do
+      allow(client::Session).to receive(:new).with(max_retries: 0).and_call_original
+      allow(Net::HTTP).to receive(:start).with('output.circle-artifacts.com', 443, use_ssl: true) { http }
     end
 
-    # Net::HTTP closes its socket whenever the block passed to #request raises (see
-    # Net::HTTP#transport_request), so the 403 response forces a reconnect before the
-    # second artifact's request; the responder accepts a fresh connection each time.
-    sockets = []
-    responder = Thread.new do
-      2.times do
-        socket = server.accept
-        sockets << socket
-        request_line = socket.gets
-        socket.each_line.take_while { |line| line != "\r\n" }
-        if request_line.include?('err.png')
-          body = 'x' * 50
-          socket.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
-        else
-          socket.write("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nok-content")
+    after { server.close }
+
+    def with_client_socket
+      socket = server.accept
+      yield socket
+    ensure
+      socket&.close
+    end
+
+    def read_request(socket)
+      request_line = socket.gets
+      socket.each_line.take_while { |line| line != "\r\n" }
+      request_line
+    end
+
+    def write_success(socket)
+      socket.write("HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nok-content")
+    end
+
+    it 'discards a large chunked redirect body and reads the next response on the same socket' do
+      redirect = nil
+      allow(http).to receive(:request).and_wrap_original do |request, *args, &block|
+        request.call(*args, &block).tap { |response| redirect = response if response.code == '302' }
+      end
+
+      responder = Thread.new do
+        with_client_socket do |socket|
+          first_request = read_request(socket)
+          socket.write("HTTP/1.1 302 Found\r\nLocation: /ok.png\r\nTransfer-Encoding: chunked\r\n\r\n")
+          chunk = "4000\r\n#{'x' * 16_384}\r\n"
+          256.times { socket.write(chunk) }
+          socket.write("0\r\n\r\n")
+          next_request = read_request(socket)
+          write_success(socket)
+          [first_request, next_request]
         end
       end
+
+      file = StringIO.new
+      Timeout.timeout(5) do
+        client::SessionPool.open { |sessions| stream_class.new({}, sessions).fetch(url, file) }
+        expect(responder.value).to match([%r{^GET /0/failure.png }, %r{^GET /ok.png }])
+      end
+      expect(redirect.body).not_to be_a(String)
+      expect(file.string).to eq('ok-content')
+    ensure
+      responder&.kill
+      responder&.join
     end
 
-    Dir.mktmpdir do |destination|
+    it 'reports an HTTP error without waiting for its body and reconnects for the next download' do
+      responder = Thread.new do
+        with_client_socket do |socket|
+          read_request(socket)
+          socket.write("HTTP/1.1 403 Forbidden\r\nTransfer-Encoding: chunked\r\n\r\n")
+          socket.read
+        end
+        with_client_socket do |socket|
+          read_request(socket)
+          write_success(socket)
+        end
+      end
+
+      file = StringIO.new
       Timeout.timeout(5) do
         client::SessionPool.open do |sessions|
-          downloader = CircleCI::CLI::Command::ArtifactsCommand::Download.new(destination, {}, sessions)
-          artifact_class = CircleCI::CLI::Command::ArtifactsCommand::Artifact
-          err = artifact_class.new('checks', 'job', job_id, 0, 'err.png',
-                                    'https://output.circle-artifacts.com/0/err.png')
-          ok = artifact_class.new('checks', 'job', job_id, 0, 'ok.png',
-                                   'https://output.circle-artifacts.com/0/ok.png')
-
-          expect { downloader.save(err) }.to raise_error(Thor::Error, /Could not download .*HTTP 403/)
-          downloader.save(ok)
+          stream = stream_class.new({}, sessions)
+          expect { stream.fetch(url, file) }.to raise_error(Thor::Error, 'HTTP 403')
+          stream.fetch(url.sub('failure.png', 'ok.png'), file)
         end
+        responder.value
       end
-      expect(File.binread(File.join(destination, job_id, '0', 'ok.png'))).to eq('ok-content')
+      expect(file.string).to eq('ok-content')
+    ensure
+      responder&.kill
+      responder&.join
     end
-  ensure
-    responder&.join
-    sockets&.each(&:close)
-    server&.close
   end
 
   it 'reports an unmatched download filter without creating the destination' do
@@ -251,7 +292,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     storage_url = 'https://storage.example.com/signed-download'
     response = Net::HTTPFound.new('1.1', '302', 'Found')
     response['Location'] = storage_url
-    allow(response).to receive(:body)
+    allow(response).to receive(:read_body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
     stub_download(storage_url, 'downloaded', request_headers: {})
 
@@ -284,7 +325,6 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     bad_location = 'https://storage.example.com/signed-download?X-Amz-Signature=dummy secret'
     response = Net::HTTPFound.new('1.1', '302', 'Found')
     response['Location'] = bad_location
-    allow(response).to receive(:body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
     expect(download_session).to receive(:close)
 
@@ -302,7 +342,6 @@ describe CircleCI::CLI::Runner, 'artifacts' do
   it 'reports HTTP download errors, leaves no file, and closes the session' do
     stub_artifacts(artifact(0))
     response = Net::HTTPForbidden.new('1.1', '403', 'Forbidden')
-    allow(response).to receive(:body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
     expect(download_session).to receive(:close)
 
