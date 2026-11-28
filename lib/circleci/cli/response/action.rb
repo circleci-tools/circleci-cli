@@ -57,7 +57,7 @@ module CircleCI
         end
 
         def failed?
-          @status == 'timedout' || @status == 'failed'
+          %w[timedout failed infrastructure_fail].include?(@status)
         end
 
         def canceled?
