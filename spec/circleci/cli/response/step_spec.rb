@@ -32,6 +32,12 @@ describe CircleCI::CLI::Response::Step do
       end
     end
 
+    context 'with a completed infrastructure-failed action' do
+      let(:actions) { [action('infrastructure_fail')] }
+
+      it { is_expected.to eq('failed') }
+    end
+
     context 'with every action skipped' do
       let(:actions) { [action('not_run'), action('not_run')] }
 

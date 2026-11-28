@@ -672,13 +672,14 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       )
     end
     let(:repository) { double('repository') }
+    let(:action_status) { 'failed' }
     let(:step) do
       CircleCI::CLI::Response::Step.new({
         'actions' => [
           { 'name' => 'Setup', 'status' => 'success', 'index' => 0, 'step' => 1,
             'output_url' => 'https://circleci.com/output/setup' },
-          { 'name' => 'Test', 'status' => 'failed', 'index' => 1, 'step' => 1,
-            'output_url' => 'https://circleci.com/output/test' },
+          { 'name' => 'Test', 'status' => action_status, 'index' => 1, 'step' => 1,
+            'output_url' => 'https://circleci.com/output/test', 'end_time' => '2026-11-23T00:00:00Z' },
           { 'name' => 'Deploy', 'status' => 'not_run' }
         ]
       })
@@ -717,6 +718,17 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
           output.include?('header output <%= "metadata" %>') &&
             output.scan('test log <%= "log" %>').size == 1 && !output.include?('setup log')
         end).to_stdout
+    end
+
+    context 'when the action failed due to an infrastructure error' do
+      let(:action_status) { 'infrastructure_fail' }
+
+      it 'prints the action log by default' do
+        allow(CircleCI::CLI::Response::Build).to receive(:get).with('user', 'repo', 42).and_return(response_build)
+
+        expect { session.send(:show_interrupted_build_results, builds, {}) }
+          .to output(a_string_including('test log <%= "log" %>')).to_stdout
+      end
     end
 
     def partial_log_response
