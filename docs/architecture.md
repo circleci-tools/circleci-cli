@@ -29,7 +29,11 @@ events that trigger a build list refresh.
 [BuildRepository](../lib/circleci/cli/command/watch_command/build_repository.rb)
 tracks recent builds and which results have been shown.
 [BuildWatcher](../lib/circleci/cli/command/watch_command/build_watcher.rb)
-polls build details and action output for the active build.
+polls build details and action output for the active build, delegating to
+[ActionLogTracker](../lib/circleci/cli/command/watch_command/action_log_tracker.rb)
+for action-output streaming and failure-log retention, and to
+[StepNotifier](../lib/circleci/cli/command/watch_command/step_notifier.rb) for
+step-transition terminal output.
 
 ## Artifact downloads
 

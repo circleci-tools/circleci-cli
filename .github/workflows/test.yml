@@ -18,8 +18,8 @@ jobs:
         with:
           ruby-version: .ruby-version
           bundler-cache: true
-      - name: Run test
-        run: bundle exec rubocop lib
+      - name: Run RuboCop
+        run: bundle exec rubocop lib bin exe
   test:
     runs-on: ubuntu-24.04
     strategy:
