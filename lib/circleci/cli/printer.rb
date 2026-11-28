@@ -31,6 +31,7 @@ module CircleCI
           text = value.encoding == Encoding::BINARY ? decode_binary_text(value) : value
           text = text.gsub("\r\n", "\n") if multiline
           controls = multiline ? /[[:cntrl:]&&[^\n]]/ : /[[:cntrl:]]/
+          controls = Regexp.union(controls, /\p{Bidi_Control}/) if text.encoding == Encoding::UTF_8
           text.gsub(controls) { |character| format('\\x%02X', character.ord) }
         end
 
