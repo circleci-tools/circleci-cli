@@ -13,7 +13,9 @@ module CircleCI
           end
 
           def fetch(url, file)
-            stream(parse_artifact_uri(url), file)
+            uri = parse_artifact_uri(url)
+            validate_https_uri(uri)
+            stream(uri, file)
           end
 
           private
@@ -27,17 +29,15 @@ module CircleCI
           end
 
           def stream(uri, file, redirects = MAX_REDIRECTS)
-            raise Thor::Error, 'Invalid HTTPS artifact URL.' unless uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo
-
-            location = nil
+            target = nil
             @sessions.get_raw(uri.to_s, headers_for(uri)) do |response|
-              location = read_response(response, file)
+              target = read_response(response, file, uri, redirects)
             end
-            return unless location
+            stream(target, file, redirects - 1) if target
+          end
 
-            raise Thor::Error, 'Too many artifact redirects.' if redirects.zero?
-
-            stream(merge_redirect_uri(uri, location), file, redirects - 1)
+          def validate_https_uri(uri)
+            raise Thor::Error, 'Invalid HTTPS artifact URL.' unless uri.is_a?(URI::HTTPS) && uri.host && !uri.userinfo
           end
 
           def merge_redirect_uri(uri, location)
@@ -52,28 +52,28 @@ module CircleCI
             !value.match?(/[[:space:]]|[[:cntrl:]]/)
           end
 
-          def read_response(response, file)
+          def read_response(response, file, uri, redirects)
             response.ignore_eof = false
             case response
             when Net::HTTPOK
               response.read_body(file)
               nil
             else
-              non_ok_response(response)
+              redirect_target(response, uri, redirects)
             end
           end
 
-          def non_ok_response(response)
-            drain(response)
+          # Raising inside the request block closes the socket when a body is abandoned.
+          def redirect_target(response, uri, redirects)
             raise Thor::Error, "HTTP #{response.code}" unless response.is_a?(Net::HTTPRedirection)
 
-            response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
-          end
+            location = response['location'] || raise(Thor::Error, 'Artifact redirect has no location.')
+            raise Thor::Error, 'Too many artifact redirects.' if redirects.zero?
 
-          # Net::HTTP leaves the body on the socket until it's read; a response left unread
-          # here would corrupt the next request on the same pooled connection.
-          def drain(response)
-            response.body
+            target = merge_redirect_uri(uri, location)
+            validate_https_uri(target)
+            response.read_body { nil }
+            target
           end
 
           def headers_for(uri)
