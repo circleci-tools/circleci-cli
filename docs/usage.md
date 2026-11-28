@@ -45,7 +45,8 @@ include builds across branches.
 - `artifacts RUN_ID` lists every artifact's workflow, job name, job UUID,
   execution index, and path. Provide both `--download PATH` and
   `--destination DIRECTORY` together to download artifacts whose path matches
-  the `PATH` glob into `DIRECTORY` instead of listing them.
+  the `PATH` glob into `DIRECTORY` instead of listing them. Downloads require a
+  POSIX platform with Ruby support for `Dir.fchdir`.
 - `env list` uses formatted output by default; pass `--no-pretty` for compact
   `NAME=VALUE` output. The CircleCI API returns masked values for `env list`.
 

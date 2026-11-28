@@ -233,6 +233,43 @@ describe CircleCI::CLI::Runner, 'run' do
       expect(session).to have_received(:close).exactly(3).times
     end
 
+    context 'with a failed request in the same batch as uploaded failures' do
+      let(:summary) { CircleCI::CLI::Command::FailedTestsSummary }
+      let(:retained) { "Failed tests\n\nchecks\n  unit\n    - first\n    - second" }
+
+      before do
+        fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
+        stub_workflow_page('first', [failed_job(unit_id, 'unit'), failed_job(integration_id, 'integration')])
+        stub_test_chunks(unit_id, %w[first second].map { |name| "#{JSON.generate(name:, result: 'failure')}\n" })
+        stub_test_chunks(integration_id, ["invalid JSON\n"])
+      end
+
+      it 'prints the workflow table and retained failures when the budget is filled exactly' do
+        stub_const("#{summary}::MAX_OUTPUT_BYTES", retained.bytesize + summary::TRUNCATION_NOTICE.bytesize)
+        table = /\| checks +\| unit +\| failed .*\n\| checks +\| integration +\| failed /
+        ending = Regexp.escape("#{retained}#{summary::TRUNCATION_NOTICE}\n")
+
+        expect { described_class.start(args) }.to output(/#{table}.*#{ending}\z/m).to_stdout
+      end
+
+      it 'truncates a capped result before surfacing the next job error' do
+        limit = retained.bytesize + summary::TRUNCATION_NOTICE.bytesize + 1
+        stub_const("#{summary}::MAX_OUTPUT_BYTES", limit)
+        records = ['first', 'second', 'x' * limit].map { |name| "#{JSON.generate(name:, result: 'failure')}\n" }
+        stub_test_chunks(unit_id, records)
+
+        ending = Regexp.escape("#{retained}#{summary::TRUNCATION_NOTICE}\n")
+        expect { described_class.start(args) }.to output(/#{ending}\z/).to_stdout
+      end
+
+      it 'reports the error with job context when output budget remains' do
+        expect do
+          expect { described_class.start(args) }.to raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+        end.to output("Unable to load test results for job integration (#{integration_id}): " \
+                      "CircleCI API returned invalid JSON Lines.\n").to_stderr
+      end
+    end
+
     it 'skips oversized records split across chunks and resumes at the next record' do
       limit = CircleCI::CLI::Command::TestResultLines::MAX_RECORD_BYTES
       fixtures.fetch('workflows_first_page').fetch('page')['next'] = nil
