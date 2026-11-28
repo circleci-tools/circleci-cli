@@ -86,6 +86,8 @@ and path. Downloads require both a path glob and a destination. Quote the glob
 to match against the paths shown in the list. Files are saved under
 `DESTINATION/JOB_UUID/EXECUTION/PATH`, so parallel executions can keep the same
 artifact path. A completed download replaces any existing file at that path.
+Downloads require a POSIX platform with Ruby support for `Dir.fchdir`.
+Artifact listing works without this filesystem support.
 
 #### Approve a pending workflow approval job
 
