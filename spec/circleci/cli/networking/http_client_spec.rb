@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'timeout'
 
 describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
   describe CircleCI::CLI::Networking::HTTPClient::SessionPool do
@@ -58,6 +59,38 @@ describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
       expect(first).to have_received(:close)
       expect(second).to have_received(:close)
       expect(third).to have_received(:close)
+    end
+
+    it 'evicts an idle session while leaving a checked-out session open' do
+      active, idle, replacement = Array.new(3) { stub_session }
+      allow(session_class).to receive(:new).and_return(active, idle, replacement)
+      allow(active).to receive(:get_raw).and_yield
+      allow(idle).to receive(:get_raw)
+      allow(replacement).to receive(:get_raw)
+
+      started = Queue.new
+      release = Queue.new
+      described_class.open(limit: 2) do |pool|
+        worker = Thread.new do
+          pool.get_raw('https://a.example.com/') do
+            started << true
+            release.pop
+          end
+        end
+
+        begin
+          Timeout.timeout(5) { started.pop }
+          pool.get_raw('https://b.example.com/')
+          pool.get_raw('https://c.example.com/')
+          expect(idle).to have_received(:close).once
+          expect(active).not_to have_received(:close)
+        ensure
+          release.close
+          worker.join
+        end
+      end
+      expect(active).to have_received(:close).once
+      expect(replacement).to have_received(:close).once
     end
 
     it 'closes every open session when the block raises' do

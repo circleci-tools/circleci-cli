@@ -44,10 +44,10 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     stub_api("jobs/#{job_id}/artifacts", artifacts)
   end
 
-  def stub_download(download_url, body, request_headers: headers)
+  def stub_download(download_url, body, request_headers: headers, connection: download_session)
     response = Net::HTTPOK.new('1.1', '200', 'OK')
     allow(response).to receive(:read_body) { |file| file << body }
-    allow(download_session).to receive(:get_raw).with(download_url, request_headers).and_yield(response)
+    allow(connection).to receive(:get_raw).with(download_url, request_headers).and_yield(response)
     response
   end
 
@@ -161,52 +161,54 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     worker&.join
   end
 
-  it 'overlaps artifact downloads up to four at a time' do
+  it 'overlaps same-origin artifact transfers and reuses the four connections' do
     artifacts = (1..8).map do |n|
-      artifact(0, path: "screenshots/file-#{n}.png", url: "https://host-#{n}.example.com/file-#{n}.png")
+      artifact(0, path: "screenshots/file-#{n}.png", url: "https://example.com/file-#{n}.png")
     end
     stub_artifacts(*artifacts)
 
     started = Queue.new
     release = Queue.new
-    mutex = Mutex.new
-    active = peak = 0
-    allow(download_session).to receive(:get_raw) do |request_url, _headers, &block|
-      mutex.synchronize do
-        active += 1
-        peak = [peak, active].max
+    sessions = Array.new(4) { instance_double(client::Session, close: nil) }
+    allow(client::Session).to receive(:new).with(max_retries: 0).and_return(*sessions)
+    sessions.each do |connection|
+      allow(connection).to receive(:get_raw) do |request_url, _headers, &block|
+        response = Net::HTTPOK.new('1.1', '200', 'OK')
+        allow(response).to receive(:read_body) do |file|
+          file << request_url
+          started << true
+          release.pop
+        end
+        block.call(response)
       end
-      started << true
-      release.pop
-      response = Net::HTTPOK.new('1.1', '200', 'OK')
-      allow(response).to receive(:read_body) { |file| file << request_url }
-      block.call(response)
-      mutex.synchronize { active -= 1 }
     end
 
     command = CircleCI::CLI::Command::ArtifactsCommand.new('test-token')
-    result = nil
-    worker = nil
     Dir.mktmpdir do |destination|
-      worker = Thread.new { result = command.artifacts(run_id, download: 'screenshots/*.png', destination:) }
-      Timeout.timeout(5) { 4.times { started.pop } }
-      8.times { release << true }
-      worker.join
+      worker = Thread.new { command.artifacts(run_id, download: 'screenshots/*.png', destination:) }
+      begin
+        Timeout.timeout(5) { 4.times { started.pop } }
+        sessions.each { |connection| expect(connection).not_to have_received(:close) }
+        4.times { release << true }
 
-      expect(peak).to eq(4)
-      expect(result).to match(/Downloaded 8 artifacts/)
-      (1..8).each do |n|
-        expect(File.binread(File.join(destination, job_id, '0', 'screenshots', "file-#{n}.png")))
-          .to eq("https://host-#{n}.example.com/file-#{n}.png")
+        Timeout.timeout(5) { 4.times { started.pop } }
+        expect(client::Session).to have_received(:new).with(max_retries: 0).exactly(4).times
+        4.times { release << true }
+
+        expect(worker.value).to match(/Downloaded 8 artifacts/)
+        sessions.each { |connection| expect(connection).to have_received(:close).once }
+        (1..8).each do |n|
+          expect(File.binread(File.join(destination, job_id, '0', 'screenshots', "file-#{n}.png")))
+            .to eq("https://example.com/file-#{n}.png")
+        end
+      ensure
+        release.close
+        worker.join
       end
     end
-  ensure
-    started&.close
-    release&.close
-    worker&.join
   end
 
-  it 'reuses one HTTPS session for two files served from the same origin' do
+  it 'downloads matching files from the same origin' do
     other_url = url.sub('/0/', '/1/')
     stub_artifacts(artifact(0), artifact(1, url: other_url), artifact(0, path: 'report.xml'))
     stub_download(url, "first\x00".b)
@@ -216,8 +218,6 @@ describe CircleCI::CLI::Runner, 'artifacts' do
       expect { described_class.start(download_args(destination)) }.to output(/Downloaded 2 artifacts/).to_stdout
       expect(File.binread(File.join(destination, job_id, '0', path))).to eq("first\x00".b)
       expect(File.binread(File.join(destination, job_id, '1', path))).to eq('second')
-      expect(client::Session).to have_received(:new).with(max_retries: 0).once
-      expect(download_session).to have_received(:close)
     end
   end
 
@@ -288,13 +288,16 @@ describe CircleCI::CLI::Runner, 'artifacts' do
     response['Location'] = storage_url
     allow(response).to receive(:body)
     allow(download_session).to receive(:get_raw).with(url, headers).and_yield(response)
-    stub_download(storage_url, 'downloaded', request_headers: {})
+    storage_session = instance_double(client::Session, close: nil)
+    allow(client::Session).to receive(:new).with(max_retries: 0).and_return(download_session, storage_session)
+    stub_download(storage_url, 'downloaded', request_headers: {}, connection: storage_session)
 
     Dir.mktmpdir do |destination|
       expect { described_class.start(download_args(destination)) }.to output(/Downloaded 1 artifact/).to_stdout
       expect(File.binread(File.join(destination, job_id, '0', path))).to eq('downloaded')
       expect(client::Session).to have_received(:new).with(max_retries: 0).twice
-      expect(download_session).to have_received(:close).twice
+      expect(download_session).to have_received(:close).once
+      expect(storage_session).to have_received(:close).once
     end
   end
 
