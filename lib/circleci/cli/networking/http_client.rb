@@ -44,17 +44,12 @@ module CircleCI
           end
         end
 
-        # One Session per origin, kept alive for the pool's lifetime; a long redirect chain
-        # across many origins evicts the least recently used session instead of growing unbounded.
-        #
-        # Safe to share across worker threads: checkout (picking/creating a session) is
-        # serialized by a pool-wide mutex, and each origin additionally gets its own mutex so
-        # concurrent requests to the *same* origin are serialized onto its one connection while
-        # different origins still proceed in parallel. Checkout always marks an origin as most
-        # recently used, so eviction can only ever hit an idle origin as long as the number of
-        # concurrent callers never exceeds LIMIT.
+        # Each origin has one session and a request mutex. The pool mutex protects the LRU
+        # order and counts both active and queued callers before they take the request mutex.
         class SessionPool
           LIMIT = 4
+          Entry = Struct.new(:session, :lock, :callers)
+          private_constant :Entry
 
           def self.open(max_retries: 0, limit: LIMIT)
             pool = new(max_retries:, limit:)
@@ -64,45 +59,55 @@ module CircleCI
           end
 
           def initialize(max_retries: 0, limit: LIMIT)
+            raise ArgumentError, 'Session pool limit must be positive' unless limit.positive?
+
             @max_retries = max_retries
             @limit = limit
             @sessions = {}
-            @locks = {}
             @mutex = Mutex.new
+            @available = ConditionVariable.new
           end
 
           def get_raw(url, headers = {}, &)
-            session, lock = checkout(URI(url))
-            lock.synchronize { session.get_raw(url, headers, &) }
+            entry = checkout(URI(url).origin)
+            entry.lock.synchronize { entry.session.get_raw(url, headers, &) }
+          ensure
+            checkin(entry) if entry
           end
 
           def close
             @mutex.synchronize do
-              @sessions.each_value(&:close)
+              @sessions.each_value { |entry| entry.session.close }
               @sessions.clear
-              @locks.clear
             end
           end
 
           private
 
-          def checkout(uri)
-            origin = uri.origin
+          def checkout(origin)
             @mutex.synchronize do
-              @sessions[origin] = @sessions.delete(origin) || new_session
-              [@sessions[origin], @locks[origin] ||= Mutex.new]
+              @available.wait(@mutex) until @sessions.key?(origin) || make_room?
+              entry = @sessions.delete(origin) || Entry.new(Session.new(max_retries: @max_retries), Mutex.new, 0)
+              entry.callers += 1
+              @sessions[origin] = entry
             end
           end
 
-          def new_session
-            evict_oldest if @sessions.size >= @limit
-            Session.new(max_retries: @max_retries)
+          def checkin(entry)
+            @mutex.synchronize do
+              entry.callers -= 1
+              @available.broadcast if entry.callers.zero?
+            end
           end
 
-          def evict_oldest
-            origin, session = @sessions.shift
-            @locks.delete(origin)
-            session.close
+          def make_room?
+            return true if @sessions.size < @limit
+
+            origin, = @sessions.find { |_origin, entry| entry.callers.zero? }
+            return false unless origin
+
+            @sessions.delete(origin).session.close
+            true
           end
         end
 
