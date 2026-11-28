@@ -17,6 +17,7 @@ describe CircleCI::CLI::Runner, 'artifacts' do
   let(:args) { ['artifacts', run_id] }
   let(:path) { 'screenshots/failure.png' }
   let(:url) { 'https://output.circle-artifacts.com/0/failure.png' }
+  let(:platform_error) { "Artifact downloads require Dir.fchdir. Retry on a POSIX system with Dir.fchdir support.\n" }
 
   before do
     allow(CircleCI::CLI::Command::ArtifactsCommand).to receive(:setup_token).and_return('test-token')
@@ -75,6 +76,40 @@ describe CircleCI::CLI::Runner, 'artifacts' do
 
     expect { described_class.start(args) }.to output(/checks.*browser-tests.*0.*failure\.png.*1.*failure\.png/m)
       .to_stdout
+  end
+
+  context 'when Ruby does not expose Dir.fchdir' do
+    before do
+      allow(Dir).to receive(:respond_to?).and_call_original
+      allow(Dir).to receive(:respond_to?).with(:fchdir).and_return(false)
+      stub_artifacts(artifact(0))
+    end
+
+    it 'still lists artifacts' do
+      expect { described_class.start(args) }.to output(/failure\.png/).to_stdout
+    end
+
+    it 'reports the download requirement before creating the destination' do
+      Dir.mktmpdir do |directory|
+        destination = File.join(directory, 'artifacts')
+        expect { described_class.start(download_args(destination)) }
+          .to output(platform_error).to_stderr.and raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+        expect(File.exist?(destination)).to be(false)
+      end
+    end
+  end
+
+  it 'reports an unimplemented Dir.fchdir without printing a stack trace' do
+    stub_artifacts(artifact(0))
+    allow(Dir).to receive(:fchdir).and_raise(NotImplementedError)
+    expect(download_session).not_to receive(:get_raw)
+
+    Dir.mktmpdir do |destination|
+      message = "Could not download #{path} (job #{job_id}, execution 0): #{platform_error}"
+      expect { described_class.start(download_args(destination)) }
+        .to output(message).to_stderr.and raise_error(SystemExit) { |error| expect(error.status).to eq(1) }
+      expect(Dir.children(destination)).to be_empty
+    end
   end
 
   it 'overlaps job artifact requests up to four at a time and preserves job order after a held-open response' do
