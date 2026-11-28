@@ -525,7 +525,7 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
     end
   end
 
-  describe 'background detail requests during watch' do
+  describe 'background builds during watch' do
     let(:response) { CircleCI::CLI::Response::Build }
     let(:attributes) { { 'username' => 'user', 'reponame' => 'repo' } }
     let(:background) { response.new(attributes.merge('build_num' => 1, 'status' => 'not_running')) }
@@ -542,6 +542,46 @@ describe CircleCI::CLI::Command::WatchCommand, type: :command do
       allow(CircleCI::CLI::Networking::CircleCIPusherClient).to receive(:new).with(token: 'token').and_return(client)
       allow(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success).and_yield
       allow(response).to receive(:all).with('user', 'repo').and_return([background], recent_builds)
+    end
+
+    context 'when a background action log contains invalid JSON' do
+      let(:recent_builds) { [completed, live] }
+      let(:log_url) { 'https://circleci.com/output/test' }
+      let(:action) { { 'name' => 'Test', 'status' => 'failed', 'output_url' => log_url } }
+      let(:completed_detail) do
+        response.new(attributes.merge('build_num' => 1, 'status' => 'success', 'steps' => [{ 'actions' => [action] }]))
+      end
+
+      it 'warns once, omits the partial log, and renders a later completion on the next refresh' do
+        subscription = nil
+        allow(client).to receive(:bind).with('private-pusher-id', 'call', subscription_success) do |&callback|
+          subscription = callback
+          subscription.call
+        end
+        expect(session).to receive(:sleep).with(1).ordered do
+          allow(response).to receive(:all).with('user', 'repo').and_return([completed, live, later_completed])
+          subscription.call
+        end
+        expect(session).to receive(:sleep).with(1).ordered.and_raise(Interrupt)
+        allow(watcher_class).to receive(:new).with(live, verbose: true).and_return(watcher)
+        allow(watcher).to receive(:start)
+        expect(response).to receive(:get).with('user', 'repo', 1).once.and_return(completed_detail)
+        expect(response).to receive(:get).with('user', 'repo', 3).once.and_return(later_completed)
+
+        log_response = Net::HTTPOK.new('1.1', '200', 'OK')
+        allow(log_response).to receive(:read_body).and_yield('[{"message":"partial test log"}')
+        log_session = instance_double(CircleCI::CLI::Networking::HTTPClient::Session, close: nil)
+        allow(CircleCI::CLI::Networking::HTTPClient::Session).to receive(:new).and_return(log_session)
+        expect(log_session).to receive(:get_raw).with(log_url).once.and_yield(log_response)
+
+        results = satisfy('print both background results in order without the partial log') do |output|
+          output.scan(%r{Result of user/repo #(\d+) completed in background}).flatten == %w[1 3] &&
+            output.include?('Test') && !output.include?('partial test log')
+        end
+        expect do
+          expect { session.run('token') }.to raise_error(Interrupt)
+        end.to output("Warning: Could not download log for Test.\n").to_stderr.and output(results).to_stdout
+      end
     end
 
     shared_examples 'retrying a background detail request' do
