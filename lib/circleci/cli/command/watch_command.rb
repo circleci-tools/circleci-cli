@@ -152,7 +152,7 @@ module CircleCI
           retry if attempts.positive?
 
           warn_background_log_failure?(action)
-        rescue Thor::Error
+        rescue Thor::Error, JSON::ParserError
           reset_log_file(file)
           warn_background_log_failure?(action)
         end
