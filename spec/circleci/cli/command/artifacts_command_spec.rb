@@ -77,22 +77,22 @@ describe CircleCI::CLI::Runner, 'artifacts' do
       .to_stdout
   end
 
-  it 'escapes bidirectional override characters in the listing while keeping the real extension visible' do
-    bidi_path = "report‮fdp.exe"
+  it 'escapes bidirectional controls in the listing while keeping the real extension visible' do
+    bidi_path = "report\u061C\u202Efdp.exe"
     stub_artifacts(artifact(0, path: bidi_path))
     expect(client::Session).not_to receive(:new).with(max_retries: 0)
 
-    expect { described_class.start(args) }.to output(/report\\x202Efdp\.exe/).to_stdout
+    expect { described_class.start(args) }.to output(/report\\x61C\\x202Efdp\.exe/).to_stdout
   end
 
-  it 'escapes bidirectional override characters in the download summary while keeping the real extension visible' do
-    bidi_path = "report‮fdp.exe"
+  it 'escapes bidirectional controls in the download summary while keeping the real extension visible' do
+    bidi_path = "report\u061C\u202Efdp.exe"
     stub_artifacts(artifact(0, path: bidi_path))
     stub_download(url, 'payload')
 
     Dir.mktmpdir do |destination|
       expect { described_class.start(download_args(destination, filter: bidi_path)) }
-        .to output(/Downloaded 1 artifact.*report\\x202Efdp\.exe/m).to_stdout
+        .to output(/Downloaded 1 artifact.*report\\x61C\\x202Efdp\.exe/m).to_stdout
     end
   end
 
