@@ -12,6 +12,7 @@ the options for one command.
 | `cancel` | Cancel a build. | `-p, --project OWNER/REPO`, `-n, --build NUMBER` |
 | `retry` | Retry a build. | `-p, --project OWNER/REPO`, `-n, --build NUMBER`, `-l, --last` |
 | `run RUN_ID` | Show the workflows and jobs for a CircleCI run. Use the run UUID. | `--failed-tests` |
+| `approve RUN_ID` | List pending workflow approval jobs for a run, or approve one. Use the run UUID. | `-j, --job NAME` |
 | `artifacts RUN_ID` | List or download artifacts from a run. Use the run UUID. | `--download PATH`, `--destination DIRECTORY` |
 | `watch` | Watch builds in real time. | `-p, --project OWNER/REPO`, `-b, --branch BRANCH`, `-a, --all`, `-u, --user USER`, `-v, --verbose` |
 | `version` | Show the installed gem version. | |
@@ -39,6 +40,10 @@ include builds across branches.
   available logs from successful build actions.
 - `run --failed-tests` adds failures grouped by workflow and job when failed
   jobs have uploaded test results with `store_test_results`.
+- `approve RUN_ID` lists pending approval jobs grouped by workflow and job
+  name. Add `--job NAME` to approve the pending job with that name; the
+  command fails if no pending job or more than one pending job matches the
+  name.
 - `artifacts RUN_ID` lists every artifact's workflow, job name, job UUID,
   execution index, and path. Provide both `--download PATH` and
   `--destination DIRECTORY` together to download artifacts whose path matches

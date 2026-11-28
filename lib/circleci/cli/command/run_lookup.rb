@@ -52,15 +52,19 @@ module CircleCI
           raise Thor::Error, 'CircleCI API returned invalid JSON.'
         end
 
-        def request(path, query = nil, client:, &)
+        def post(session, path)
+          request(path, client: session, method: :post)
+        end
+
+        def request(path, query = nil, client:, method: :get, &)
           url = "#{API_URL}/#{path}"
           url += "?#{URI.encode_www_form(query)}" if query
-          response = client.get_raw(url, @headers, &)
+          response = method == :post ? client.post_raw(url, @headers, &) : client.get_raw(url, @headers, &)
           return response if response.is_a?(Net::HTTPSuccess)
 
           raise Thor::Error, api_error(response)
         rescue *WatchRequestErrors::TRANSIENT => e
-          raise Thor::Error, "CircleCI API request failed (GET #{url}): #{e.message}"
+          raise Thor::Error, "CircleCI API request failed (#{method.to_s.upcase} #{url}): #{e.message}"
         end
 
         def api_error(response)

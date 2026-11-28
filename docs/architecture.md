@@ -52,6 +52,14 @@ download finishes, walking the destination path through already-opened
 directory descriptors so a symlink swapped in mid-download can't redirect the
 write.
 
+## Workflow approvals
+
+[ApproveCommand](../lib/circleci/cli/command/approve_command.rb) also builds
+on `RunLookup` to list a run's pending `approval`-type jobs grouped by
+workflow. With `--job NAME`, it looks up that job's `approval_request_id` and
+POSTs to the CircleCI workflow approve endpoint through the same `Session`
+used for GET requests.
+
 ## Where to start with tests
 
 For command dispatch and Git defaults, see the
@@ -59,4 +67,6 @@ For command dispatch and Git defaults, see the
 above, see the [builds command specs](../spec/circleci/cli/command/builds_command_spec.rb).
 For the concurrent fetch and download path, see the
 [artifacts command specs](../spec/circleci/cli/command/artifacts_command_spec.rb).
+For listing and approving pending jobs, see the
+[approve command specs](../spec/circleci/cli/command/approve_command_spec.rb).
 The [contributing guide](../CONTRIBUTING.md) covers development setup and checks.

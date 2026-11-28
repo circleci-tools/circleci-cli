@@ -1,9 +1,46 @@
 # frozen_string_literal: true
 
+require 'socket'
 require 'spec_helper'
 require 'timeout'
 
 describe CircleCI::CLI::Networking::HTTPClient, type: :networking do
+  describe CircleCI::CLI::Networking::HTTPClient::Session do
+    it 'sends a GET request then a POST request with headers over the same keep-alive connection' do
+      server = TCPServer.new('127.0.0.1', 0)
+      allow(Net::HTTP).to receive(:start).with('example.com', 443, use_ssl: true) do
+        Net::HTTP.new('127.0.0.1', server.addr[1], nil).start
+      end
+      session = described_class.new
+      sockets = []
+      responses = []
+      worker = Thread.new do
+        responses << session.get_raw('https://example.com/a', 'Authorization' => 'Bearer token')
+        responses << session.post_raw('https://example.com/b', 'Authorization' => 'Bearer token')
+      end
+
+      Timeout.timeout(5) do
+        sockets << server.accept
+        socket = sockets.first
+        expect(socket.gets).to eq("GET /a HTTP/1.1\r\n")
+        expect(socket.each_line.take_while { |line| line != "\r\n" }).to include("Authorization: Bearer token\r\n")
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+
+        expect(socket.gets).to eq("POST /b HTTP/1.1\r\n")
+        expect(socket.each_line.take_while { |line| line != "\r\n" }).to include("Authorization: Bearer token\r\n")
+        socket.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+
+        worker.join
+      end
+      expect(responses.map(&:code)).to eq(%w[200 200])
+    ensure
+      session&.close
+      sockets&.each(&:close)
+      server&.close
+      worker&.kill&.join
+    end
+  end
+
   describe CircleCI::CLI::Networking::HTTPClient::SessionPool do
     let(:session_class) { CircleCI::CLI::Networking::HTTPClient::Session }
 

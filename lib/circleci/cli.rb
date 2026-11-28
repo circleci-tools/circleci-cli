@@ -183,6 +183,12 @@ module CircleCI
         Command::CancelCommand.run(git_options)
       end
 
+      desc 'approve RUN_ID', 'List or approve pending workflow approval jobs in a run'
+      method_option :job, aliases: 'j', type: :string, banner: 'NAME', desc: 'Approve the named pending job.'
+      def approve(run_id)
+        say Command::ApproveCommand.run(run_id, job: options[:job])
+      end
+
       desc 'watch', 'Watch builds in real time'
       method_option :project,
                     aliases: 'p',
