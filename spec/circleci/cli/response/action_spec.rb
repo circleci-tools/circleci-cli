@@ -20,11 +20,12 @@ describe CircleCI::CLI::Response::Action do
       ]
     end
     let(:response_body) { JSON.generate(output) }
+    let(:response_chunks) { response_body.each_byte.lazy.map(&:chr) }
 
     before do
       response = Net::HTTPOK.new('1.1', '200', 'OK')
       allow(response).to receive(:read_body) do |&read|
-        response_body.bytes.each { |byte| read.call(byte.chr) }
+        response_chunks.each(&read)
       end
       allow(http).to receive(:max_retries=).with(0)
       allow(http).to receive(:finish)
@@ -35,6 +36,40 @@ describe CircleCI::CLI::Response::Action do
 
     it 'streams and normalizes log messages from a signed HTTPS URL' do
       expect(log).to eq("first\n\nline\n#{'a' * 121}\n界")
+    end
+
+    context 'with a per-record byte limit' do
+      let(:output) { [{ 'message' => '界' * 5 }, { 'message' => '界' * 6 }] }
+
+      before { stub_const('CircleCI::CLI::Response::LogRecords::MAX_RECORD_BYTES', 32) }
+
+      it 'accepts records below and at the limit in the same response' do
+        expect(log).to eq("#{'界' * 5}\n#{'界' * 6}")
+      end
+
+      context 'when the closing brace exceeds the limit' do
+        let(:output) { [{ 'message' => "#{'界' * 6}a" }] }
+
+        it 'counts the closing brace toward the record size' do
+          expect { log }.to raise_error(Thor::Error, 'Action log record exceeds 32 bytes')
+        end
+      end
+
+      context 'when an unfinished record crosses the limit' do
+        let(:response_chunks) do
+          Enumerator.new do |chunks|
+            chunks << '[{"message":"'
+            6.times { chunks << '界' }
+            chunks << 'ab'
+            chunks << 'c'
+            raise 'Read past the oversized chunk'
+          end
+        end
+
+        it 'raises an action log error as soon as the record exceeds the byte limit' do
+          expect { log }.to raise_error(Thor::Error, 'Action log record exceeds 32 bytes')
+        end
+      end
     end
 
     {
