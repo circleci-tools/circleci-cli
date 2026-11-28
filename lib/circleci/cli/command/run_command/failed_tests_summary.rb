@@ -21,27 +21,30 @@ module CircleCI
 
           output = +'Failed tests'
           truncated = false
-          each_job_summary(jobs) do |header, entries, status, capped|
-            return output << TRUNCATION_NOTICE unless append_job(output, header, entries, status, capped) && !capped
+          each_job_summary(jobs) do |summary|
+            status = append_job_summary(output, summary)
+            return output << TRUNCATION_NOTICE if status == :truncated
 
             truncated ||= status == :oversized
           end
-          output << TRUNCATION_NOTICE if truncated
-          output
+          truncated ? output << TRUNCATION_NOTICE : output
         end
 
         private
 
-        def each_job_summary(jobs)
-          jobs.each_slice(RunRequestPool::LIMIT) do |batch|
-            RunRequestPool.fetch(batch, &method(:failed_job_summary)).each { |summary| yield(*summary) }
-          end
+        def append_job_summary(output, summary)
+          return :truncated if output.bytesize + TRUNCATION_NOTICE.bytesize == MAX_OUTPUT_BYTES
+          raise summary if summary.is_a?(StandardError)
+
+          header, entries, status, capped = summary
+          entries = job_entries(entries, status, capped)
+          append(output, header) && entries.all? { |entry| append(output, entry) } && !capped ? status : :truncated
         end
 
-        def append_job(output, header, entries, status, capped)
-          entries = [empty_message(status)] if entries.empty? && status != :oversized && !capped
-
-          append(output, header) && entries.all? { |entry| append(output, entry) }
+        def each_job_summary(jobs, &)
+          jobs.each_slice(RunRequestPool::LIMIT) do |batch|
+            RunRequestPool.fetch(batch, raise_errors: false, &method(:failed_job_summary)).each(&)
+          end
         end
 
         def failed_jobs(groups)
@@ -111,8 +114,10 @@ module CircleCI
           status
         end
 
-        def empty_message(status)
-          status == :received ? "\n    No failures in uploaded test results." : "\n    No uploaded test results."
+        def job_entries(entries, status, capped)
+          return entries unless entries.empty? && status != :oversized && !capped
+
+          [status == :received ? "\n    No failures in uploaded test results." : "\n    No uploaded test results."]
         end
 
         def parse_record(line)
