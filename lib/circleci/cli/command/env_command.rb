@@ -46,6 +46,11 @@ module CircleCI
                       banner: 'user/project',
                       desc: 'A project you want to get.'
         def delete(name)
+          unless name.match?(/\A[a-zA-Z_][a-zA-Z0-9_]*\z/)
+            raise Thor::Error, 'Invalid environment variable name. Use letters, digits, and underscores, ' \
+                               'starting with a letter or underscore.'
+          end
+
           username, reponame = project_target
           Response::EnvVar.delete(username, reponame, name)
           puts "#{name} is deleted for #{username}/#{reponame}."

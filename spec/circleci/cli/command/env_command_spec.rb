@@ -63,12 +63,24 @@ describe CircleCI::CLI::Command::EnvCommand, type: :command do
   end
 
   describe 'delete' do
+    ['FOO BAR', 'FOO/BAR', '1FOO', '', "FOO\n"].each do |name|
+      it "rejects #{name.inspect} before calling the API" do
+        expect(CircleCi::Project).not_to receive(:new)
+
+        expect_command_failure(
+          ['env', 'delete', name, '-p', 'owner/repo'],
+          'Invalid environment variable name. Use letters, digits, and underscores, ' \
+          'starting with a letter or underscore.'
+        )
+      end
+    end
+
     it 'deletes the environment variable and confirms it' do
       response = circleci_response({ 'message' => 'ok' })
-      expect_any_instance_of(CircleCi::Project).to receive(:delete_envvar).with('FOO').and_return(response)
+      expect_any_instance_of(CircleCi::Project).to receive(:delete_envvar).with('_Foo2').and_return(response)
 
-      expect { runner.start(%w[env delete FOO -p owner/repo]) }
-        .to output("FOO is deleted for owner/repo.\n").to_stdout
+      expect { runner.start(%w[env delete _Foo2 -p owner/repo]) }
+        .to output("_Foo2 is deleted for owner/repo.\n").to_stdout
     end
   end
 
