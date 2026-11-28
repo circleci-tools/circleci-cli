@@ -9,6 +9,9 @@ gem install circleci-cli
 circleci-cli version
 ```
 
+Artifact downloads require a POSIX platform with Ruby support for `Dir.fchdir`.
+Artifact listing works without this filesystem support.
+
 ## Find your project
 
 Have your CircleCI API token ready and list the GitHub projects you follow in
